@@ -1,6 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+
+type Profile = {
+  full_name: string;
+  position: string | null;
+  location: string | null;
+  experience: string | null;
+};
 
 const stats = [
   { label: "Games", value: "47" },
@@ -16,19 +26,24 @@ const badges = [
   { label: "Consistent", icon: "🔥" },
 ];
 
-function ProfileContent({ isCaptain }: { isCaptain: boolean }) {
+function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; profile: Profile | null; teamName: string | null }) {
+  const { signOut } = useAuth();
+  const name = profile?.full_name ?? "Player";
+  const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
+
   return (
     <div className="flex flex-col gap-6">
       {/* Avatar */}
       <section className="flex flex-col items-center">
         <div className="w-20 h-20 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center mb-3">
-          <span className="text-2xl font-bold text-accent">JD</span>
+          <span className="text-2xl font-bold text-accent">{initials}</span>
         </div>
-        <h2 className="text-xl font-bold">Jamie Dawson</h2>
-        <p className="text-text-secondary text-sm mt-0.5">Attacking Midfielder · London</p>
-        {isCaptain && (
+        <h2 className="text-xl font-bold">{name}</h2>
+        <p className="text-text-secondary text-sm mt-0.5">{subtitle}</p>
+        {isCaptain && teamName && (
           <span className="mt-2 text-xs font-semibold bg-accent/10 text-accent border border-accent/30 px-3 py-1 rounded-full">
-            Captain — Hackney United
+            Captain — {teamName}
           </span>
         )}
         <div className="flex gap-2 mt-3 flex-wrap justify-center">
@@ -133,19 +148,45 @@ function ProfileContent({ isCaptain }: { isCaptain: boolean }) {
           Manage My Team
         </a>
       )}
+
+
+      <button
+        onClick={signOut}
+        className="w-full py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm flex items-center justify-center gap-2"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign Out
+      </button>
     </div>
   );
 }
 
 export default function ProfilePage() {
-  const { role } = useRole();
+  const { role, roleLoading } = useRole();
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("full_name, position, location, experience").eq("id", user.id).maybeSingle()
+      .then(({ data }) => { if (data) setProfile(data as Profile); });
+    supabase.from("teams").select("name").eq("captain_id", user.id).maybeSingle()
+      .then(({ data }) => { if (data) setTeamName(data.name as string); });
+  }, [user]);
+
+  if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12">
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Profile</h1>
       </header>
-      {role === "new_user" ? (
+      {role === "new_user" && !user && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -154,8 +195,12 @@ export default function ProfilePage() {
           <p className="text-xs text-text-secondary text-center max-w-[220px]">Create an account to build your player profile and track your stats.</p>
           <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
         </div>
-      ) : (
-        <ProfileContent isCaptain={role === "captain"} />
+      )}
+      {role === "new_user" && user && (
+        <ProfileContent isCaptain={false} profile={profile} teamName={null} />
+      )}
+      {role !== "new_user" && (
+        <ProfileContent isCaptain={role === "captain"} profile={profile} teamName={teamName} />
       )}
     </div>
   );

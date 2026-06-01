@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useRole } from "@/contexts/RoleContext";
 
 type NavItem = {
   label: string;
@@ -111,6 +113,22 @@ const navItems: NavItem[] = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { role, roleLoading } = useRole();
+
+  // Venue managers only belong in /venue/* — redirect them away from player routes
+  useEffect(() => {
+    if (roleLoading) return;
+    if (role === "venue_manager" && !pathname.startsWith("/venue")) {
+      const allowed = ["/login", "/register", "/forgot-password", "/reset-password"];
+      if (!allowed.some((p) => pathname.startsWith(p))) {
+        router.replace("/venue/dashboard");
+      }
+    }
+  }, [role, roleLoading, pathname, router]);
+
+  if (pathname.startsWith("/venue")) return null;
+  if (role === "venue_manager") return null;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t border-border pb-safe">

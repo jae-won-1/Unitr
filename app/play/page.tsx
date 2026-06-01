@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRole } from "@/contexts/RoleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
-type MatchTab = "matches" | "tournaments" | "ringer";
+type MatchTab = "matches" | "my-posts" | "tournaments" | "ringer";
 
 type PitchOption = {
   id: string;
@@ -16,59 +18,26 @@ type PitchOption = {
 
 type MatchPost = {
   id: string;
+  team_id: string;
+  captain_id: string;
   team: string;
-  versus: string;
   location: string;
-  distance: string;
-  rating: number;
-  members: number;
   date: string;
+  match_date: string;
+  match_time: string;
   pitchOptions: PitchOption[];
   description: string;
   availabilityMatch: boolean;
+  status: string;
 };
 
-const matchPosts: MatchPost[] = [
-  {
-    id: "post-1", team: "Hackney Rovers", versus: "Opponent TBC", location: "North London", distance: "1.8 miles",
-    rating: 4.7, members: 9, date: "Sat, 15 Feb 2026 · 14:00",
-    pitchOptions: [
-      { id: "p1", name: "Powerleague Finsbury Park", address: "223 Seven Sisters Rd", price: 80, format: "7-a-side", distance: "1.2 miles" },
-      { id: "p2", name: "Hackney Marshes Pitch 3", address: "Homerton Rd", price: 60, format: "11-a-side", distance: "2.4 miles" },
-    ],
-    description: "Competitive 7-a-side looking for a good match. We play 4-3-3, high press.",
-    availabilityMatch: true,
-  },
-  {
-    id: "post-2", team: "East End FC", versus: "Opponent TBC", location: "Victoria Park", distance: "2.1 miles",
-    rating: 4.6, members: 8, date: "Sun, 16 Feb 2026 · 11:00",
-    pitchOptions: [
-      { id: "p5", name: "Victoria Park Arena", address: "Grove Rd, London E3", price: 75, format: "7-a-side", distance: "3.0 miles" },
-    ],
-    description: "Friendly 7-a-side. All skill levels welcome. Good vibes only.",
-    availabilityMatch: true,
-  },
-  {
-    id: "post-3", team: "Shoreditch Rovers", versus: "Opponent TBC", location: "Shoreditch", distance: "3.4 miles",
-    rating: 4.9, members: 11, date: "Sat, 22 Feb 2026 · 10:00",
-    pitchOptions: [
-      { id: "p4", name: "Powerleague Shoreditch", address: "Old St, London EC1V", price: 110, format: "5-a-side", distance: "4.1 miles" },
-      { id: "p3", name: "Goals Walthamstow", address: "Higham Hill Rd", price: 95, format: "5-a-side", distance: "3.8 miles" },
-      { id: "p1", name: "Powerleague Finsbury Park", address: "223 Seven Sisters Rd", price: 80, format: "7-a-side", distance: "1.2 miles" },
-    ],
-    description: "Semi-pro side. Only looking for teams at a competitive level.",
-    availabilityMatch: false,
-  },
-  {
-    id: "post-4", team: "Dalston Athletic", versus: "Opponent TBC", location: "London Fields", distance: "4.0 miles",
-    rating: 4.5, members: 10, date: "Sun, 23 Feb 2026 · 10:00",
-    pitchOptions: [
-      { id: "p2", name: "Hackney Marshes Pitch 3", address: "Homerton Rd", price: 60, format: "11-a-side", distance: "2.4 miles" },
-    ],
-    description: "11-a-side team with strong defensive record. Looking for a tough game.",
-    availabilityMatch: false,
-  },
-];
+type Challenge = {
+  id: string;
+  challenger_team_name: string;
+  selected_pitch: PitchOption;
+  status: string;
+  created_at: string;
+};
 
 const tournaments = [
   { id: "t-1", name: "East London Cup", organiser: "Unitr Official", location: "Victoria Park Arena", distance: "3.1 miles", date: "Mar 15, 2026", teams: "8/16 teams", prize: "£500", format: "11-a-side", description: "Annual knockout cup open to all competitive teams in East London." },
@@ -82,6 +51,7 @@ const ringerGames = [
 ];
 
 function Stars({ rating }: { rating: number }) {
+  if (rating === 0) return <div className="flex items-center gap-1"><span className="text-xs text-text-secondary">No rating yet</span></div>;
   return (
     <div className="flex items-center gap-1">
       <span className="text-sm font-bold text-yellow-400">{rating}</span>
@@ -94,27 +64,155 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-function ChallengePanel({ post, onClose }: { post: MatchPost; onClose: () => void }) {
+// ── Challenge Panel ───────────────────────────────────────────
+function ChallengePanel({
+  post,
+  onClose,
+  onMatched,
+}: {
+  post: MatchPost;
+  onClose: () => void;
+  onMatched: (postId: string) => void;
+}) {
+  const { user } = useAuth();
   const [selectedPitch, setSelectedPitch] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [matchId, setMatchId] = useState<string | null>(null);
+  const [alreadyTaken, setAlreadyTaken] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selectedPitch || !user) return;
+    setSaving(true);
+
+    // Guard: check post is still open (race condition — someone else may have just taken it)
+    const { data: current } = await supabase
+      .from("match_posts").select("status").eq("id", post.id).maybeSingle();
+    if (current?.status !== "open") {
+      setSaving(false);
+      setAlreadyTaken(true);
+      return;
+    }
+
+    // Get challenger's team
+    const { data: team } = await supabase
+      .from("teams").select("id, name").eq("captain_id", user.id).maybeSingle();
+    if (!team) { setSaving(false); return; }
+
+    const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
+
+    // Record the challenge (first-come-first-served → immediately accepted)
+    await supabase.from("challenges").insert({
+      post_id: post.id,
+      challenger_team_id: team.id,
+      challenger_team_name: team.name,
+      challenger_captain_id: user.id,
+      selected_pitch: pitch,
+      status: "accepted",
+    });
+
+    // Create a pitch_bookings row so the venue portal shows this booking
+    if (pitch?.id) {
+      const perPlayerPence = Math.round((pitch.price * 100) / 22);
+      const { error: bookingErr } = await supabase.from("pitch_bookings").insert({
+        pitch_id: pitch.id,
+        post_id: post.id,
+        booked_by: user.id,
+        match_date: post.match_date,
+        start_time: post.match_time || "TBC",
+        total_price_pence: pitch.price * 100,
+        player_count: 22,
+        per_player_pence: perPlayerPence,
+        unitr_fee_pence: Math.round(perPlayerPence * 0.05),
+        status: "confirmed",
+      });
+      if (bookingErr) console.error("pitch_bookings insert failed:", bookingErr.message, bookingErr.details);
+    }
+
+    // Lock the post
+    await supabase.from("match_posts").update({ status: "matched" }).eq("id", post.id);
+
+    // Cancel the posting team's other open posts
+    await supabase.from("match_posts")
+      .update({ status: "cancelled" }).eq("team_id", post.team_id).eq("status", "open").neq("id", post.id);
+
+    // Create matches record
+    if (pitch) {
+      const { data: matchRecord } = await supabase.from("matches").insert({
+        post_id: post.id,
+        posting_team_id: post.team_id,
+        challenging_team_id: team.id,
+        confirmed_pitch: pitch,
+        match_date: post.match_date,
+        match_time: post.match_time,
+      }).select("id").single();
+
+      if (matchRecord) {
+        setMatchId(matchRecord.id);
+        const { data: members } = await supabase
+          .from("team_members").select("player_id, team_id")
+          .in("team_id", [post.team_id, team.id]).eq("status", "approved");
+        if (members && members.length > 0) {
+          await supabase.from("match_confirmations").insert(
+            members.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
+          );
+        }
+      }
+    }
+
+    setSaving(false);
+    setConfirmed(true);
+    onMatched(post.id);
+  };
+
+  const confirmedPitch = post.pitchOptions.find((p) => p.id === selectedPitch);
+
+  if (alreadyTaken) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </div>
+          <p className="text-lg font-bold mb-1">Already Taken</p>
+          <p className="text-sm text-text-secondary mb-5">Another team challenged this post just before you. Check back for other open matches.</p>
+          <button onClick={onClose} className="w-full py-3 rounded-xl bg-surface-2 border border-border text-text-primary font-bold text-sm">Back to Matches</button>
+        </div>
+      </div>
+    );
+  }
 
   if (confirmed) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
         <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <p className="text-lg font-bold mb-1">Challenge Sent!</p>
-          <p className="text-sm text-text-secondary mb-1">Match confirmed with <span className="text-text-primary font-semibold">{post.team}</span></p>
+          <p className="text-lg font-bold mb-1">Match Confirmed!</p>
+          <p className="text-sm text-text-secondary mb-1">
+            You&apos;re playing <span className="text-text-primary font-semibold">{post.team}</span>
+          </p>
+          <p className="text-xs text-text-secondary mb-1">{post.date}</p>
           <p className="text-xs text-text-secondary mb-4">
-            Venue: <span className="text-text-primary font-medium">{post.pitchOptions.find(p => p.id === selectedPitch)?.name}</span>
+            Venue: <span className="text-text-primary font-medium">{confirmedPitch?.name}</span>
           </p>
           <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left">
             <p className="text-xs text-text-secondary">
-              Payment of <span className="font-semibold text-text-primary">£{((post.pitchOptions.find(p => p.id === selectedPitch)?.price ?? 80) / 11).toFixed(2)}/player</span> will be taken automatically in <span className="font-semibold text-accent">3 hours</span>. Non-refundable after payment.
+              Payment of{" "}
+              <span className="font-semibold text-text-primary">
+                £{((confirmedPitch?.price ?? 80) / 22).toFixed(2)}/player
+              </span>{" "}
+              will be taken automatically in{" "}
+              <span className="font-semibold text-accent">3 hours</span>. Non-refundable after payment.
             </p>
           </div>
+          {matchId && (
+            <a href={`/my-team/match/${matchId}`}
+              className="w-full py-3 rounded-xl bg-surface-2 border border-border text-sm font-semibold text-center block mb-2">
+              View Match Details
+            </a>
+          )}
           <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
         </div>
       </div>
@@ -122,14 +220,13 @@ function ChallengePanel({ post, onClose }: { post: MatchPost; onClose: () => voi
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
 
-        <div className="px-5 pb-6">
+        <div className="px-5 pt-1 pb-4 overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="font-bold">Challenge {post.team}</p>
@@ -140,16 +237,15 @@ function ChallengePanel({ post, onClose }: { post: MatchPost; onClose: () => voi
             </button>
           </div>
 
-          <p className="text-sm font-semibold mb-3">Select a pitch</p>
-          <p className="text-xs text-text-secondary mb-3">Choose from the pitch options the posting team has provided, in order of their preference.</p>
+          <p className="text-sm font-semibold mb-2">Select a pitch</p>
+          <p className="text-xs text-text-secondary mb-3">
+            Choose from the posting team&apos;s preferred pitches. If their first choice has no slots, the backup applies automatically.
+          </p>
 
-          <div className="space-y-2 mb-5">
+          <div className="space-y-2 mb-4">
             {post.pitchOptions.map((pitch, i) => (
-              <button
-                key={pitch.id}
-                onClick={() => setSelectedPitch(pitch.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${selectedPitch === pitch.id ? "bg-accent/10 border-accent/60" : "bg-surface-2 border-border"}`}
-              >
+              <button key={pitch.id} onClick={() => setSelectedPitch(pitch.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${selectedPitch === pitch.id ? "bg-accent/10 border-accent/60" : "bg-surface-2 border-border"}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${selectedPitch === pitch.id ? "bg-accent text-black" : "bg-background text-text-secondary"}`}>
                   {i + 1}
                 </div>
@@ -157,25 +253,33 @@ function ChallengePanel({ post, onClose }: { post: MatchPost; onClose: () => voi
                   <p className="text-sm font-semibold truncate">{pitch.name}</p>
                   <p className="text-xs text-text-secondary">{pitch.format} · £{pitch.price}/hr · {pitch.distance}</p>
                 </div>
-                {i === 0 && <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>}
-                {i > 0 && <span className="text-[10px] text-text-secondary flex-shrink-0">Backup {i}</span>}
+                {i === 0
+                  ? <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>
+                  : <span className="text-[10px] text-text-secondary flex-shrink-0">Backup {i}</span>}
               </button>
             ))}
           </div>
 
           {selectedPitch && (
-            <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 text-xs text-text-secondary">
+            <div className="bg-surface-2 border border-border rounded-xl p-3 text-xs text-text-secondary">
               <p className="font-semibold text-text-primary mb-1">Payment</p>
-              <p>£{((post.pitchOptions.find(p => p.id === selectedPitch)?.price ?? 80) / 11).toFixed(2)}/player charged automatically <span className="text-accent font-semibold">3 hours after confirmation</span>. Split across all confirmed players via Stripe.</p>
+              <p>
+                £{((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 22).toFixed(2)}/player charged automatically{" "}
+                <span className="text-accent font-semibold">3 hours after confirmation</span>. Split across all players via Stripe.
+              </p>
             </div>
           )}
+        </div>
 
+        <div className="px-5 pb-6 pt-3 flex-shrink-0 border-t border-border bg-[#141414]">
           <button
-            disabled={!selectedPitch}
-            onClick={() => setConfirmed(true)}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!selectedPitch || saving}
+            onClick={handleConfirm}
+            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Confirm Challenge
+            {saving ? (
+              <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Confirming…</>
+            ) : "Send Challenge"}
           </button>
         </div>
       </div>
@@ -183,8 +287,18 @@ function ChallengePanel({ post, onClose }: { post: MatchPost; onClose: () => voi
   );
 }
 
-function MatchCard({ post, showChallenge }: { post: MatchPost; showChallenge: boolean }) {
+// ── Match Card (opponents' posts) ─────────────────────────────
+function MatchCard({
+  post,
+  showChallenge,
+  onMatched,
+}: {
+  post: MatchPost;
+  showChallenge: boolean;
+  onMatched?: (postId: string) => void;
+}) {
   const [showPanel, setShowPanel] = useState(false);
+  const initials = post.team.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <>
@@ -192,14 +306,14 @@ function MatchCard({ post, showChallenge }: { post: MatchPost; showChallenge: bo
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-accent">{post.team.split(" ").map((w) => w[0]).join("").slice(0,2)}</span>
+              <span className="text-xs font-bold text-accent">{initials}</span>
             </div>
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <p className="text-sm font-bold">{post.team}</p>
                 <span className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
               </div>
-              <p className="text-xs text-text-secondary mt-0.5">{post.distance} away</p>
+              <p className="text-xs text-text-secondary mt-0.5">{post.location || "Location TBC"}</p>
             </div>
           </div>
           {post.availabilityMatch && (
@@ -209,47 +323,138 @@ function MatchCard({ post, showChallenge }: { post: MatchPost; showChallenge: bo
           )}
         </div>
 
-        <Stars rating={post.rating} />
-        <p className="text-xs text-text-secondary my-2">{post.description}</p>
+        <Stars rating={0} />
+        {post.description && <p className="text-xs text-text-secondary my-2">{post.description}</p>}
 
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1 text-xs text-text-secondary">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            {post.date}
-          </div>
-          <span className="text-xs text-text-secondary">{post.members} players</span>
+        <div className="flex items-center gap-1 text-xs text-text-secondary mb-3 mt-2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          {post.date}
         </div>
 
-        {/* Pitch options summary */}
+        {post.pitchOptions.length > 0 && (
+          <div className="bg-background rounded-xl px-3 py-2 mb-3">
+            <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Pitch Options</p>
+            <div className="space-y-1">
+              {post.pitchOptions.map((p, i) => (
+                <div key={p.id} className="flex items-center gap-2 text-xs text-text-secondary">
+                  <span className="w-4 h-4 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[9px] font-bold flex-shrink-0">{i + 1}</span>
+                  <span className="truncate">{p.name}</span>
+                  <span className="text-accent font-medium flex-shrink-0">£{p.price}/hr</span>
+                  {i > 0 && <span className="text-[9px] text-text-secondary flex-shrink-0">backup</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showChallenge && (
+          <button onClick={() => setShowPanel(true)}
+            className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+            Challenge Team
+          </button>
+        )}
+      </div>
+
+      {showPanel && (
+        <ChallengePanel
+          post={post}
+          onClose={() => setShowPanel(false)}
+          onMatched={(id) => { setShowPanel(false); onMatched?.(id); }}
+        />
+      )}
+    </>
+  );
+}
+
+// ── My Post Card (captain's own posts) ────────────────────────
+function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: string) => void }) {
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [loadingChallenge, setLoadingChallenge] = useState(true);
+
+  useEffect(() => {
+    if (post.status === "matched") {
+      supabase.from("challenges").select("*").eq("post_id", post.id).eq("status", "accepted")
+        .maybeSingle()
+        .then(({ data }) => { setChallenge(data as Challenge | null); setLoadingChallenge(false); });
+    } else {
+      setLoadingChallenge(false);
+    }
+  }, [post.id, post.status]);
+
+  const initials = post.team.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+
+  return (
+    <div className={`border rounded-2xl p-4 ${post.status === "matched" ? "bg-accent/5 border-accent/30" : "bg-surface-2 border-border"}`}>
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-accent">{initials}</span>
+          </div>
+          <div>
+            <p className="text-sm font-bold">{post.team}</p>
+            <p className="text-xs text-text-secondary mt-0.5">{post.location || "Location TBC"}</p>
+          </div>
+        </div>
+        {post.status === "matched" ? (
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Matched</span>
+        ) : (
+          <span className="text-[10px] font-semibold bg-surface border border-border text-text-secondary px-2 py-0.5 rounded-full flex-shrink-0">Open</span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 text-xs text-text-secondary mb-3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        {post.date}
+      </div>
+
+      {post.pitchOptions.length > 0 && (
         <div className="bg-background rounded-xl px-3 py-2 mb-3">
-          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Pitch Options</p>
+          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Your Pitch Options</p>
           <div className="space-y-1">
             {post.pitchOptions.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2 text-xs text-text-secondary">
                 <span className="w-4 h-4 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[9px] font-bold flex-shrink-0">{i + 1}</span>
                 <span className="truncate">{p.name}</span>
                 <span className="text-accent font-medium flex-shrink-0">£{p.price}/hr</span>
-                {i > 0 && <span className="text-[9px] text-text-secondary flex-shrink-0">backup</span>}
               </div>
             ))}
           </div>
         </div>
+      )}
 
-        {showChallenge && (
-          <button
-            onClick={() => setShowPanel(true)}
-            className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm"
-          >
-            Challenge Team
-          </button>
-        )}
-      </div>
+      {/* Matched: show who challenged */}
+      {post.status === "matched" && (
+        <div className="bg-accent/10 border border-accent/20 rounded-xl px-3 py-3">
+          {loadingChallenge ? (
+            <p className="text-xs text-text-secondary">Loading challenge info…</p>
+          ) : challenge ? (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-accent">Challenged by {challenge.challenger_team_name}</p>
+                <p className="text-xs text-text-secondary mt-0.5">Pitch: {challenge.selected_pitch?.name ?? "TBC"}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-text-secondary">Match confirmed — challenge details loading.</p>
+          )}
+        </div>
+      )}
 
-      {showPanel && <ChallengePanel post={post} onClose={() => setShowPanel(false)} />}
-    </>
+      {/* Open: waiting state */}
+      {post.status === "open" && (
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+          Waiting for a challenge…
+        </div>
+      )}
+    </div>
   );
 }
 
+// ── Ringer Card ───────────────────────────────────────────────
 function RingerCard({ game }: { game: typeof ringerGames[0] }) {
   return (
     <div className="bg-surface-2 border border-border rounded-2xl p-4">
@@ -282,17 +487,125 @@ function RingerCard({ game }: { game: typeof ringerGames[0] }) {
   );
 }
 
-// Sort: availability matches first
-const sortedPosts = [...matchPosts].sort((a, b) => (b.availabilityMatch ? 1 : 0) - (a.availabilityMatch ? 1 : 0));
+// ── Hooks ─────────────────────────────────────────────────────
+function usePosts(excludeCaptainId: string | null, userId?: string) {
+  const [posts, setPosts] = useState<MatchPost[]>([]);
+  const [loading, setLoading] = useState(true);
 
-// ── POV Views ────────────────────────────────────────────────
+  useEffect(() => {
+    if (excludeCaptainId === undefined) return;
+
+    async function load() {
+      // Fetch this user's team availability dates
+      let availabilityDates: string[] = [];
+      if (userId) {
+        let teamId: string | undefined;
+
+        const { data: captainTeam } = await supabase
+          .from("teams").select("id").eq("captain_id", userId).maybeSingle();
+        teamId = captainTeam?.id;
+
+        if (!teamId) {
+          const { data: membership } = await supabase
+            .from("team_members").select("team_id")
+            .eq("player_id", userId).eq("status", "approved").maybeSingle();
+          teamId = membership?.team_id;
+        }
+
+        if (teamId) {
+          const { data: req } = await supabase
+            .from("availability_requests").select("date_options")
+            .eq("team_id", teamId)
+            .order("created_at", { ascending: false })
+            .limit(1).maybeSingle();
+
+          if (req?.date_options) {
+            availabilityDates = (req.date_options as { date: string }[]).map((d) => d.date);
+          }
+        }
+      }
+
+      let query = supabase
+        .from("match_posts")
+        .select("*")
+        .eq("status", "open")
+        .order("created_at", { ascending: false });
+      if (excludeCaptainId) {
+        query = query.neq("captain_id", excludeCaptainId);
+      }
+
+      const { data } = await query;
+      const mapped = (data ?? []).map((row) => ({
+        id: row.id,
+        team_id: row.team_id,
+        captain_id: row.captain_id,
+        team: row.team_name,
+        location: row.team_location ?? "",
+        date: `${row.match_date} · ${row.match_time}`,
+        match_date: row.match_date,
+        match_time: row.match_time,
+        pitchOptions: (row.pitch_options ?? []) as PitchOption[],
+        description: row.description ?? "",
+        availabilityMatch: availabilityDates.includes(row.match_date),
+        status: row.status,
+      }));
+
+      // Availability-matching posts float to the top
+      mapped.sort((a, b) => (b.availabilityMatch ? 1 : 0) - (a.availabilityMatch ? 1 : 0));
+
+      setPosts(mapped);
+      setLoading(false);
+    }
+
+    load();
+  }, [excludeCaptainId, userId]);
+
+  const removePost = (id: string) => setPosts((prev) => prev.filter((p) => p.id !== id));
+  return { posts, loading, removePost };
+}
+
+function useMyPosts(captainId?: string) {
+  const [posts, setPosts] = useState<MatchPost[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!captainId) return;
+    supabase
+      .from("match_posts")
+      .select("*")
+      .eq("captain_id", captainId)
+      .in("status", ["open", "matched"])
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        setPosts((data ?? []).map((row) => ({
+          id: row.id,
+          team_id: row.team_id,
+          captain_id: row.captain_id,
+          team: row.team_name,
+          location: row.team_location ?? "",
+          date: `${row.match_date} · ${row.match_time}`,
+          match_date: row.match_date,
+          match_time: row.match_time,
+          pitchOptions: (row.pitch_options ?? []) as PitchOption[],
+          description: row.description ?? "",
+          availabilityMatch: false,
+          status: row.status,
+        })));
+        setLoading(false);
+      });
+  }, [captainId]);
+
+  return { posts, loading };
+}
+
+// ── POV Views ─────────────────────────────────────────────────
 function NewUserPlay() {
   return (
     <div className="space-y-4">
       <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
         <p className="text-sm font-semibold text-accent mb-1">Fill in for a Match</p>
         <p className="text-xs text-text-secondary leading-relaxed">
-          No team? No problem. Join a game as a temporary ringer at a discounted rate — try out different teams and enjoy football without commitment.
+          No team? No problem. Join a game as a temporary ringer at a discounted rate.
         </p>
       </div>
       {ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
@@ -301,66 +614,33 @@ function NewUserPlay() {
 }
 
 function PlayerPlay() {
+  const { user } = useAuth();
+  const { posts, loading, removePost } = usePosts(null, user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {([{ key: "matches", label: "Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in for a Match" }] as { key: MatchTab; label: string }[]).map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{t.label}</button>
-        ))}
-      </div>
-      {tab === "matches" && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <p className="text-xs text-accent font-medium">Matches with your team's availability shown first</p>
-          </div>
-          {sortedPosts.map((p) => <MatchCard key={p.id} post={p} showChallenge={false} />)}
-        </div>
-      )}
-      {tab === "tournaments" && tournaments.map((t) => (
-        <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div><p className="font-semibold">{t.name}</p><p className="text-xs text-text-secondary">by {t.organiser}</p></div>
-            <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg">{t.prize}</span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">{t.description}</p>
-          <div className="flex items-center gap-3 text-xs text-text-secondary mb-4 flex-wrap">
-            <span>{t.location} · {t.distance}</span>
-            <span>{t.date}</span>
-            <span>{t.teams} entered</span>
-            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{t.format}</span>
-          </div>
-          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Enter Tournament</button>
-        </div>
-      ))}
-      {tab === "ringer" && ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
-    </div>
-  );
-}
 
-function CaptainPlay() {
-  const [tab, setTab] = useState<MatchTab>("matches");
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {([{ key: "matches", label: "Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in for a Match" }] as { key: MatchTab; label: string }[]).map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{t.label}</button>
+        {([{ key: "matches", label: "Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in" }] as { key: MatchTab; label: string }[]).map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            {t.label}
+          </button>
         ))}
       </div>
+
       {tab === "matches" && (
         <div className="space-y-4">
-          <a href="/play/create" className="flex items-center gap-2 w-fit px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Create Post
-          </a>
-          <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <p className="text-xs text-accent font-medium">Matches with your team's availability shown first</p>
-          </div>
-          {sortedPosts.map((p) => <MatchCard key={p.id} post={p} showChallenge={true} />)}
+          {loading ? (
+            <p className="text-sm text-text-secondary text-center py-8">Loading matches…</p>
+          ) : posts.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-8">No open matches right now.</p>
+          ) : (
+            posts.map((p) => <MatchCard key={p.id} post={p} showChallenge={false} onMatched={removePost} />)
+          )}
         </div>
       )}
+
       {tab === "tournaments" && tournaments.map((t) => (
         <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
           <div className="flex items-start justify-between mb-2">
@@ -375,11 +655,99 @@ function CaptainPlay() {
           <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Enter Tournament</button>
         </div>
       ))}
+
+      {tab === "ringer" && ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
+    </div>
+  );
+}
+
+function CaptainPlay() {
+  const { user } = useAuth();
+  const { posts, loading, removePost } = usePosts(user?.id ?? null, user?.id);
+  const { posts: myPosts, loading: myPostsLoading } = useMyPosts(user?.id);
+  const [tab, setTab] = useState<MatchTab>("matches");
+
+  const myPostsCount = myPosts.filter((p) => p.status === "open").length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {([
+          { key: "matches", label: "Matches" },
+          { key: "my-posts", label: "My Posts" },
+          { key: "tournaments", label: "Tournaments" },
+          { key: "ringer", label: "Fill in" },
+        ] as { key: MatchTab; label: string }[]).map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors relative ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            {t.label}
+            {t.key === "my-posts" && myPostsCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-black text-[9px] font-bold flex items-center justify-center">
+                {myPostsCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "matches" && (
+        <div className="space-y-4">
+          {loading ? (
+            <p className="text-sm text-text-secondary text-center py-8">Loading matches…</p>
+          ) : posts.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-text-secondary mb-3">No open matches from other teams right now.</p>
+              <a href="/play/create" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Post your own match instead
+              </a>
+            </div>
+          ) : (
+            posts.map((p) => (
+              <MatchCard key={p.id} post={p} showChallenge={true} onMatched={removePost} />
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "my-posts" && (
+        <div className="space-y-4">
+          <a href="/play/create"
+            className="flex items-center gap-2 w-fit px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Create New Post
+          </a>
+
+          {myPostsLoading ? (
+            <p className="text-sm text-text-secondary text-center py-8">Loading your posts…</p>
+          ) : myPosts.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-8">No posts yet. Create one above.</p>
+          ) : (
+            myPosts.map((p) => <MyPostCard key={p.id} post={p} onRemoved={removePost} />)
+          )}
+        </div>
+      )}
+
+      {tab === "tournaments" && tournaments.map((t) => (
+        <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
+          <div className="flex items-start justify-between mb-2">
+            <div><p className="font-semibold">{t.name}</p><p className="text-xs text-text-secondary">by {t.organiser}</p></div>
+            <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg">{t.prize}</span>
+          </div>
+          <p className="text-xs text-text-secondary mb-3">{t.description}</p>
+          <div className="flex items-center gap-3 text-xs text-text-secondary mb-4 flex-wrap">
+            <span>{t.location} · {t.distance}</span><span>{t.date}</span><span>{t.teams} entered</span>
+            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{t.format}</span>
+          </div>
+          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Enter Tournament</button>
+        </div>
+      ))}
+
       {tab === "ringer" && (
         <div className="space-y-4">
           <div className="bg-surface-2 border border-border rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Need a Ringer?</p>
-            <p className="text-xs text-text-secondary mb-3">If your team is short players for a match, post it here and let individuals fill in at a discounted rate.</p>
+            <p className="text-xs text-text-secondary mb-3">Post a ringer request if your team is short players.</p>
             <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Post Ringer Request</button>
           </div>
           {ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
@@ -391,10 +759,11 @@ function CaptainPlay() {
 
 // ── Page ─────────────────────────────────────────────────────
 export default function PlayPage() {
-  const { role } = useRole();
+  const { role, roleLoading } = useRole();
+  if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12">
+    <div className="flex flex-col min-h-screen px-4 pt-12 pb-24">
       <header className="mb-5">
         <h1 className="text-2xl font-bold mb-1">Play</h1>
         <p className="text-text-secondary text-sm">

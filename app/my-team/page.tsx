@@ -146,7 +146,24 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
 
 // ── New User My Team ──────────────────────────────────────────
 function NewUserMyTeam() {
-  return <BrowseTeams />;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3">
+        <a href="/my-team/create"
+          className="bg-accent text-black rounded-2xl p-4 flex flex-col gap-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <p className="text-sm font-bold">Register Your Team</p>
+          <p className="text-xs font-normal opacity-70">Set up your team as captain</p>
+        </a>
+        <div className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <p className="text-sm font-bold">Find a Team</p>
+          <p className="text-xs text-text-secondary">Request to join below</p>
+        </div>
+      </div>
+      <BrowseTeams />
+    </div>
+  );
 }
 
 // ── Player My Team ────────────────────────────────────────────
@@ -348,32 +365,80 @@ function PlayerMyTeam() {
   );
 }
 
+type ConfirmedFixture = {
+  postId: string;
+  opponent: string;
+  date: string;
+  time: string;
+  pitch: string;
+};
+
 // ── Captain My Team ───────────────────────────────────────────
 function CaptainMyTeam() {
   const { user } = useAuth();
   const [myTeam, setMyTeam] = useState<Team | null | undefined>(undefined);
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
+  const [fixturesLoading, setFixturesLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("teams")
-      .select("*")
-      .eq("captain_id", user.id)
-      .maybeSingle()
+    supabase.from("teams").select("*").eq("captain_id", user.id).maybeSingle()
       .then(({ data }) => setMyTeam(data ?? null));
   }, [user]);
 
   useEffect(() => {
     if (!myTeam) return;
-    supabase
-      .from("team_members")
-      .select("id, player_id, status, profiles(full_name, position)")
-      .eq("team_id", myTeam.id)
-      .eq("status", "pending")
+    supabase.from("team_members").select("id, player_id, status, profiles(full_name, position)")
+      .eq("team_id", myTeam.id).eq("status", "pending")
       .then(({ data }) => setRequests((data as unknown as JoinRequest[]) ?? []));
   }, [myTeam]);
+
+  useEffect(() => {
+    if (!user) return;
+    async function loadFixtures() {
+      // Matches where user is the poster
+      const { data: myPosts } = await supabase.from("match_posts")
+        .select("id, match_date, match_time").eq("captain_id", user!.id).eq("status", "matched");
+
+      const posterFixtures: ConfirmedFixture[] = await Promise.all(
+        (myPosts ?? []).map(async (post) => {
+          const { data: ch } = await supabase.from("challenges")
+            .select("challenger_team_name, selected_pitch").eq("post_id", post.id).eq("status", "accepted").maybeSingle();
+          return {
+            postId: post.id,
+            opponent: (ch as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
+            date: post.match_date,
+            time: post.match_time,
+            pitch: ((ch as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
+          };
+        })
+      );
+
+      // Matches where user challenged
+      const { data: myChallenges } = await supabase.from("challenges")
+        .select("post_id, selected_pitch").eq("challenger_captain_id", user!.id).eq("status", "accepted");
+
+      const challengerFixtures: ConfirmedFixture[] = await Promise.all(
+        (myChallenges ?? []).map(async (c) => {
+          const { data: post } = await supabase.from("match_posts")
+            .select("id, team_name, match_date, match_time").eq("id", c.post_id).maybeSingle();
+          return {
+            postId: c.post_id,
+            opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
+            date: (post as { match_date: string } | null)?.match_date ?? "",
+            time: (post as { match_time: string } | null)?.match_time ?? "",
+            pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
+          };
+        })
+      );
+
+      setFixtures([...posterFixtures, ...challengerFixtures]);
+      setFixturesLoading(false);
+    }
+    loadFixtures();
+  }, [user]);
 
   const handleRequest = async (requestId: string, status: "approved" | "rejected") => {
     setUpdatingId(requestId);
@@ -384,7 +449,6 @@ function CaptainMyTeam() {
 
   if (myTeam === undefined) return <div className="py-12 text-center text-sm text-text-secondary">Loading…</div>;
 
-  // Captain hasn't created a team yet
   if (myTeam === null) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
@@ -427,6 +491,44 @@ function CaptainMyTeam() {
         </div>
       </section>
 
+      {/* Confirmed fixtures */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Upcoming Fixtures</h3>
+          {fixtures.length > 0 && <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{fixtures.length}</span>}
+        </div>
+        {fixturesLoading ? (
+          <div className="py-4 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
+        ) : fixtures.length === 0 ? (
+          <p className="text-sm text-text-secondary py-2">No confirmed fixtures yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {fixtures.map((f) => (
+              <a key={f.postId} href={`/my-team/match/${f.postId}`} className="block bg-surface-2 border border-border rounded-2xl p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      {f.date} · {f.time}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {f.pitch}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Confirmed</span>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-accent font-medium mt-1">
+                  Manage Match
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Join requests */}
       {requests.length > 0 && (
         <section>
@@ -447,20 +549,10 @@ function CaptainMyTeam() {
                   <p className="text-xs text-text-secondary">{req.profiles?.position ?? "—"}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    disabled={updatingId === req.id}
-                    onClick={() => handleRequest(req.id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40"
-                  >
-                    Decline
-                  </button>
-                  <button
-                    disabled={updatingId === req.id}
-                    onClick={() => handleRequest(req.id, "approved")}
-                    className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40"
-                  >
-                    Approve
-                  </button>
+                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "rejected")}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">Decline</button>
+                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "approved")}
+                    className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40">Approve</button>
                 </div>
               </div>
             ))}
@@ -491,7 +583,8 @@ function CaptainMyTeam() {
 
 // ── Page ─────────────────────────────────────────────────────
 export default function MyTeamPage() {
-  const { role } = useRole();
+  const { role, roleLoading } = useRole();
+  if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">

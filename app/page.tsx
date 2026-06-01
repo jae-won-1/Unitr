@@ -1,6 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+
+type ConfirmedFixture = {
+  id: string;
+  opponent: string;
+  date: string;
+  time: string;
+  pitch: string;
+  side: "poster" | "challenger";
+};
 
 // ── Shared data ──────────────────────────────────────────────
 const nearbyTeams = [
@@ -9,11 +21,74 @@ const nearbyTeams = [
   { id: "shoreditch-rovers", name: "Shoreditch Rovers", location: "Powerleague Shoreditch", distance: "3.4 miles", rating: 4.9, members: 14, winRate: 85, record: { w: 22, d: 1, l: 3 }, level: "Semi-Pro", description: "Semi-pro side competing in regional leagues." },
 ];
 
-const fixtures = [
-  { id: "match-1", opponent: "Regents FC", hostedBy: "Thunder Hawks", type: "match", date: "Feb 15, 2026", time: "14:00", location: "Central Park Field 3", rating: 4.9, players: { confirmed: 11, total: 11 }, status: "accepted", description: "Friendly 11v11 match. All skill levels welcome!" },
-  { id: "match-2", opponent: "Dalston Athletic", hostedBy: "Hackney United", type: "league", date: "Feb 22, 2026", time: "11:00", location: "Hackney Marshes Pitch 4", rating: 4.7, players: { confirmed: 9, total: 11 }, status: "pending", description: "Sunday league fixture. Attendance is mandatory." },
-  { id: "match-3", opponent: "Shoreditch Rovers", hostedBy: "East End FC", type: "tournament", date: "Mar 1, 2026", time: "09:00", location: "Victoria Park Arena", rating: 4.8, players: { confirmed: 7, total: 11 }, status: "accepted", description: "East London Cup — group stage. Arrive 30 mins early." },
-];
+function useConfirmedFixtures(userId: string | undefined) {
+  const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return; }
+
+    async function load() {
+      // Side A: posts I created that are now matched
+      const { data: myPosts } = await supabase
+        .from("match_posts")
+        .select("id, team_name, match_date, match_time")
+        .eq("captain_id", userId)
+        .eq("status", "matched");
+
+      const posterFixtures: ConfirmedFixture[] = await Promise.all(
+        (myPosts ?? []).map(async (post) => {
+          const { data: challenge } = await supabase
+            .from("challenges")
+            .select("challenger_team_name, selected_pitch")
+            .eq("post_id", post.id)
+            .eq("status", "accepted")
+            .maybeSingle();
+          return {
+            id: post.id,
+            opponent: (challenge as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
+            date: post.match_date,
+            time: post.match_time,
+            pitch: ((challenge as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
+            side: "poster" as const,
+          };
+        })
+      );
+
+      // Side B: challenges I sent that were accepted
+      const { data: myChallenges } = await supabase
+        .from("challenges")
+        .select("post_id, selected_pitch")
+        .eq("challenger_captain_id", userId)
+        .eq("status", "accepted");
+
+      const challengerFixtures: ConfirmedFixture[] = await Promise.all(
+        (myChallenges ?? []).map(async (c) => {
+          const { data: post } = await supabase
+            .from("match_posts")
+            .select("id, team_name, match_date, match_time")
+            .eq("id", c.post_id)
+            .maybeSingle();
+          return {
+            id: c.post_id,
+            opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
+            date: (post as { match_date: string } | null)?.match_date ?? "",
+            time: (post as { match_time: string } | null)?.match_time ?? "",
+            pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
+            side: "challenger" as const,
+          };
+        })
+      );
+
+      setFixtures([...posterFixtures, ...challengerFixtures]);
+      setLoading(false);
+    }
+
+    load();
+  }, [userId]);
+
+  return { fixtures, loading };
+}
 
 const socialPosts = [
   {
@@ -110,7 +185,34 @@ function TeamCard({ team }: { team: typeof nearbyTeams[0] }) {
   );
 }
 
-function FixtureCard({ fixture }: { fixture: typeof fixtures[0] }) {
+function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
+  return (
+    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm">vs {fixture.opponent}</p>
+          <p className="text-xs text-text-secondary mt-0.5">{fixture.side === "poster" ? "You posted · they challenged" : "You challenged"}</p>
+        </div>
+        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Confirmed</span>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          {fixture.date} · {fixture.time}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-text-secondary">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          {fixture.pitch}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FixtureCard({ fixture }: { fixture: { id: string; opponent: string; hostedBy: string; type: string; date: string; time: string; location: string; rating: number; players: { confirmed: number; total: number }; status: string; description: string } }) {
   return (
     <div className="bg-white/5 border border-border rounded-2xl overflow-hidden">
       <div className="p-4">
@@ -246,6 +348,49 @@ function FeedPost({ post }: { post: typeof socialPosts[0] }) {
 
 // ── POV Views ────────────────────────────────────────────────
 function NewUserHome() {
+  const { user } = useAuth();
+
+  // Logged in but not yet in a team — show onboarding
+  if (user) {
+    return (
+      <div className="flex flex-col gap-6">
+        <section className="rounded-2xl bg-surface-2 border border-border p-5">
+          <p className="text-xs font-semibold text-accent uppercase tracking-wider mb-1">Welcome to Unitr</p>
+          <h2 className="text-lg font-bold mb-1">You&apos;re in — now pick your path</h2>
+          <p className="text-text-secondary text-sm">Register your own team as captain, or find an existing team to join.</p>
+        </section>
+        <div className="grid grid-cols-2 gap-3">
+          <a href="/my-team/create" className="bg-accent text-black rounded-2xl p-4 flex flex-col gap-2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <p className="text-sm font-bold">Register Your Team</p>
+            <p className="text-xs font-normal opacity-70">Become a captain</p>
+          </a>
+          <a href="/my-team" className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <p className="text-sm font-bold">Find a Team</p>
+            <p className="text-xs text-text-secondary">Browse and request to join</p>
+          </a>
+        </div>
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-bold">Teams Near You</h3>
+              <p className="text-xs text-text-secondary mt-0.5">Find a team to join</p>
+            </div>
+            <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
+          </div>
+          <div className="space-y-3">
+            {nearbyTeams.map((t) => <TeamCard key={t.id} team={t} />)}
+          </div>
+        </section>
+        <div className="space-y-3">
+          {socialPosts.map((p) => <FeedPost key={p.id} post={p} />)}
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in — landing page
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-surface-2 border border-border p-6 text-center">
@@ -274,25 +419,11 @@ function NewUserHome() {
   );
 }
 
-function PlayerHome() {
+function PlayerHome({ userId }: { userId: string | undefined }) {
+  const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
+
   return (
     <div className="flex flex-col gap-6">
-
-      {/* New match notification */}
-      <a href="/play" className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-2xl p-4">
-        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>
-          </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-accent">2 new matches near you</p>
-          <p className="text-xs text-text-secondary mt-0.5 truncate">Posts matching your team's availability — tap to view</p>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-      </a>
 
       {/* Availability notification */}
       <a href="/my-team/availability" className="flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4">
@@ -310,16 +441,27 @@ function PlayerHome() {
         </svg>
       </a>
 
-      {/* Next fixture */}
+      {/* Confirmed fixtures */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-bold">Next Fixture</h3>
-            <p className="text-xs text-text-secondary mt-0.5">{fixtures[0].date} · {fixtures[0].time}</p>
+            <h3 className="font-bold">Upcoming Fixtures</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team" className="text-xs text-accent font-medium">All fixtures</a>
+          <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
         </div>
-        <FixtureCard fixture={fixtures[0]} />
+        {fixturesLoading ? (
+          <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
+        ) : fixtures.length === 0 ? (
+          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+            <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
+            <p className="text-xs text-text-secondary mt-1">Matches will appear here once confirmed.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {fixtures.map((f) => <ConfirmedFixtureCard key={f.id} fixture={f} />)}
+          </div>
+        )}
       </section>
 
       {/* Social feed */}
@@ -338,25 +480,11 @@ function PlayerHome() {
   );
 }
 
-function CaptainHome() {
+function CaptainHome({ userId }: { userId: string | undefined }) {
+  const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
+
   return (
     <div className="flex flex-col gap-6">
-
-      {/* New match notification */}
-      <a href="/play" className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-2xl p-4">
-        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>
-          </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-accent">2 new matches near you</p>
-          <p className="text-xs text-text-secondary mt-0.5 truncate">Posts matching your team's availability — tap to challenge</p>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-      </a>
 
       {/* Quick actions */}
       <section>
@@ -376,16 +504,27 @@ function CaptainHome() {
         </div>
       </section>
 
-      {/* Next fixture */}
+      {/* Confirmed fixtures */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-bold">Next Fixture</h3>
-            <p className="text-xs text-text-secondary mt-0.5">{fixtures[0].date} · {fixtures[0].time}</p>
+            <h3 className="font-bold">Upcoming Fixtures</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team" className="text-xs text-accent font-medium">All fixtures</a>
+          <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
         </div>
-        <FixtureCard fixture={fixtures[0]} />
+        {fixturesLoading ? (
+          <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
+        ) : fixtures.length === 0 ? (
+          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+            <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
+            <a href="/play/create" className="inline-block mt-2 text-xs text-accent font-medium">Post a match to get started →</a>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {fixtures.map((f) => <ConfirmedFixtureCard key={f.id} fixture={f} />)}
+          </div>
+        )}
       </section>
 
       {/* Social feed */}
@@ -406,19 +545,34 @@ function CaptainHome() {
 
 // ── Page ─────────────────────────────────────────────────────
 export default function HomePage() {
-  const { role } = useRole();
+  const { role, roleLoading } = useRole();
+  const { user } = useAuth();
+  const [initials, setInitials] = useState("?");
+
+  useEffect(() => {
+    if (!user) { setInitials("?"); return; }
+    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data?.full_name) {
+          const parts = (data.full_name as string).split(" ").filter(Boolean);
+          setInitials(parts.map((w: string) => w[0]).join("").slice(0, 2).toUpperCase());
+        }
+      });
+  }, [user]);
+
+  if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12">
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Unitr<span className="text-accent">.</span></h1>
-        <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
-          <span className="text-xs font-bold text-accent">{role === "new_user" ? "?" : "JD"}</span>
-        </div>
+        <a href="/profile" className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
+          <span className="text-xs font-bold text-accent">{initials}</span>
+        </a>
       </header>
       {role === "new_user" && <NewUserHome />}
-      {role === "player" && <PlayerHome />}
-      {role === "captain" && <CaptainHome />}
+      {role === "player" && <PlayerHome userId={user?.id} />}
+      {role === "captain" && <CaptainHome userId={user?.id} />}
     </div>
   );
 }

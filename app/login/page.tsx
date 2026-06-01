@@ -16,11 +16,20 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
       setError("Invalid email or password.");
       setLoading(false);
+      return;
+    }
+
+    // Redirect venue managers to their portal
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles").select("account_type").eq("id", data.user.id).maybeSingle();
+      setLoading(false);
+      router.push(profile?.account_type === "venue_manager" ? "/venue/dashboard" : "/");
       return;
     }
 
@@ -59,7 +68,10 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Password</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-text-secondary">Password</label>
+            <a href="/forgot-password" className="text-xs text-accent font-medium">Forgot password?</a>
+          </div>
           <input
             type="password"
             value={password}

@@ -7,14 +7,22 @@ import { supabase } from "@/lib/supabase";
 const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
 const experiences = ["Beginner", "Casual", "Intermediate", "Competitive", "Semi-Pro"];
 
+type AccountType = "player" | "venue_manager";
+
 export default function RegisterPage() {
   const router = useRouter();
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
+
+  // Shared fields
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  // Player-only fields
   const [location, setLocation] = useState("");
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,55 +30,39 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
-    if (!fullName || !email || !password || !location || !position || !experience) {
-      setError("Please fill in all fields.");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!accountType) { setError("Please select an account type."); return; }
+    if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (accountType === "player" && (!location || !position || !experience)) {
+      setError("Please fill in all player fields.");
       return;
     }
 
     setLoading(true);
 
-    // Create auth account
     const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) { setError(signUpError.message); setLoading(false); return; }
 
-    if (signUpError) {
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
-
-    // Save profile info
     if (data.user) {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          id: data.user.id,
-          full_name: fullName,
-          location,
-          position,
-          experience,
-        });
+      const profileData =
+        accountType === "venue_manager"
+          ? { id: data.user.id, full_name: fullName, account_type: "venue_manager" }
+          : { id: data.user.id, full_name: fullName, location, position, experience, account_type: "player" };
 
-      if (profileError) {
-        setError(profileError.message);
-        setLoading(false);
-        return;
-      }
+      const { error: profileError } = await supabase.from("profiles").insert(profileData);
+      if (profileError) { setError(profileError.message); setLoading(false); return; }
     }
 
     setLoading(false);
-    router.push("/");
+    router.push(accountType === "venue_manager" ? "/venue/dashboard" : "/");
   };
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-12 pb-10">
       <header className="flex items-center gap-3 mb-8">
         <a href="/" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
           </svg>
         </a>
         <h1 className="text-xl font-bold">Create Account</h1>
@@ -84,102 +76,134 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Full Name</label>
-          <input
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="e.g. Jamie Dawson"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-          />
-        </div>
+        {/* Account type selector */}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-text-secondary">I am a…</label>
+          <div className="grid grid-cols-2 gap-3">
+            {/* Player card */}
+            <button type="button" onClick={() => setAccountType("player")}
+              className={`flex flex-col items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${accountType === "player" ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accountType === "player" ? "bg-accent/20" : "bg-surface"}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accountType === "player" ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                  <path d="M2 12h20"/>
+                </svg>
+              </div>
+              <div>
+                <p className={`text-sm font-bold ${accountType === "player" ? "text-accent" : "text-text-primary"}`}>Player</p>
+                <p className="text-xs text-text-secondary mt-0.5">Join teams, find matches, track stats</p>
+              </div>
+              {accountType === "player" && (
+                <div className="absolute top-2 right-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#00E676"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              )}
+            </button>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Email</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min. 8 characters"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Location</label>
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. London"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Position</label>
-          <div className="flex flex-wrap gap-2">
-            {positions.map((pos) => (
-              <button
-                key={pos}
-                type="button"
-                onClick={() => setPosition(pos)}
-                className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                  position === pos
-                    ? "bg-accent text-black border-accent"
-                    : "border-border bg-surface-2 text-text-secondary hover:border-accent/60 hover:text-accent"
-                }`}
-              >
-                {pos}
-              </button>
-            ))}
+            {/* Venue manager card */}
+            <button type="button" onClick={() => setAccountType("venue_manager")}
+              className={`flex flex-col items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${accountType === "venue_manager" ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accountType === "venue_manager" ? "bg-accent/20" : "bg-surface"}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accountType === "venue_manager" ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+              </div>
+              <div>
+                <p className={`text-sm font-bold ${accountType === "venue_manager" ? "text-accent" : "text-text-primary"}`}>Venue Manager</p>
+                <p className="text-xs text-text-secondary mt-0.5">List your pitch, manage bookings</p>
+              </div>
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Experience Level</label>
-          <div className="flex flex-col gap-2">
-            {experiences.map((level) => (
-              <button
-                key={level}
-                type="button"
-                onClick={() => setExperience(level)}
-                className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-colors ${
-                  experience === level
-                    ? "bg-accent text-black border-accent"
-                    : "border-border bg-surface-2 text-text-secondary hover:border-accent/60 hover:text-accent"
-                }`}
-              >
-                {level}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Common fields — shown once account type is selected */}
+        {accountType && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">
+                {accountType === "venue_manager" ? "Your Name" : "Full Name"}
+              </label>
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
+                placeholder={accountType === "venue_manager" ? "e.g. Sarah Johnson" : "e.g. Jamie Dawson"}
+                className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
+            </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              Creating account…
-            </>
-          ) : "Create Account"}
-        </button>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min. 8 characters"
+                className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
+            </div>
+          </>
+        )}
+
+        {/* Player-only fields */}
+        {accountType === "player" && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Location</label>
+              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. London"
+                className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Position</label>
+              <div className="flex flex-wrap gap-2">
+                {positions.map((pos) => (
+                  <button key={pos} type="button" onClick={() => setPosition(pos)}
+                    className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${position === pos ? "bg-accent text-black border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    {pos}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Experience Level</label>
+              <div className="flex flex-col gap-2">
+                {experiences.map((level) => (
+                  <button key={level} type="button" onClick={() => setExperience(level)}
+                    className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-colors ${experience === level ? "bg-accent text-black border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    {level}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Venue manager info banner */}
+        {accountType === "venue_manager" && (
+          <div className="bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
+            <p className="text-xs text-accent font-semibold mb-1">What happens next</p>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              After signing up you&apos;ll land in your Venue Portal where you can register your pitch, set availability, and start receiving bookings from Unitr players.
+            </p>
+          </div>
+        )}
+
+        {accountType && (
+          <button type="submit" disabled={loading}
+            className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {loading ? (
+              <>
+                <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                Creating account…
+              </>
+            ) : accountType === "venue_manager" ? "Create Venue Account" : "Create Account"}
+          </button>
+        )}
 
         <p className="text-center text-sm text-text-secondary">
           Already have an account?{" "}

@@ -29,7 +29,6 @@ type PlayerResponse = {
   profiles: { full_name: string } | null;
 };
 
-// ── Helpers ──────────────────────────────────────────────────
 function getInitials(name: string) {
   return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
@@ -57,7 +56,6 @@ function PlayerAvailability() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Get player's team
       const { data: membership } = await supabase
         .from("team_members")
         .select("team_id")
@@ -67,7 +65,6 @@ function PlayerAvailability() {
 
       if (!membership) { setLoading(false); return; }
 
-      // Get latest availability request for that team
       const { data: req } = await supabase
         .from("availability_requests")
         .select("*")
@@ -79,7 +76,6 @@ function PlayerAvailability() {
       if (!req) { setLoading(false); return; }
       setRequest(req);
 
-      // Check if player already submitted
       const { data: existing } = await supabase
         .from("availability_responses")
         .select("available_date_ids")
@@ -142,7 +138,7 @@ function PlayerAvailability() {
       <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
         <p className="text-sm font-semibold text-accent mb-1">Action needed</p>
         <p className="text-xs text-text-secondary">
-          Your captain has proposed the following dates for the next match. Tap all the dates you're available for.
+          Your captain has proposed the following dates. Tap all the dates you're available for.
         </p>
       </div>
 
@@ -197,9 +193,8 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateRow = (i: number, field: "date" | "time", value: string) => {
+  const updateRow = (i: number, field: "date" | "time", value: string) =>
     setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
-  };
 
   const addRow = () => {
     if (rows.length < 5) setRows((prev) => [...prev, { date: "", time: "14:00" }]);
@@ -246,18 +241,10 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
         {rows.map((row, i) => (
           <div key={i} className="bg-surface-2 border border-border rounded-xl p-3 flex items-center gap-3">
             <div className="flex-1 flex flex-col gap-2">
-              <input
-                type="date"
-                value={row.date}
-                onChange={(e) => updateRow(i, "date", e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60"
-              />
-              <input
-                type="time"
-                value={row.time}
-                onChange={(e) => updateRow(i, "time", e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60"
-              />
+              <input type="date" value={row.date} onChange={(e) => updateRow(i, "date", e.target.value)}
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60 [color-scheme:dark]" />
+              <input type="time" value={row.time} onChange={(e) => updateRow(i, "time", e.target.value)}
+                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60 [color-scheme:dark]" />
             </div>
             {rows.length > 1 && (
               <button onClick={() => removeRow(i)} className="w-8 h-8 rounded-full border border-border flex items-center justify-center flex-shrink-0">
@@ -275,11 +262,8 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
         </button>
       )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={saving}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-      >
+      <button onClick={handleSubmit} disabled={saving}
+        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {saving ? (
           <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Sending…</>
         ) : "Send to Squad"}
@@ -296,43 +280,33 @@ function CaptainAvailability() {
   const [request, setRequest] = useState<AvailabilityRequest | null>(null);
   const [responses, setResponses] = useState<PlayerResponse[]>([]);
   const [totalMembers, setTotalMembers] = useState(0);
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosenDates, setChosenDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Get captain's team
       const { data: team } = await supabase
-        .from("teams")
-        .select("id")
-        .eq("captain_id", user.id)
-        .maybeSingle();
+        .from("teams").select("id").eq("captain_id", user.id).maybeSingle();
 
       if (!team) { setLoading(false); return; }
       setTeamId(team.id);
 
-      // Count approved members
       const { count } = await supabase
         .from("team_members")
         .select("*", { count: "exact", head: true })
-        .eq("team_id", team.id)
-        .eq("status", "approved");
+        .eq("team_id", team.id).eq("status", "approved");
       setTotalMembers(count ?? 0);
 
-      // Get latest request
       const { data: req } = await supabase
-        .from("availability_requests")
-        .select("*")
+        .from("availability_requests").select("*")
         .eq("team_id", team.id)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1).maybeSingle();
 
       if (!req) { setLoading(false); return; }
       setRequest(req);
 
-      // Get all responses
       const { data: resps } = await supabase
         .from("availability_responses")
         .select("player_id, available_date_ids, profiles(full_name)")
@@ -342,6 +316,14 @@ function CaptainAvailability() {
       setLoading(false);
     })();
   }, [user]);
+
+  const toggleDate = (id: string) => {
+    setChosenDates((prev) => {
+      if (prev.includes(id)) return prev.filter((d) => d !== id);
+      if (prev.length >= 3) return prev;
+      return [...prev, id];
+    });
+  };
 
   const countAvailable = (dateId: string) =>
     responses.filter((r) => r.available_date_ids.includes(dateId)).length;
@@ -354,16 +336,9 @@ function CaptainAvailability() {
   };
 
   const handleConfirm = () => {
-    if (!chosen || !request) return;
-    const d = request.date_options.find((o) => o.id === chosen);
-    if (d) {
-      // Build ISO date from stored display date by parsing the stored date
-      const months: Record<string, string> = { JAN:"01",FEB:"02",MAR:"03",APR:"04",MAY:"05",JUN:"06",JUL:"07",AUG:"08",SEP:"09",OCT:"10",NOV:"11",DEC:"12" };
-      const isoDate = `${d.date.split(" ")[3]}-${months[d.month] ?? "01"}-${d.day}`;
-      localStorage.setItem("unitr_confirmed_date", JSON.stringify({
-        display: d.date, isoDate, time: d.time, dayName: d.dayName,
-      }));
-    }
+    if (chosenDates.length === 0 || !request) return;
+    const selectedOptions = request.date_options.filter((o) => chosenDates.includes(o.id));
+    localStorage.setItem("unitr_confirmed_dates", JSON.stringify(selectedOptions));
     router.push("/play/create");
   };
 
@@ -388,21 +363,25 @@ function CaptainAvailability() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div className="bg-surface-2 border border-border rounded-xl p-4 flex-1">
-          <p className="text-xs text-text-secondary mb-1">
-            {responses.length}/{totalMembers} players responded
-          </p>
-          <p className="text-sm font-semibold">Select the best date for your match</p>
+          <p className="text-xs text-text-secondary mb-1">{responses.length}/{totalMembers} players responded</p>
+          <p className="text-sm font-semibold">Select up to 3 dates to post matches</p>
         </div>
-        <button
-          onClick={() => { setRequest(null); }}
-          className="ml-3 px-3 py-2 rounded-xl border border-border text-xs text-text-secondary"
-        >
+        <button onClick={() => setRequest(null)} className="ml-3 px-3 py-2 rounded-xl border border-border text-xs text-text-secondary">
           New request
         </button>
       </div>
 
+      {chosenDates.length > 0 && (
+        <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3 flex items-center gap-2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <p className="text-xs text-accent font-medium">
+            {chosenDates.length} date{chosenDates.length > 1 ? "s" : ""} selected — {chosenDates.length > 1 ? "all will be posted, first challenge wins" : "1 post will go live"}
+          </p>
+        </div>
+      )}
+
       {best && (
-        <div className="bg-accent/10 border border-accent/40 rounded-2xl p-4 flex items-center gap-3">
+        <div className="bg-surface-2 border border-accent/20 rounded-2xl p-4 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-accent text-black flex flex-col items-center justify-center flex-shrink-0">
             <span className="text-[9px] font-bold uppercase">{best.month}</span>
             <span className="text-xl font-bold leading-none">{best.day}</span>
@@ -420,14 +399,15 @@ function CaptainAvailability() {
           const count = countAvailable(opt.id);
           const pct = totalMembers > 0 ? Math.round((count / totalMembers) * 100) : 0;
           const isBest = best?.id === opt.id;
-          const isChosen = chosen === opt.id;
+          const selectionIndex = chosenDates.indexOf(opt.id);
+          const isChosen = selectionIndex !== -1;
           const availablePlayers = responses.filter((r) => r.available_date_ids.includes(opt.id));
           const unavailablePlayers = responses.filter((r) => !r.available_date_ids.includes(opt.id));
 
           return (
             <button
               key={opt.id}
-              onClick={() => setChosen(opt.id)}
+              onClick={() => toggleDate(opt.id)}
               className={`rounded-2xl border p-4 text-left transition-all ${
                 isChosen ? "bg-accent/10 border-accent/60"
                 : isBest ? "bg-surface-2 border-accent/30"
@@ -435,9 +415,14 @@ function CaptainAvailability() {
               }`}
             >
               <div className="flex items-center gap-3 mb-3">
-                <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${isChosen ? "bg-accent text-black" : "bg-background"}`}>
+                <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 relative ${isChosen ? "bg-accent text-black" : "bg-background"}`}>
                   <span className="text-[9px] font-bold uppercase">{opt.month}</span>
                   <span className="text-xl font-bold leading-none">{opt.day}</span>
+                  {isChosen && (
+                    <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black border border-accent flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-accent">{selectionIndex + 1}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
@@ -479,11 +464,13 @@ function CaptainAvailability() {
       </div>
 
       <button
-        disabled={!chosen}
+        disabled={chosenDates.length === 0}
         onClick={handleConfirm}
         className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        Confirm Date &amp; Post Match
+        {chosenDates.length === 0
+          ? "Select dates to post"
+          : `Post ${chosenDates.length} Match${chosenDates.length > 1 ? "es" : ""} →`}
       </button>
     </div>
   );
@@ -491,7 +478,8 @@ function CaptainAvailability() {
 
 // ── Page ─────────────────────────────────────────────────────
 export default function AvailabilityPage() {
-  const { role } = useRole();
+  const { role, roleLoading } = useRole();
+  if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
@@ -507,7 +495,7 @@ export default function AvailabilityPage() {
           </h1>
           <p className="text-xs text-text-secondary mt-0.5">
             {role === "captain"
-              ? "See which date works best for your squad"
+              ? "Pick dates to post — first challenge wins"
               : "Select the dates you can play"}
           </p>
         </div>
