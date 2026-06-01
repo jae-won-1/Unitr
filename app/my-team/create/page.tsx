@@ -51,7 +51,7 @@ export default function CreateTeamPage() {
     }
 
     setLoading(false);
-    router.push("/my-team");
+    window.location.href = "/my-team";
   };
 
   return (

@@ -120,7 +120,7 @@ export default function BottomNav() {
   useEffect(() => {
     if (roleLoading) return;
     if (role === "venue_manager" && !pathname.startsWith("/venue")) {
-      const allowed = ["/login", "/register", "/forgot-password", "/reset-password"];
+      const allowed = ["/login", "/register", "/forgot-password", "/reset-password", "/pitches"];
       if (!allowed.some((p) => pathname.startsWith(p))) {
         router.replace("/venue/dashboard");
       }
