@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
 type DateOption = {
   id: string;
@@ -185,11 +186,7 @@ function PlayerAvailability() {
 // ── Captain Create Request Form ───────────────────────────────
 function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (req: AvailabilityRequest) => void }) {
   const { user } = useAuth();
-  const [rows, setRows] = useState([
-    { date: "", time: "14:00" },
-    { date: "", time: "14:00" },
-    { date: "", time: "11:00" },
-  ]);
+  const [rows, setRows] = useState([{ date: "", time: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -197,7 +194,7 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
     setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
 
   const addRow = () => {
-    if (rows.length < 5) setRows((prev) => [...prev, { date: "", time: "14:00" }]);
+    if (rows.length < 5) setRows((prev) => [...prev, { date: "", time: "" }]);
   };
 
   const removeRow = (i: number) => {
@@ -207,7 +204,7 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
   const handleSubmit = async () => {
     if (!user) return;
     const filled = rows.filter((r) => r.date && r.time);
-    if (filled.length < 2) { setError("Add at least 2 date options."); return; }
+    if (filled.length < 1) { setError("Add at least 1 date option."); return; }
     setSaving(true);
     setError(null);
 
@@ -228,7 +225,7 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
     <div className="flex flex-col gap-5">
       <div className="bg-surface-2 border border-border rounded-xl p-4">
         <p className="text-sm font-semibold mb-1">Send availability request</p>
-        <p className="text-xs text-text-secondary">Add 2–5 date options. Your squad will vote on which they can make.</p>
+        <p className="text-xs text-text-secondary">Add 1–5 date options. Your squad will vote on which they can make.</p>
       </div>
 
       {error && (
@@ -239,18 +236,28 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
 
       <div className="flex flex-col gap-3">
         {rows.map((row, i) => (
-          <div key={i} className="bg-surface-2 border border-border rounded-xl p-3 flex items-center gap-3">
-            <div className="flex-1 flex flex-col gap-2">
-              <input type="date" value={row.date} onChange={(e) => updateRow(i, "date", e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60 [color-scheme:dark]" />
-              <input type="time" value={row.time} onChange={(e) => updateRow(i, "time", e.target.value)}
-                className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/60 [color-scheme:dark]" />
+          <div key={i} className="flex flex-col gap-2">
+            <span className="text-xs font-semibold text-text-secondary">Date {i + 1}</span>
+            <div className="flex items-center gap-2">
+              <div className="w-36 flex flex-col gap-1">
+                <label className="text-xs text-text-secondary">Date</label>
+                <DatePicker value={row.date} onChange={(d) => updateRow(i, "date", d)} />
+              </div>
+              <div className="w-36 flex flex-col gap-1">
+                <label className="text-xs text-text-secondary">Time</label>
+                <TimePicker value={row.time} onChange={(t) => updateRow(i, "time", t)} />
+              </div>
+              {rows.length > 1 && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs invisible select-none">_</span>
+                  <button onClick={() => removeRow(i)} className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
-            {rows.length > 1 && (
-              <button onClick={() => removeRow(i)} className="w-8 h-8 rounded-full border border-border flex items-center justify-center flex-shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            )}
           </div>
         ))}
       </div>

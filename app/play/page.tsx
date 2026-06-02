@@ -697,7 +697,7 @@ function CaptainPlay() {
           ) : posts.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-sm text-text-secondary mb-3">No open matches from other teams right now.</p>
-              <a href="/play/create" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
+              <a href="/my-team?findMatch=1" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 Post your own match instead
               </a>
@@ -712,7 +712,7 @@ function CaptainPlay() {
 
       {tab === "my-posts" && (
         <div className="space-y-4">
-          <a href="/play/create"
+          <a href="/my-team?findMatch=1"
             className="flex items-center gap-2 w-fit px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Create New Post

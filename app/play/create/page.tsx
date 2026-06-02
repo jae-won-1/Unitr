@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
 type ConfirmedDate = {
   id: string;
@@ -31,6 +32,7 @@ type ManualDate = {
 
 const rankLabels = ["1st choice", "2nd choice", "3rd choice"];
 
+
 function formatISODate(iso: string): string {
   const d = new Date(iso + "T12:00:00");
   const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -54,6 +56,9 @@ export default function CreateMatchPage() {
   const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
+  const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
+  const [selectedPollDates, setSelectedPollDates] = useState<string[]>([]);
 
   useEffect(() => {
     const savedDates = localStorage.getItem("unitr_confirmed_dates");
@@ -71,6 +76,20 @@ export default function CreateMatchPage() {
       .eq("captain_id", user.id).maybeSingle()
       .then(({ data }) => setTeam(data));
   }, [user]);
+
+  useEffect(() => {
+    if (!team) return;
+    supabase.from("availability_requests").select("id, date_options")
+      .eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
+      .then(async ({ data: req }) => {
+        setAvailabilityRequest(req ?? null);
+        if (req) {
+          const { data: resps } = await supabase.from("availability_responses")
+            .select("available_date_ids").eq("request_id", req.id);
+          setAvailabilityResponses(resps ?? []);
+        }
+      });
+  }, [team]);
 
   const addManualDate = () => {
     if (manualDates.length >= 5) return;
@@ -102,12 +121,13 @@ export default function CreateMatchPage() {
     // Build the list of dates to post
     let datesToPost: { date: string; time: string; dayName: string }[] = [];
 
-    if (confirmedDates.length > 0) {
-      datesToPost = confirmedDates.map((d) => ({
-        date: d.date,
-        time: d.time,
-        dayName: d.dayName,
-      }));
+    if (availabilityRequest) {
+      if (selectedPollDates.length === 0) { setError("Select at least one date from the poll."); return; }
+      datesToPost = availabilityRequest.date_options
+        .filter((o) => selectedPollDates.includes(o.id))
+        .map((o) => ({ date: o.date, time: o.time, dayName: o.dayName }));
+    } else if (confirmedDates.length > 0) {
+      datesToPost = confirmedDates.map((d) => ({ date: d.date, time: d.time, dayName: d.dayName }));
     } else {
       const filled = manualDates.filter((d) => d.date && d.time);
       if (filled.length === 0) { setError("Add at least one date."); return; }
@@ -171,14 +191,54 @@ export default function CreateMatchPage() {
         <section className="bg-surface-2 border border-border rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold">Match Dates</p>
-            {confirmedDates.length > 0 && (
+            {availabilityRequest && (
+              <span className="text-xs bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full font-medium">
+                From availability poll
+              </span>
+            )}
+            {!availabilityRequest && confirmedDates.length > 0 && (
               <span className="text-xs bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full font-medium">
                 {confirmedDates.length} from availability
               </span>
             )}
           </div>
 
-          {confirmedDates.length > 0 ? (
+          {availabilityRequest ? (
+            /* ── Select from poll ── */
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-text-secondary mb-1">Select the dates you want to post — tap to choose.</p>
+              {availabilityRequest.date_options.map((opt) => {
+                const picked = selectedPollDates.includes(opt.id);
+                const votes = availabilityResponses.filter((r) => r.available_date_ids.includes(opt.id)).length;
+                const total = availabilityResponses.length;
+                const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
+                return (
+                  <button key={opt.id} type="button" onClick={() => setSelectedPollDates((prev) => prev.includes(opt.id) ? prev.filter((d) => d !== opt.id) : [...prev, opt.id])}
+                    className={`w-full text-left border rounded-xl px-3 py-2.5 transition-colors ${picked ? "bg-accent/10 border-accent" : "bg-background border-border"}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
+                          {picked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-surface rounded-full">
+                      <div className="h-1.5 bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-text-secondary mt-1">{opt.date}</p>
+                  </button>
+                );
+              })}
+              {selectedPollDates.length > 0 && (
+                <p className="text-xs text-text-secondary mt-1">
+                  {selectedPollDates.length} date{selectedPollDates.length > 1 ? "s" : ""} selected — each becomes a separate post.
+                </p>
+              )}
+            </div>
+          ) : confirmedDates.length > 0 ? (
+            /* ── Confirmed from localStorage ── */
             <div className="flex flex-col gap-2">
               {confirmedDates.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2.5">
@@ -198,36 +258,37 @@ export default function CreateMatchPage() {
               </p>
             </div>
           ) : (
+            /* ── Manual entry ── */
             <div className="flex flex-col gap-3">
               <p className="text-xs text-text-secondary mb-1">Add date options manually, or go to availability first to collect squad votes.</p>
               {manualDates.map((opt, i) => (
                 <div key={opt.id} className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-text-secondary">Date {i + 1}</span>
-                    {manualDates.length > 1 && (
-                      <button onClick={() => removeManualDate(opt.id)} className="text-xs text-red-400">Remove</button>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1 flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-text-secondary">Date {i + 1}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-36 flex flex-col gap-1">
                       <label className="text-xs text-text-secondary">Date</label>
-                      <input type="date" value={opt.date}
-                        onChange={(e) => updateManualDate(opt.id, "date", e.target.value)}
-                        className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent/50 [color-scheme:dark]" />
+                      <DatePicker value={opt.date} onChange={(d) => updateManualDate(opt.id, "date", d)} />
                     </div>
-                    <div className="w-28 flex flex-col gap-1">
+                    <div className="w-36 flex flex-col gap-1">
                       <label className="text-xs text-text-secondary">Time</label>
-                      <input type="time" value={opt.time}
-                        onChange={(e) => updateManualDate(opt.id, "time", e.target.value)}
-                        className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent/50 [color-scheme:dark]" />
+                      <TimePicker value={opt.time} onChange={(t) => updateManualDate(opt.id, "time", t)} />
                     </div>
+                    {manualDates.length > 1 && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs invisible select-none">_</span>
+                        <button onClick={() => removeManualDate(opt.id)} className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
               {manualDates.length < 5 && (
-                <button onClick={addManualDate}
-                  className="mt-1 w-full py-2.5 rounded-xl border border-dashed border-border text-sm text-text-secondary flex items-center justify-center gap-2">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <button onClick={addManualDate} className="flex items-center gap-2 text-sm text-accent font-medium py-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                   Add another date
                 </button>
               )}

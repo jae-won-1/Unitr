@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -214,6 +215,7 @@ function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: s
 function PitchesContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
   const selectMode = searchParams.get("mode") === "select";
 
   const [pitches, setPitches] = useState<Pitch[]>([]);
@@ -224,12 +226,25 @@ function PitchesContent() {
   const [bookedInfo, setBookedInfo] = useState<{ date: string; time: string } | null>(null);
   const [filterFormat, setFilterFormat] = useState("All");
   const [pickedPitches, setPickedPitches] = useState<Pitch[]>([]);
+  const [teamCredits, setTeamCredits] = useState<number | null>(null);
 
   // Fetch pitches from DB
   useEffect(() => {
     supabase.from("pitches").select("*").order("rating", { ascending: false })
       .then(({ data }) => { setPitches((data ?? []) as Pitch[]); setLoading(false); });
   }, []);
+
+  // Fetch team credits in select mode
+  useEffect(() => {
+    if (!selectMode || !user) return;
+    async function loadCredits() {
+      const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
+      if (!team?.id) return;
+      const { data } = await supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle();
+      setTeamCredits(data?.balance ?? 0);
+    }
+    loadCredits();
+  }, [selectMode, user]);
 
   // Restore existing pitch selections
   useEffect(() => {
@@ -245,7 +260,11 @@ function PitchesContent() {
   const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
   const filteredPitches = filterFormat === "All" ? pitches : pitches.filter((p) => p.formats.includes(filterFormat));
 
+  const isAffordable = (pitch: Pitch) =>
+    teamCredits === null || pitch.price_per_hour <= teamCredits;
+
   const togglePitch = (pitch: Pitch) => {
+    if (!isAffordable(pitch)) return;
     setPickedPitches((prev) => {
       if (prev.find((p) => p.id === pitch.id)) return prev.filter((p) => p.id !== pitch.id);
       if (prev.length >= 3) return prev;
@@ -319,6 +338,7 @@ function PitchesContent() {
                 pickedPitches={pickedPitches}
                 onSelect={handleMapSelect}
                 selectMode={selectMode}
+                unaffordableIds={selectMode && teamCredits !== null ? new Set(pitches.filter(p => p.price_per_hour > teamCredits).map(p => p.id)) : new Set()}
               />
               {/* Selected pitch card below map */}
             </div>
@@ -365,7 +385,7 @@ function PitchesContent() {
                       <div className="flex items-start justify-between mb-1">
                         <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                         <div className="text-right flex-shrink-0">
-                          <span className="text-lg font-bold text-accent">£{pitch.price_per_hour}</span>
+                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-400" : "text-accent"}`}>£{pitch.price_per_hour}</span>
                           <p className="text-[10px] text-text-secondary">per hour</p>
                         </div>
                       </div>
@@ -390,10 +410,22 @@ function PitchesContent() {
                         ≈ <span className="font-semibold text-accent">£{(pitch.price_per_hour / 11 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
                       </p>
                       {selectMode ? (
-                        <button onClick={() => togglePitch(pitch)} disabled={!isPicked && pickedPitches.length >= 3}
-                          className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 ${isPicked ? "bg-accent/20 text-accent border border-accent/40" : "bg-accent text-black"}`}>
-                          {isPicked ? `✓ ${rankLabels[pickIndex]} — tap to remove` : "Add as Option"}
-                        </button>
+                        <>
+                          {!isAffordable(pitch) && (
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
+                                <span className="text-[9px] font-bold text-red-400">i</span>
+                              </div>
+                              <span className="text-[11px] text-red-400">Insufficient team credits to book this pitch</span>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => togglePitch(pitch)}
+                            disabled={!isAffordable(pitch) || (!isPicked && pickedPitches.length >= 3)}
+                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isPicked ? "bg-accent/20 text-accent border border-accent/40" : "bg-accent text-black"}`}>
+                            {isPicked ? `✓ ${rankLabels[pickIndex]} — tap to remove` : "Add as Option"}
+                          </button>
+                        </>
                       ) : (
                         <button onClick={() => { setSelectedPitch(pitch); setShowBooking(true); }}
                           className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Book This Pitch</button>

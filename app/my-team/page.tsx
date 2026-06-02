@@ -5,6 +5,8 @@ import { useRole } from "@/contexts/RoleContext";
 import { useTactics } from "@/contexts/TacticsContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { stripePromise } from "@/lib/stripe-client";
 
 type Team = {
   id: string;
@@ -166,6 +168,15 @@ function NewUserMyTeam() {
   );
 }
 
+type ConfirmedFixture = {
+  postId: string;
+  opponent: string;
+  date: string;
+  time: string;
+  pitch: string;
+  paymentStatus: "paid" | "unpaid";
+};
+
 // ── Player My Team ────────────────────────────────────────────
 function PlayerMyTeam() {
   const { tactics } = useTactics();
@@ -173,20 +184,99 @@ function PlayerMyTeam() {
   const dots = formationDots[tactics.formation] ?? formationDots["4-3-3"];
   const teamMedia = tactics.media.filter((m) => !m.matchId);
   const [myTeam, setMyTeam] = useState<Team | null | undefined>(undefined);
+  const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
+  const [fixturesLoading, setFixturesLoading] = useState(true);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
+  const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
+  const [myResponse, setMyResponse] = useState<string[] | null>(null); // null = not voted
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [unavailableSelected, setUnavailableSelected] = useState(false);
+  const [submittingVote, setSubmittingVote] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    // Check if player is an approved member of any team
     supabase
       .from("team_members")
-      .select("team_id, teams(*)")
+      .select("team_id")
       .eq("player_id", user.id)
       .eq("status", "approved")
       .maybeSingle()
-      .then(({ data }) => {
-        setMyTeam(data ? (data.teams as unknown as Team) : null);
+      .then(async ({ data: membership }) => {
+        if (!membership?.team_id) { setMyTeam(null); return; }
+        const { data: team } = await supabase.from("teams").select("*").eq("id", membership.team_id).maybeSingle();
+        setMyTeam(team ?? null);
       });
   }, [user]);
+
+  useEffect(() => {
+    if (!myTeam || !user) return;
+    supabase.from("availability_requests").select("id, date_options, created_at")
+      .eq("team_id", myTeam.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
+      .then(async ({ data: req }) => {
+        setAvailabilityRequest(req ?? null);
+        if (req) {
+          const [{ data: resps }, { data: mine }] = await Promise.all([
+            supabase.from("availability_responses").select("available_date_ids").eq("request_id", req.id),
+            supabase.from("availability_responses").select("available_date_ids").eq("request_id", req.id).eq("player_id", user.id).maybeSingle(),
+          ]);
+          setAvailabilityResponses(resps ?? []);
+          setMyResponse(mine ? mine.available_date_ids : null);
+        }
+      });
+  }, [myTeam, user]);
+
+  useEffect(() => {
+    if (myTeam === undefined) return;
+    if (!myTeam) { setFixturesLoading(false); return; }
+    async function loadFixtures() {
+      const captainId = myTeam!.captain_id;
+
+      const { data: myPosts } = await supabase.from("match_posts")
+        .select("id, match_date, match_time").eq("captain_id", captainId).eq("status", "matched");
+
+      const posterFixtures = await Promise.all(
+        (myPosts ?? []).map(async (post) => {
+          const { data: ch } = await supabase.from("challenges")
+            .select("challenger_team_name, selected_pitch").eq("post_id", post.id).eq("status", "accepted").maybeSingle();
+          return {
+            postId: post.id,
+            opponent: (ch as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
+            date: post.match_date,
+            time: post.match_time,
+            pitch: ((ch as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
+          };
+        })
+      );
+
+      const { data: myChallenges } = await supabase.from("challenges")
+        .select("post_id, selected_pitch").eq("challenger_captain_id", captainId).eq("status", "accepted");
+
+      const challengerFixtures = await Promise.all(
+        (myChallenges ?? []).map(async (c) => {
+          const { data: post } = await supabase.from("match_posts")
+            .select("id, team_name, match_date, match_time").eq("id", c.post_id).maybeSingle();
+          return {
+            postId: c.post_id,
+            opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
+            date: (post as { match_date: string } | null)?.match_date ?? "",
+            time: (post as { match_time: string } | null)?.match_time ?? "",
+            pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
+          };
+        })
+      );
+
+      const allFixtures = [...posterFixtures, ...challengerFixtures];
+      const { data: payments } = await supabase.from("player_payments")
+        .select("booking_id").eq("player_id", user!.id).eq("status", "paid")
+        .in("booking_id", allFixtures.map((f) => f.postId));
+      const paidIds = new Set((payments ?? []).map((p) => p.booking_id));
+
+      setFixtures(allFixtures.map((f) => ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid" }) as ConfirmedFixture));
+      setFixturesLoading(false);
+    }
+    loadFixtures();
+  }, [myTeam]);
 
   if (myTeam === undefined) return <div className="py-12 text-center text-sm text-text-secondary">Loading…</div>;
 
@@ -208,57 +298,186 @@ function PlayerMyTeam() {
     <div className="space-y-6">
       {/* Team card */}
       <section className="bg-surface-2 border border-border rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold text-lg">{myTeam.name}</h2>
-            <p className="text-xs text-text-secondary mt-0.5">{myTeam.level} · {myTeam.format}</p>
-          </div>
-          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
             <span className="text-accent font-bold text-sm">{initials}</span>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          {[{ label: "W", value: "13" }, { label: "D", value: "2" }, { label: "L", value: "3" }].map((s) => (
-            <div key={s.label} className="bg-background rounded-xl py-3">
-              <p className="text-lg font-bold text-accent">{s.value}</p>
-              <p className="text-xs text-text-secondary">{s.label}</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-lg">{myTeam.name}</h2>
+            <p className="text-xs text-text-secondary mt-0.5">{myTeam.level} · {myTeam.format}</p>
+            <div className="flex gap-3 mt-1.5">
+              <span className="text-lg font-bold text-green-400">0W</span>
+              <span className="text-lg font-bold text-yellow-400">0D</span>
+              <span className="text-lg font-bold text-red-400">0L</span>
             </div>
-          ))}
+          </div>
+          <button onClick={() => setBookmarked((b) => !b)} className="flex-shrink-0 p-1">
+            <svg width="22" height="22" viewBox="0 0 24 24"
+              fill={bookmarked ? "#00E676" : "none"}
+              stroke={bookmarked ? "#00E676" : "#9E9E9E"}
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
         </div>
       </section>
 
+      {/* Availability Status */}
+      {availabilityRequest && (
+        <section className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4">
+          <h3 className="text-base font-bold mb-3">Availability Status</h3>
+
+          {myResponse === null ? (
+            /* ── Voting UI ── */
+            <div className="space-y-2">
+              {availabilityRequest.date_options.map((opt) => {
+                const picked = selectedDates.includes(opt.id);
+                const disabled = unavailableSelected;
+                return (
+                  <button key={opt.id} type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      if (disabled) return;
+                      setSelectedDates((prev) =>
+                        prev.includes(opt.id) ? prev.filter((d) => d !== opt.id) : [...prev, opt.id]
+                      );
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors
+                      ${picked ? "bg-accent/10 border-accent" : disabled ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}>
+                    <div>
+                      <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
+                      <p className="text-[10px] text-text-secondary mt-0.5">{opt.date}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
+                      {picked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                  </button>
+                );
+              })}
+
+              <button type="button"
+                disabled={selectedDates.length > 0}
+                onClick={() => { if (selectedDates.length === 0) setUnavailableSelected((v) => !v); }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors
+                  ${unavailableSelected ? "bg-red-500/10 border-red-400" : selectedDates.length > 0 ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}>
+                <p className={`text-sm font-semibold ${unavailableSelected ? "text-red-400" : "text-text-secondary"}`}>
+                  Unavailable for any of these dates
+                </p>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${unavailableSelected ? "border-red-400 bg-red-400" : "border-border"}`}>
+                  {unavailableSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+              </button>
+
+              <button
+                disabled={selectedDates.length === 0 && !unavailableSelected || submittingVote}
+                onClick={async () => {
+                  if (!user || !availabilityRequest) return;
+                  setSubmittingVote(true);
+                  const ids = unavailableSelected ? [] : selectedDates;
+                  await supabase.from("availability_responses").upsert(
+                    { request_id: availabilityRequest.id, player_id: user.id, available_date_ids: ids },
+                    { onConflict: "request_id,player_id" }
+                  );
+                  const { data: resps } = await supabase.from("availability_responses")
+                    .select("available_date_ids").eq("request_id", availabilityRequest.id);
+                  setAvailabilityResponses(resps ?? []);
+                  setMyResponse(ids);
+                  setSubmittingVote(false);
+                }}
+                className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1">
+                {submittingVote
+                  ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Submitting…</>
+                  : "Submit"}
+              </button>
+            </div>
+          ) : (
+            /* ── Results UI ── */
+            <div className="space-y-2">
+              {availabilityRequest.date_options.map((opt) => {
+                const votes = availabilityResponses.filter((r) => r.available_date_ids.includes(opt.id)).length;
+                const total = availabilityResponses.length;
+                const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
+                return (
+                  <div key={opt.id} className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-sm font-semibold">{opt.dayName} · {opt.time}</p>
+                      <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-background rounded-full">
+                      <div className="h-1.5 bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-text-secondary mt-1">{opt.date}</p>
+                  </div>
+                );
+              })}
+              {(() => {
+                const unavailableCount = availabilityResponses.filter((r) => r.available_date_ids.length === 0).length;
+                const total = availabilityResponses.length;
+                const pct = total > 0 ? Math.round((unavailableCount / total) * 100) : 0;
+                return (
+                  <div className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-sm font-semibold text-text-secondary">Unavailable for any of these dates</p>
+                      <span className="text-xs font-bold text-red-400">{unavailableCount} vote{unavailableCount !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-background rounded-full">
+                      <div className="h-1.5 bg-red-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })()}
+              {availabilityResponses.length === 0 && (
+                <p className="text-xs text-text-secondary py-1">No responses yet.</p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Upcoming fixtures */}
       <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Upcoming Fixtures</h3>
-        <div className="space-y-3">
-          {[
-            { id: "match-1", opponent: "Regents FC", date: "Feb 15, 2026", time: "14:00", location: "Central Park Field 3", status: "confirmed" },
-            { id: "match-2", opponent: "Dalston Athletic", date: "Feb 22, 2026", time: "11:00", location: "Hackney Marshes Pitch 4", status: "pending" },
-          ].map((match) => (
-            <a key={match.id} href={`/match/${match.id}`} className="block bg-surface-2 border border-border rounded-2xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="font-semibold text-sm">vs {match.opponent}</p>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                    {match.date} · {match.time}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Upcoming Fixtures</h3>
+          {fixtures.length > 0 && <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{fixtures.length}</span>}
+        </div>
+        {fixturesLoading ? (
+          <div className="py-4 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
+        ) : fixtures.length === 0 ? (
+          <p className="text-sm text-text-secondary py-2">No confirmed fixtures yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {fixtures.map((f) => (
+              <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      {f.date} · {f.time}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {f.pitch}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    {match.location}
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                    {f.paymentStatus === "paid"
+                      ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
+                      : <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Unpaid</span>
+                    }
                   </div>
                 </div>
-                <span className={`text-xs font-semibold px-2 py-1 rounded-full flex-shrink-0 ${match.status === "confirmed" ? "bg-accent/15 text-accent" : "bg-yellow-400/15 text-yellow-400"}`}>
-                  {match.status}
-                </span>
+                <div className="flex gap-2 mt-3">
+                  <a href={`/my-team/match/${f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
+                  {f.paymentStatus === "unpaid" && (
+                    <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-xs text-accent mt-2 font-medium">
-                View details
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </div>
-            </a>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Team Tactics */}
@@ -365,13 +584,143 @@ function PlayerMyTeam() {
   );
 }
 
-type ConfirmedFixture = {
-  postId: string;
-  opponent: string;
-  date: string;
-  time: string;
-  pitch: string;
-};
+// ── Find Match Button ─────────────────────────────────────────
+const MIN_PITCH_COST = 20;
+
+function FindMatchButton() {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<"credit" | "individual" | null>(null);
+  const [teamCredits, setTeamCredits] = useState<number | null>(null);
+  const [hasAvailability, setHasAvailability] = useState(false);
+  const [hasAvailabilityRequest, setHasAvailabilityRequest] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("findMatch=1")) {
+      setOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const saved = localStorage.getItem("unitr_confirmed_dates");
+    setHasAvailability(!!saved && JSON.parse(saved).length > 0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!user || !open) return;
+    async function load() {
+      const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
+      if (!team?.id) return;
+      const [{ data: credits }, { data: req }] = await Promise.all([
+        supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle(),
+        supabase.from("availability_requests").select("id").eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      setTeamCredits(credits?.balance ?? 0);
+      setHasAvailabilityRequest(!!req);
+    }
+    load();
+  }, [user, open]);
+
+  const insufficientCredits = teamCredits !== null && teamCredits < MIN_PITCH_COST;
+  const href = selected === "credit" ? "/play/create" : "/play/create";
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center"
+      >
+        Find Match
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+
+            <div className="flex items-start justify-between mb-6">
+              <p className="text-xl font-bold leading-tight">How would you like to book the pitch?</p>
+              <button onClick={() => setOpen(false)} className="ml-3 flex-shrink-0 mt-0.5">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 mb-5">
+              <button
+                disabled={insufficientCredits}
+                onClick={() => !insufficientCredits && setSelected("credit")}
+                className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${insufficientCredits ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "credit" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                <div className="flex items-center justify-between mb-0.5">
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "credit" && !insufficientCredits ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <p className={`text-sm font-bold ${selected === "credit" && !insufficientCredits ? "text-accent" : "text-text-primary"}`}>Pay with Team Credit</p>
+                  </div>
+                  {teamCredits !== null && (
+                    <span className={`text-xs font-semibold ${insufficientCredits ? "text-red-400" : "text-accent"}`}>
+                      £{teamCredits.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-text-secondary">Use your team&apos;s credit balance to cover the pitch fee upfront.</p>
+                {insufficientCredits && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[9px] font-bold text-red-400">i</span>
+                    </div>
+                    <p className="text-[11px] text-red-400">Insufficient team credits to book this pitch</p>
+                  </div>
+                )}
+              </button>
+
+              {(() => {
+                const canSelect = hasAvailability || hasAvailabilityRequest;
+                return (
+                  <button
+                    onClick={() => canSelect && setSelected("individual")}
+                    disabled={!canSelect}
+                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                      </svg>
+                      <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
+                    </div>
+                    <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
+                    {!canSelect && (
+                      <>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <div className="w-4 h-4 rounded-full border border-yellow-400 flex items-center justify-center flex-shrink-0">
+                            <span className="text-[9px] font-bold text-yellow-400">i</span>
+                          </div>
+                          <p className="text-[11px] text-yellow-400">Collect team availability first</p>
+                        </div>
+                        <a href="/my-team/availability"
+                          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+                          className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                          Collect Availability Now
+                        </a>
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
+            </div>
+
+            <a href={selected ? href : undefined}
+              onClick={(e) => { if (!selected) e.preventDefault(); else setOpen(false); }}
+              className={`block w-full py-3.5 rounded-xl text-sm font-bold text-center transition-colors ${selected ? "bg-accent text-black" : "bg-surface-2 text-text-secondary cursor-not-allowed"}`}>
+              Confirm
+            </a>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 // ── Captain My Team ───────────────────────────────────────────
 function CaptainMyTeam() {
@@ -381,6 +730,12 @@ function CaptainMyTeam() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
   const [fixturesLoading, setFixturesLoading] = useState(true);
+  const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[]; created_at: string } | null>(null);
+  const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
+  const [myResponse, setMyResponse] = useState<string[] | null>(null);
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [unavailableSelected, setUnavailableSelected] = useState(false);
+  const [submittingVote, setSubmittingVote] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -393,6 +748,21 @@ function CaptainMyTeam() {
     supabase.from("team_members").select("id, player_id, status, profiles(full_name, position)")
       .eq("team_id", myTeam.id).eq("status", "pending")
       .then(({ data }) => setRequests((data as unknown as JoinRequest[]) ?? []));
+
+    // Load latest availability request + responses
+    supabase.from("availability_requests").select("id, date_options, created_at")
+      .eq("team_id", myTeam.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
+      .then(async ({ data: req }) => {
+        setAvailabilityRequest(req ?? null);
+        if (req) {
+          const [{ data: resps }, { data: mine }] = await Promise.all([
+            supabase.from("availability_responses").select("available_date_ids").eq("request_id", req.id),
+            supabase.from("availability_responses").select("available_date_ids").eq("request_id", req.id).eq("player_id", user!.id).maybeSingle(),
+          ]);
+          setAvailabilityResponses(resps ?? []);
+          setMyResponse(mine ? mine.available_date_ids : null);
+        }
+      });
   }, [myTeam]);
 
   useEffect(() => {
@@ -402,7 +772,7 @@ function CaptainMyTeam() {
       const { data: myPosts } = await supabase.from("match_posts")
         .select("id, match_date, match_time").eq("captain_id", user!.id).eq("status", "matched");
 
-      const posterFixtures: ConfirmedFixture[] = await Promise.all(
+      const posterFixtures = await Promise.all(
         (myPosts ?? []).map(async (post) => {
           const { data: ch } = await supabase.from("challenges")
             .select("challenger_team_name, selected_pitch").eq("post_id", post.id).eq("status", "accepted").maybeSingle();
@@ -420,7 +790,7 @@ function CaptainMyTeam() {
       const { data: myChallenges } = await supabase.from("challenges")
         .select("post_id, selected_pitch").eq("challenger_captain_id", user!.id).eq("status", "accepted");
 
-      const challengerFixtures: ConfirmedFixture[] = await Promise.all(
+      const challengerFixtures = await Promise.all(
         (myChallenges ?? []).map(async (c) => {
           const { data: post } = await supabase.from("match_posts")
             .select("id, team_name, match_date, match_time").eq("id", c.post_id).maybeSingle();
@@ -434,7 +804,13 @@ function CaptainMyTeam() {
         })
       );
 
-      setFixtures([...posterFixtures, ...challengerFixtures]);
+      const allFixtures = [...posterFixtures, ...challengerFixtures];
+      const { data: payments } = await supabase.from("player_payments")
+        .select("booking_id").eq("player_id", user!.id).eq("status", "paid")
+        .in("booking_id", allFixtures.map((f) => f.postId));
+      const paidIds = new Set((payments ?? []).map((p) => p.booking_id));
+
+      setFixtures(allFixtures.map((f) => ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid" }) as ConfirmedFixture));
       setFixturesLoading(false);
     }
     loadFixtures();
@@ -468,26 +844,125 @@ function CaptainMyTeam() {
     <div className="space-y-5">
       {/* Team card */}
       <section className="bg-surface-2 border border-border rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold text-lg">{myTeam.name}</h2>
-            <p className="text-xs text-text-secondary mt-0.5">{myTeam.level} · {myTeam.format} · Captain</p>
-          </div>
-          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
             <span className="text-accent font-bold text-sm">{initials}</span>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center mb-4">
-          {[{ label: "W", value: "0" }, { label: "D", value: "0" }, { label: "L", value: "0" }].map((s) => (
-            <div key={s.label} className="bg-background rounded-xl py-3">
-              <p className="text-lg font-bold text-accent">{s.value}</p>
-              <p className="text-xs text-text-secondary">{s.label}</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-lg">{myTeam.name}</h2>
+            <p className="text-xs text-text-secondary mt-0.5">{myTeam.level} · {myTeam.format} · Captain</p>
+            <div className="flex gap-3 mt-1.5">
+              <span className="text-lg font-bold text-green-400">0W</span>
+              <span className="text-lg font-bold text-yellow-400">0D</span>
+              <span className="text-lg font-bold text-red-400">0L</span>
             </div>
-          ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <a href="/my-team/availability" className="py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">Collect Availability</a>
-          <a href="/play/create" className="py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center">Post a Match</a>
+        {availabilityRequest && (
+          <div className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4 mb-1">
+            <h3 className="text-base font-bold mb-3">Availability Status</h3>
+
+            {myResponse === null ? (
+              <div className="space-y-2">
+                {availabilityRequest.date_options.map((opt) => {
+                  const picked = selectedDates.includes(opt.id);
+                  const disabled = unavailableSelected;
+                  return (
+                    <button key={opt.id} type="button" disabled={disabled}
+                      onClick={() => { if (disabled) return; setSelectedDates((prev) => prev.includes(opt.id) ? prev.filter((d) => d !== opt.id) : [...prev, opt.id]); }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${picked ? "bg-accent/10 border-accent" : disabled ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}>
+                      <div>
+                        <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
+                        <p className="text-[10px] text-text-secondary mt-0.5">{opt.date}</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
+                        {picked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                      </div>
+                    </button>
+                  );
+                })}
+                <button type="button" disabled={selectedDates.length > 0}
+                  onClick={() => { if (selectedDates.length === 0) setUnavailableSelected((v) => !v); }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors ${unavailableSelected ? "bg-red-500/10 border-red-400" : selectedDates.length > 0 ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}>
+                  <p className={`text-sm font-semibold ${unavailableSelected ? "text-red-400" : "text-text-secondary"}`}>Unavailable for any of these dates</p>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${unavailableSelected ? "border-red-400 bg-red-400" : "border-border"}`}>
+                    {unavailableSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </div>
+                </button>
+                <button
+                  disabled={(selectedDates.length === 0 && !unavailableSelected) || submittingVote}
+                  onClick={async () => {
+                    if (!user || !availabilityRequest) return;
+                    setSubmittingVote(true);
+                    const ids = unavailableSelected ? [] : selectedDates;
+                    await supabase.from("availability_responses").upsert(
+                      { request_id: availabilityRequest.id, player_id: user.id, available_date_ids: ids },
+                      { onConflict: "request_id,player_id" }
+                    );
+                    const { data: resps } = await supabase.from("availability_responses").select("available_date_ids").eq("request_id", availabilityRequest.id);
+                    setAvailabilityResponses(resps ?? []);
+                    setMyResponse(ids);
+                    setSubmittingVote(false);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1">
+                  {submittingVote ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Submitting…</> : "Submit"}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {availabilityRequest.date_options.map((opt) => {
+                  const votes = availabilityResponses.filter((r) => r.available_date_ids.includes(opt.id)).length;
+                  const total = availabilityResponses.length;
+                  const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
+                  return (
+                    <div key={opt.id} className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-sm font-semibold">{opt.dayName} · {opt.time}</p>
+                        <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-background rounded-full">
+                        <div className="h-1.5 bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="text-[10px] text-text-secondary mt-1">{opt.date}</p>
+                    </div>
+                  );
+                })}
+                {(() => {
+                  const unavailableCount = availabilityResponses.filter((r) => r.available_date_ids.length === 0).length;
+                  const total = availabilityResponses.length;
+                  const pct = total > 0 ? Math.round((unavailableCount / total) * 100) : 0;
+                  return (
+                    <div className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-sm font-semibold text-text-secondary">Unavailable for any of these dates</p>
+                        <span className="text-xs font-bold text-red-400">{unavailableCount} vote{unavailableCount !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-background rounded-full">
+                        <div className="h-1.5 bg-red-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+                {availabilityResponses.length === 0 && (
+                  <p className="text-xs text-text-secondary py-1">No responses yet.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex gap-2 mt-3">
+          {availabilityRequest ? (
+            <div className="flex-1 py-2.5 rounded-xl border border-border text-text-secondary text-sm font-semibold text-center opacity-40 cursor-not-allowed select-none">
+              Collect Availability
+            </div>
+          ) : (
+            <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
+              Collect Availability
+            </a>
+          )}
+          <div className="flex-1">
+            <FindMatchButton />
+          </div>
         </div>
       </section>
 
@@ -504,7 +979,7 @@ function CaptainMyTeam() {
         ) : (
           <div className="space-y-2">
             {fixtures.map((f) => (
-              <a key={f.postId} href={`/my-team/match/${f.postId}`} className="block bg-surface-2 border border-border rounded-2xl p-4">
+              <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <p className="font-semibold text-sm">vs {f.opponent}</p>
@@ -517,13 +992,21 @@ function CaptainMyTeam() {
                       {f.pitch}
                     </div>
                   </div>
-                  <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Confirmed</span>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                    {f.paymentStatus === "paid"
+                      ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
+                      : <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Unpaid</span>
+                    }
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-accent font-medium mt-1">
-                  Manage Match
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <div className="flex gap-2 mt-3">
+                  <a href={`/my-team/match/${f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">Manage Match</a>
+                  {f.paymentStatus === "unpaid" && (
+                    <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
+                  )}
                 </div>
-              </a>
+              </div>
             ))}
           </div>
         )}
@@ -581,15 +1064,504 @@ function CaptainMyTeam() {
   );
 }
 
+// ── Next Fixture Banner ───────────────────────────────────────
+function NextFixtureBanner({ userId, role }: { userId: string; role: "captain" | "player" }) {
+  const [fixture, setFixture] = useState<{ postId: string; opponent: string; date: string; time: string; pitch: string } | null | undefined>(undefined);
+
+  useEffect(() => {
+    async function load() {
+      let captainId = userId;
+
+      if (role === "player") {
+        const { data: mem } = await supabase.from("team_members").select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
+        if (!mem?.team_id) { setFixture(null); return; }
+        const { data: team } = await supabase.from("teams").select("captain_id").eq("id", mem.team_id).maybeSingle();
+        if (!team?.captain_id) { setFixture(null); return; }
+        captainId = team.captain_id;
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const candidates: { postId: string; opponent: string; date: string; time: string; pitch: string }[] = [];
+
+      const { data: posts } = await supabase.from("match_posts")
+        .select("id, match_date, match_time").eq("captain_id", captainId).eq("status", "matched").gte("match_date", today);
+
+      for (const post of posts ?? []) {
+        const { data: ch } = await supabase.from("challenges").select("challenger_team_name, selected_pitch")
+          .eq("post_id", post.id).eq("status", "accepted").maybeSingle();
+        candidates.push({
+          postId: post.id,
+          opponent: (ch as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
+          date: post.match_date,
+          time: post.match_time,
+          pitch: (ch as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name ?? "TBC",
+        });
+      }
+
+      const { data: challenges } = await supabase.from("challenges")
+        .select("post_id, selected_pitch").eq("challenger_captain_id", captainId).eq("status", "accepted");
+
+      for (const c of challenges ?? []) {
+        const { data: post } = await supabase.from("match_posts")
+          .select("id, team_name, match_date, match_time").eq("id", c.post_id).gte("match_date", today).maybeSingle();
+        if (!post) continue;
+        candidates.push({
+          postId: c.post_id,
+          opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
+          date: (post as { match_date: string } | null)?.match_date ?? "",
+          time: (post as { match_time: string } | null)?.match_time ?? "",
+          pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
+        });
+      }
+
+      if (candidates.length === 0) { setFixture(null); return; }
+      candidates.sort((a, b) => a.date.localeCompare(b.date));
+      setFixture(candidates[0]);
+    }
+    load();
+  }, [userId, role]);
+
+  if (!fixture) return null;
+
+  return (
+    <a href={`/my-team/match/${fixture.postId}`} className="block bg-accent/5 border border-accent/20 rounded-2xl p-4 mb-2">
+      <p className="text-[10px] font-semibold text-accent uppercase tracking-wider mb-2">Next Fixture</p>
+      <p className="font-bold text-base mb-2">vs {fixture.opponent}</p>
+      <div className="flex flex-col gap-1 text-xs text-text-secondary">
+        <div className="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          {fixture.date} · {fixture.time}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          {fixture.pitch}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 text-xs text-accent font-medium mt-3">
+        View details
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </div>
+    </a>
+  );
+}
+
+// ── Credits checkout form (inside Stripe Elements) ────────────
+function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess, onBack }: {
+  amount: number; teamId: string; userId: string; currentCredits: number;
+  onSuccess: (newBalance: number) => void; onBack: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    setPaying(true);
+    setPayError(null);
+    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
+    if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded") {
+      const newBalance = currentCredits + amount;
+      await Promise.all([
+        supabase.from("team_credits").upsert({ team_id: teamId, balance: newBalance }, { onConflict: "team_id" }),
+        supabase.from("team_credit_transactions").insert({ team_id: teamId, player_id: userId, amount }),
+      ]);
+      onSuccess(newBalance);
+    } else {
+      setPayError("Payment did not complete. Please try again.");
+      setPaying(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-xs space-y-1.5">
+        <div className="flex justify-between text-text-secondary"><span>Adding to team credits</span><span className="font-bold text-text-primary">£{amount.toFixed(2)}</span></div>
+        <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-bold text-accent">£{(currentCredits + amount).toFixed(2)}</span></div>
+      </div>
+      <div className="bg-surface-2 border border-border rounded-xl p-4">
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
+        <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
+      </div>
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
+        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
+        <p className="text-[11px] text-blue-200">Use <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any CVC</p>
+      </div>
+      {payError && <p className="text-xs text-red-400 text-center">{payError}</p>}
+      <button onClick={handlePay} disabled={!stripe || paying}
+        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+        {paying ? "Processing…" : `Pay £${amount.toFixed(2)}`}
+      </button>
+      <button onClick={onBack} className="w-full py-2 text-xs text-text-secondary">← Back</button>
+    </div>
+  );
+}
+
+type CreditTransaction = {
+  id: string;
+  player_id: string;
+  amount: number;
+  created_at: string;
+  player_name: string;
+};
+
+// ── Team Credits Bar ──────────────────────────────────────────
+function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "player" }) {
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [logTab, setLogTab] = useState<"deposits" | "bookings">("deposits");
+  const [bookingTx, setBookingTx] = useState<{ id: string; player_name: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [customInput, setCustomInput] = useState("");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loadingIntent, setLoadingIntent] = useState(false);
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  // Effect 1: resolve team ID
+  useEffect(() => {
+    async function loadTeam() {
+      let tid: string | null = null;
+      if (role === "captain") {
+        const { data } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
+        tid = data?.id ?? null;
+      } else {
+        const { data } = await supabase.from("team_members").select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
+        tid = data?.team_id ?? null;
+      }
+      setTeamId(tid);
+    }
+    loadTeam();
+  }, [userId, role]);
+
+  // Effect 2: load balance + transactions, subscribe to both
+  useEffect(() => {
+    if (!teamId) return;
+
+    // Load initial balance
+    supabase.from("team_credits").select("balance").eq("team_id", teamId).maybeSingle()
+      .then(({ data }) => setCredits(data?.balance ?? 0));
+
+    // Load transaction history (join profiles for name)
+    async function loadTransactions() {
+      const { data } = await supabase
+        .from("team_credit_transactions")
+        .select("id, player_id, amount, created_at, profiles(full_name)")
+        .eq("team_id", teamId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      setTransactions(
+        (data ?? []).map((t) => ({
+          id: t.id,
+          player_id: t.player_id,
+          amount: t.amount,
+          created_at: t.created_at,
+          player_name: (t.profiles as { full_name: string } | null)?.full_name ?? "Unknown",
+        }))
+      );
+    }
+    loadTransactions();
+
+    const suffix = Math.random().toString(36).slice(2);
+
+    // Realtime: balance updates
+    const balanceChannel = supabase
+      .channel(`team_credits_${teamId}_${suffix}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_credits", filter: `team_id=eq.${teamId}` },
+        (payload) => { const row = payload.new as { balance: number } | null; if (row) setCredits(row.balance); })
+      .subscribe();
+
+    // Realtime: new transactions
+    const txChannel = supabase
+      .channel(`team_credit_tx_${teamId}_${suffix}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "team_credit_transactions", filter: `team_id=eq.${teamId}` },
+        async (payload) => {
+          const row = payload.new as { id: string; player_id: string; amount: number; created_at: string };
+          const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", row.player_id).maybeSingle();
+          setTransactions((prev) => [{
+            id: row.id,
+            player_id: row.player_id,
+            amount: row.amount,
+            created_at: row.created_at,
+            player_name: (profile as { full_name: string } | null)?.full_name ?? "Unknown",
+          }, ...prev].slice(0, 20));
+        })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(balanceChannel);
+      supabase.removeChannel(txChannel);
+    };
+  }, [teamId]);
+
+  const closeModal = () => {
+    setShowTopUp(false);
+    setSelectedAmount(null);
+    setCustomInput("");
+    setClientSecret(null);
+    setIntentError(null);
+    setSuccess(false);
+  };
+
+  const openLog = async () => {
+    setLogTab("deposits");
+    setShowLog(true);
+    if (!teamId) return;
+    // Load booking payments for this team's matches
+    const { data: posts } = await supabase.from("match_posts")
+      .select("id, match_date").eq("captain_id", userId).eq("status", "matched");
+    const postIds = (posts ?? []).map((p) => p.id);
+    if (postIds.length === 0) { setBookingTx([]); return; }
+    const { data: payments } = await supabase.from("player_payments")
+      .select("id, player_id, amount_pence, created_at, booking_id, profiles(full_name), match_posts(team_name)")
+      .in("booking_id", postIds)
+      .eq("status", "paid")
+      .order("created_at", { ascending: false });
+    setBookingTx((payments ?? []).map((p) => ({
+      id: p.id,
+      player_name: (p.profiles as { full_name: string } | null)?.full_name ?? "Unknown",
+      opponent: (p.match_posts as { team_name: string } | null)?.team_name ?? "Match",
+      amount_pence: p.amount_pence,
+      created_at: p.created_at,
+    })));
+  };
+
+  const effectiveAmount = selectedAmount ?? (customInput ? parseFloat(customInput) : null);
+
+  const handleContinue = async () => {
+    if (!effectiveAmount || effectiveAmount < 1 || !teamId) return;
+    setLoadingIntent(true);
+    setIntentError(null);
+    const res = await fetch("/api/create-credits-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId }),
+    });
+    const data = await res.json();
+    if (data.clientSecret) {
+      setClientSecret(data.clientSecret);
+    } else {
+      setIntentError(data.error ?? "Failed to set up payment.");
+    }
+    setLoadingIntent(false);
+  };
+
+  if (credits === null) return null;
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mt-2">
+        {role === "captain" ? (
+          <button onClick={openLog}
+            className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5 hover:border-accent/40 transition-colors">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+            <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
+            <span className="text-xs text-text-secondary">team credits</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            </svg>
+            <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
+            <span className="text-xs text-text-secondary">team credits</span>
+          </div>
+        )}
+        <button onClick={() => setShowTopUp(true)}
+          className="text-xs font-semibold text-accent border border-accent/30 bg-accent/10 px-3 py-1.5 rounded-xl">
+          + Top Up
+        </button>
+      </div>
+
+      {/* Transaction log modal — captain only */}
+      {showLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowLog(false)}>
+          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div>
+                <p className="font-bold text-base">Team Credits</p>
+                <p className="text-xs text-text-secondary">Balance: <span className="text-accent font-semibold">£{credits.toFixed(2)}</span></p>
+              </div>
+              <button onClick={() => setShowLog(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1 mb-4 flex-shrink-0">
+              {(["deposits", "bookings"] as const).map((t) => (
+                <button key={t} onClick={() => setLogTab(t)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${logTab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-2">
+              {logTab === "deposits" && (
+                transactions.length === 0
+                  ? <p className="text-xs text-text-secondary text-center py-8">No deposits yet.</p>
+                  : transactions.map((tx) => {
+                      const initials = tx.player_name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                      const diffMins = Math.floor((Date.now() - new Date(tx.created_at).getTime()) / 60000);
+                      const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
+                      return (
+                        <div key={tx.id} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                            <span className="text-[10px] font-bold text-accent">{initials}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{tx.player_id === userId ? "You" : tx.player_name}</p>
+                            <p className="text-xs text-text-secondary">Topped up · {timeAgo}</p>
+                          </div>
+                          <span className="text-sm font-bold text-accent">+£{Number(tx.amount).toFixed(2)}</span>
+                        </div>
+                      );
+                    })
+              )}
+
+              {logTab === "bookings" && (
+                bookingTx.length === 0
+                  ? <p className="text-xs text-text-secondary text-center py-8">No booking payments yet.</p>
+                  : bookingTx.map((p) => {
+                      const initials = p.player_name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                      const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
+                      const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                          <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                            <span className="text-[10px] font-bold text-text-secondary">{initials}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{p.player_name}</p>
+                            <p className="text-xs text-text-secondary">vs {p.opponent} · {timeAgo}</p>
+                          </div>
+                          <span className="text-sm font-bold text-text-primary">£{(p.amount_pence / 100).toFixed(2)}</span>
+                        </div>
+                      );
+                    })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTopUp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={closeModal}>
+          <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+
+            {/* Success state */}
+            {success ? (
+              <div className="flex flex-col items-center text-center gap-4 py-4">
+                <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <p className="font-bold text-lg">Credits Added!</p>
+                <p className="text-sm text-text-secondary">£{effectiveAmount?.toFixed(2)} added to your team balance.</p>
+                <p className="text-base font-bold text-accent">New balance: £{credits.toFixed(2)}</p>
+                <button onClick={closeModal} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+              </div>
+            ) : clientSecret && effectiveAmount && teamId ? (
+              /* Stripe payment step */
+              <>
+                <div className="flex items-center justify-between mb-5">
+                  <p className="font-bold text-lg">Pay & Top Up</p>
+                  <button onClick={closeModal}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#00E676", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
+                  <CreditsCheckoutForm
+                    amount={effectiveAmount}
+                    teamId={teamId}
+                    userId={userId}
+                    currentCredits={credits}
+                    onSuccess={(newBalance) => { setCredits(newBalance); setSuccess(true); }}
+                    onBack={() => setClientSecret(null)}
+                  />
+                </Elements>
+              </>
+            ) : (
+              /* Amount selection step */
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="font-bold text-lg">Top Up Credits</p>
+                  <button onClick={closeModal}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <p className="text-xs text-text-secondary mb-5">
+                  Current balance: <span className="font-semibold text-text-primary">£{credits.toFixed(2)}</span>
+                </p>
+
+                {/* Preset amounts */}
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  {[10, 20, 50, 100].map((amt) => (
+                    <button key={amt} onClick={() => { setSelectedAmount(amt); setCustomInput(""); }}
+                      className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === amt && !customInput ? "bg-accent text-black border-accent" : "bg-surface-2 border-border text-text-primary"}`}>
+                      £{amt}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom amount */}
+                <div className="relative mb-5">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-text-secondary">£</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="Custom amount"
+                    value={customInput}
+                    onChange={(e) => { setCustomInput(e.target.value); setSelectedAmount(null); }}
+                    className="w-full bg-surface-2 border border-border rounded-xl pl-7 pr-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+                  />
+                </div>
+
+                {effectiveAmount && effectiveAmount >= 1 && (
+                  <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 mb-4 text-xs space-y-1.5">
+                    <div className="flex justify-between text-text-secondary"><span>Adding</span><span className="font-semibold text-text-primary">£{effectiveAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-semibold text-accent">£{(credits + effectiveAmount).toFixed(2)}</span></div>
+                  </div>
+                )}
+
+                {intentError && <p className="text-xs text-red-400 text-center mb-3">{intentError}</p>}
+
+                <button
+                  disabled={!effectiveAmount || effectiveAmount < 1 || loadingIntent}
+                  onClick={handleContinue}
+                  className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loadingIntent ? (
+                    <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Setting up…</>
+                  ) : effectiveAmount && effectiveAmount >= 1 ? `Continue to pay £${effectiveAmount.toFixed(2)}` : "Enter an amount"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────
 export default function MyTeamPage() {
   const { role, roleLoading } = useRole();
+  const { user } = useAuth();
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">
+        <h1 className="text-2xl font-bold mb-0.5">
           {role === "new_user" ? "Browse Teams" : "My Team"}
         </h1>
         <p className="text-text-secondary text-sm">
@@ -597,7 +1569,13 @@ export default function MyTeamPage() {
           : role === "player" ? "Your squad and performance"
           : "Manage your squad and organise matches"}
         </p>
+        {(role === "captain" || role === "player") && user && (
+          <TeamCreditsBar userId={user.id} role={role as "captain" | "player"} />
+        )}
       </header>
+      {(role === "captain" || role === "player") && user && (
+        <NextFixtureBanner userId={user.id} role={role as "captain" | "player"} />
+      )}
       {role === "new_user" && <NewUserMyTeam />}
       {role === "player" && <PlayerMyTeam />}
       {role === "captain" && <CaptainMyTeam />}

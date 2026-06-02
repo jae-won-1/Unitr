@@ -547,28 +547,13 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
 export default function HomePage() {
   const { role, roleLoading } = useRole();
   const { user } = useAuth();
-  const [initials, setInitials] = useState("?");
-
-  useEffect(() => {
-    if (!user) { setInitials("?"); return; }
-    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
-      .then(({ data }) => {
-        if (data?.full_name) {
-          const parts = (data.full_name as string).split(" ").filter(Boolean);
-          setInitials(parts.map((w: string) => w[0]).join("").slice(0, 2).toUpperCase());
-        }
-      });
-  }, [user]);
 
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12">
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Unitr<span className="text-accent">.</span></h1>
-        <a href="/profile" className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
-          <span className="text-xs font-bold text-accent">{initials}</span>
-        </a>
       </header>
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}

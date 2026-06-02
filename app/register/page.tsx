@@ -23,6 +23,8 @@ export default function RegisterPage() {
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("");
 
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +35,7 @@ export default function RegisterPage() {
     if (!accountType) { setError("Please select an account type."); return; }
     if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     if (accountType === "player" && (!location || !position || !experience)) {
       setError("Please fill in all player fields.");
       return;
@@ -140,6 +143,13 @@ export default function RegisterPage() {
               <label className="text-sm font-medium text-text-secondary">Password</label>
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 8 characters"
+                className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Confirm Password</label>
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your password"
                 className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
             </div>
           </>

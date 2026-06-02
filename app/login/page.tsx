@@ -68,10 +68,7 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-text-secondary">Password</label>
-            <a href="/forgot-password" className="text-xs text-accent font-medium">Forgot password?</a>
-          </div>
+          <label className="text-sm font-medium text-text-secondary">Password</label>
           <input
             type="password"
             value={password}
@@ -79,6 +76,7 @@ export default function LoginPage() {
             placeholder="Your password"
             className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
+          <a href="/forgot-password" className="text-xs text-accent font-medium self-end mt-0.5">Forgot password?</a>
         </div>
 
         <button

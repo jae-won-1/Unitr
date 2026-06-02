@@ -26,8 +26,8 @@ type Pitch = {
   is_verified: boolean;
 };
 
-function makeIcon(label: string, picked: boolean, rank: number | null) {
-  const bg = picked ? "#00E676" : "#166534";
+function makeIcon(label: string, picked: boolean, rank: number | null, unaffordable: boolean = false) {
+  const bg = picked ? "#00E676" : unaffordable ? "#EF4444" : "#166534";
   const color = picked ? "#000" : "#fff";
   const content = rank !== null ? String(rank + 1) : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
   return L.divIcon({
@@ -54,11 +54,13 @@ export default function PitchMap({
   pickedPitches,
   onSelect,
   selectMode,
+  unaffordableIds = new Set(),
 }: {
   pitches: Pitch[];
   pickedPitches: Pitch[];
   onSelect: (p: Pitch) => void;
   selectMode: boolean;
+  unaffordableIds?: Set<string>;
 }) {
   const center: [number, number] = [51.545, -0.055];
 
@@ -77,19 +79,21 @@ export default function PitchMap({
       {pitches.map((pitch) => {
         const rankIdx = pickedPitches.findIndex((p) => p.id === pitch.id);
         const isPicked = rankIdx !== -1;
+        const unaffordable = unaffordableIds.has(pitch.id);
         return (
           <Marker
             key={pitch.id}
             position={[pitch.lat, pitch.lng]}
-            icon={makeIcon(pitch.name, isPicked, isPicked ? rankIdx : null)}
+            icon={makeIcon(pitch.name, isPicked, isPicked ? rankIdx : null, unaffordable)}
             eventHandlers={{ click: () => onSelect(pitch) }}
           >
             <Popup>
               <div style={{ minWidth: 160 }}>
                 <p style={{ fontWeight: 700, marginBottom: 2 }}>{pitch.name}</p>
                 <p style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>{pitch.address}</p>
-                <p style={{ fontWeight: 700, color: "#00c853" }}>£{pitch.price_per_hour}/hr</p>
+                <p style={{ fontWeight: 700, color: unaffordable ? "#f87171" : "#00c853" }}>£{pitch.price_per_hour}/hr</p>
                 <p style={{ fontSize: 11, color: "#888" }}>{pitch.formats.join(", ")} · ⭐ {pitch.rating}</p>
+                {unaffordable && <p style={{ fontSize: 11, color: "#f87171", marginTop: 4 }}>Insufficient team credits</p>}
               </div>
             </Popup>
           </Marker>

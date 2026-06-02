@@ -26,11 +26,23 @@ const badges = [
   { label: "Consistent", icon: "🔥" },
 ];
 
+const FRIENDS = [
+  { name: "Marcus Webb", position: "GK", avatar: "MW" },
+  { name: "Liam Foster", position: "CAM", avatar: "LF" },
+  { name: "Devon King", position: "ST", avatar: "DK" },
+];
+
+const BOOKMARKED_TEAMS = [
+  { name: "Hackney United", level: "Competitive", location: "Hackney Marshes" },
+  { name: "Shoreditch Rovers", level: "Semi-Pro", location: "Powerleague Shoreditch" },
+];
+
 function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; profile: Profile | null; teamName: string | null }) {
   const { signOut } = useAuth();
   const name = profile?.full_name ?? "Player";
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
+  const [modal, setModal] = useState<"friends" | "teams" | null>(null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,7 +63,95 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
           <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">Right Foot</span>
           <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">6 years exp.</span>
         </div>
+
+        {/* Friends & Bookmarked Teams counts */}
+        <div className="flex gap-6 mt-4">
+          <button onClick={() => setModal("friends")} className="flex flex-col items-center gap-0.5">
+            <span className="text-lg font-bold">{FRIENDS.length}</span>
+            <span className="text-xs text-text-secondary">Friends</span>
+          </button>
+          <div className="w-px bg-border" />
+          <button onClick={() => setModal("teams")} className="flex flex-col items-center gap-0.5">
+            <span className="text-lg font-bold">{BOOKMARKED_TEAMS.length}</span>
+            <span className="text-xs text-text-secondary">Bookmarked Teams</span>
+          </button>
+        </div>
       </section>
+
+      <button className="w-full py-3 rounded-xl border border-accent text-accent font-semibold text-sm">
+        Edit Profile
+      </button>
+
+      {/* Friends modal */}
+      {modal === "friends" && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
+          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-bold text-base">Friends ({FRIENDS.length})</p>
+              <button onClick={() => setModal(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {FRIENDS.map((f) => (
+                <div key={f.name} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                  <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-accent">{f.avatar}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{f.name}</p>
+                    <p className="text-xs text-text-secondary">{f.position}</p>
+                  </div>
+                  <a href="/messages" className="w-7 h-7 rounded-full border border-border bg-surface flex items-center justify-center flex-shrink-0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </a>
+                </div>
+              ))}
+            </div>
+            <a href="/search" className="block w-full mt-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary text-center">
+              Find more friends
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Bookmarked Teams modal */}
+      {modal === "teams" && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
+          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-bold text-base">Bookmarked Teams ({BOOKMARKED_TEAMS.length})</p>
+              <button onClick={() => setModal(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {BOOKMARKED_TEAMS.map((t) => {
+                const ti = t.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                return (
+                  <div key={t.name} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                    <div className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-bold text-text-secondary">{ti}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.name}</p>
+                      <p className="text-xs text-text-secondary">{t.level} · {t.location}</p>
+                    </div>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#00E676" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+                      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+            <a href="/search" className="block w-full mt-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary text-center">
+              Browse more teams
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <section>
@@ -139,10 +239,6 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       </section>
 
-      <button className="w-full py-3 rounded-xl border border-accent text-accent font-semibold text-sm">
-        Edit Profile
-      </button>
-
       {isCaptain && (
         <a href="/my-team" className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center block">
           Manage My Team
@@ -193,7 +289,10 @@ export default function ProfilePage() {
           </div>
           <p className="text-sm font-semibold">No profile yet</p>
           <p className="text-xs text-text-secondary text-center max-w-[220px]">Create an account to build your player profile and track your stats.</p>
-          <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
+          <div className="flex gap-3">
+            <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
+            <a href="/login" className="px-6 py-3 rounded-xl border border-border text-text-primary font-bold text-sm">Sign In</a>
+          </div>
         </div>
       )}
       {role === "new_user" && user && (
