@@ -1,0 +1,90 @@
+UNITR — Updates 4 June 2026
+============================
+
+## Venue Portal — Calendar & Settings
+
+NEW: Venue Calendar page (/venue/calendar)
+- Day view: each pitch shown as a colour-coded column, time slots 07:00–23:00
+- Week view: 7-day columns with all pitches colour-coded and a pitch legend
+- Full scrollable time grid (full operating hours visible, sticky headers)
+- Tap any empty slot → pre-filled Add Booking modal (team name, date, start/end time, notes)
+- Tap any booking block → view details, cancel option
+- Platform bookings (from Unitr matchmaking) appear automatically alongside manual entries
+- Today button + prev/next date navigation
+- "Availability" nav item replaced with "Calendar" in venue bottom nav
+
+UPDATED: Venue Settings page (/venue/settings) — now has 4 tabs
+- Info: venue name, address, description, formats, surfaces, amenities
+- Schedule: toggle each day open/closed, tap time to edit open/close hours
+- Pricing: base hourly rate + pricing rules (e.g. Peak Evenings Mon–Fri 18:00–22:00 at £120/hr)
+- Holidays: block specific dates whole-day or time-range with optional reason
+
+SQL required:
+  alter table public.pitch_bookings
+    add column if not exists end_time text,
+    add column if not exists booker_name text,
+    add column if not exists notes text,
+    add column if not exists booking_type text default 'platform';
+  alter table public.pitches
+    add column if not exists pricing_rules jsonb not null default '[]'::jsonb;
+
+
+## Matchmaking — Booking Sync to Venue Portal
+
+FIX: Confirmed matches now properly sync to the venue portal calendar and dashboard
+- pitch_bookings insert in handleConfirm now sets booking_type="platform",
+  booker_name="Team A vs Team B", end_time (start + 1hr)
+- RLS on pitch_bookings disabled for MVP simplicity
+- Date comparison made case-insensitive to handle "JUN" vs "Jun" format mismatch
+
+
+## Payment Split Fix
+
+FIX: Split payment now divides by total players across BOTH teams (not one team)
+- pitches/page.tsx: all per-player cost displays changed from /11 to /22
+- Booking panel label updated to "Split across 22 players (both teams)"
+- match detail payment tab: uses confirmations.length (both teams) as base denominator
+- pay/[matchId]/page.tsx: player count now fetched from match_confirmations (includes captains)
+
+FIX: Captains now included in match_confirmations on challenge confirm
+- handleConfirm explicitly adds both captains (post.captain_id + challenger user.id)
+  on top of approved team_members — ensures correct headcount for payment split
+
+
+## My Team
+
+FIX: "Find Match" button renamed to "Post Match"
+FIX: "Collect Availability" button is now always active (no longer greyed out after
+  first availability request) — tap it to start a new availability round
+
+FIX: Captain now appears in the Players page (/my-team/players)
+- Captain's profile is fetched directly and prepended to the player list
+
+
+## Pitch Booking — Insufficient Funds Bug
+
+FIX: "Insufficient funds" warning no longer blocks pitch selection when
+  "Individual Payments" is chosen
+- Payment mode (credit vs individual) stored in localStorage on modal confirm
+- Pitches page reads mode and only enforces credit check for "Pay with Team Credit" flow
+
+
+## Date/Time Pickers (Availability Request form)
+
+FIX: Date picker off-by-one bug — was using .toISOString() which shifts date back
+  in UTC+1 timezone. Now builds ISO string from local year/month/day directly.
+
+FIX: Time picker no longer gets cut off at bottom of screen — converted from
+  dropdown to fixed bottom sheet modal. Hours column is scrollable.
+
+
+## SQL Changes Required (run in Supabase SQL Editor)
+
+1. Add new pitch_bookings columns (see Venue Portal section above)
+2. Add pricing_rules column to pitches (see Venue Portal section above)
+3. Disable RLS on pitch_bookings:
+   alter table public.pitch_bookings disable row level security;
+4. Match tables (if not already done from previous session):
+   - matches table
+   - match_confirmations table
+   (see previous session notes)

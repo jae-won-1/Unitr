@@ -111,15 +111,21 @@ function ChallengePanel({
       status: "accepted",
     });
 
-    // Create a pitch_bookings row so the venue portal shows this booking
+    // Create a pitch_bookings row so the venue portal calendar shows this booking
     if (pitch?.id) {
       const perPlayerPence = Math.round((pitch.price * 100) / 22);
+      const startTime = post.match_time || "12:00";
+      const [h, m] = startTime.split(":").map(Number);
+      const endTime = `${String(Math.min((h || 12) + 1, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
       const { error: bookingErr } = await supabase.from("pitch_bookings").insert({
         pitch_id: pitch.id,
         post_id: post.id,
         booked_by: user.id,
         match_date: post.match_date,
-        start_time: post.match_time || "TBC",
+        start_time: startTime,
+        end_time: endTime,
+        booker_name: `${post.team} vs ${team.name}`,
+        booking_type: "platform",
         total_price_pence: pitch.price * 100,
         player_count: 22,
         per_player_pence: perPlayerPence,
@@ -152,9 +158,17 @@ function ChallengePanel({
         const { data: members } = await supabase
           .from("team_members").select("player_id, team_id")
           .in("team_id", [post.team_id, team.id]).eq("status", "approved");
-        if (members && members.length > 0) {
+
+        // Build full player list: approved members + both captains
+        const allPlayers: { player_id: string; team_id: string }[] = [
+          ...(members ?? []),
+          { player_id: post.captain_id, team_id: post.team_id },
+          { player_id: user.id, team_id: team.id },
+        ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
+
+        if (allPlayers.length > 0) {
           await supabase.from("match_confirmations").insert(
-            members.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
+            allPlayers.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
           );
         }
       }

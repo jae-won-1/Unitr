@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
+// ── Date Picker ───────────────────────────────────────────────
 export function DatePicker({ value, onChange }: { value: string; onChange: (d: string) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useState(() => ({ current: null as HTMLDivElement | null }))[0];
+  const ref = useRef<HTMLDivElement>(null);
 
   const today = new Date();
   const initDate = value ? new Date(value + "T12:00:00") : today;
@@ -17,7 +18,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
     }
     if (open) document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open, ref]);
+  }, [open]);
 
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const dayNames = ["Su","Mo","Tu","We","Th","Fr","Sa"];
@@ -28,7 +29,9 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
   const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
 
   const select = (day: number) => {
-    onChange(new Date(viewYear, viewMonth, day).toISOString().slice(0, 10));
+    // Build ISO string in local time to avoid UTC timezone shift
+    const iso = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    onChange(iso);
     setOpen(false);
   };
 
@@ -42,8 +45,10 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
     today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === day;
 
   const isPast = (day: number) => {
-    const d = new Date(viewYear, viewMonth, day); d.setHours(0,0,0,0);
-    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(viewYear, viewMonth, day);
+    d.setHours(0, 0, 0, 0);
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
     return d < t;
   };
 
@@ -52,7 +57,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
     : "Select date";
 
   return (
-    <div className="relative" ref={(el) => { ref.current = el; }}>
+    <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-left flex items-center gap-2 outline-none focus:border-accent/50">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
@@ -98,9 +103,9 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
   );
 }
 
+// ── Time Picker ───────────────────────────────────────────────
 export function TimePicker({ value, onChange }: { value: string; onChange: (t: string) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useState(() => ({ current: null as HTMLDivElement | null }))[0];
 
   const parse = (val: string) => {
     if (!val) return { hour: 9, minute: 0, ampm: "AM" };
@@ -112,14 +117,6 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (t: s
   const [hour, setHour] = useState(initial.hour);
   const [minute, setMinute] = useState(initial.minute);
   const [ampm, setAmpm] = useState(initial.ampm);
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open, ref]);
 
   const confirm = () => {
     let h = hour;
@@ -133,9 +130,12 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (t: s
     ? (() => { const { hour: h, minute: m, ampm: a } = parse(value); return `${h}:${String(m).padStart(2, "0")} ${a}`; })()
     : "Select time";
 
+  const HOURS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const MINUTES = [0, 15, 30, 45];
+
   return (
-    <div className="relative" ref={(el) => { ref.current = el; }}>
-      <button type="button" onClick={() => setOpen((o) => !o)}
+    <>
+      <button type="button" onClick={() => setOpen(true)}
         className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-left flex items-center gap-2 outline-none focus:border-accent/50">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -143,43 +143,68 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (t: s
         <span className={value ? "text-text-primary" : "text-text-secondary"}>{display}</span>
       </button>
 
+      {/* Fixed bottom sheet — never gets cut off */}
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-2xl p-3 shadow-xl">
-          <div className="flex items-start gap-2">
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[9px] font-semibold text-text-secondary uppercase tracking-wider mb-0.5">Hr</p>
-              {[12,1,2,3,4,5,6,7,8,9,10,11].map((h) => (
-                <button key={h} type="button" onClick={() => setHour(h)}
-                  className={`w-10 py-1.5 rounded-lg text-xs font-bold transition-colors ${hour === h ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
-                  {h}
-                </button>
-              ))}
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50"
+          onClick={() => setOpen(false)}>
+          <div className="w-full max-w-lg bg-[#141414] border-t border-border rounded-t-2xl pb-safe"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 rounded-full bg-border" />
             </div>
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[9px] font-semibold text-text-secondary uppercase tracking-wider mb-0.5">Min</p>
-              {[0, 15, 30, 45].map((m) => (
-                <button key={m} type="button" onClick={() => setMinute(m)}
-                  className={`w-10 py-1.5 rounded-lg text-xs font-bold transition-colors ${minute === m ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
-                  {String(m).padStart(2, "0")}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[9px] font-semibold text-text-secondary uppercase tracking-wider mb-0.5">—</p>
-              {["AM", "PM"].map((a) => (
-                <button key={a} type="button" onClick={() => setAmpm(a)}
-                  className={`w-10 py-1.5 rounded-lg text-xs font-bold transition-colors ${ampm === a ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
-                  {a}
-                </button>
-              ))}
+
+            <div className="px-5 pb-5">
+              <p className="text-sm font-semibold text-center mb-4">Select Time</p>
+
+              <div className="flex gap-3 justify-center mb-5">
+                {/* Hours */}
+                <div className="flex flex-col gap-1 items-center">
+                  <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Hr</p>
+                  <div className="overflow-y-auto max-h-48 flex flex-col gap-1 pr-1 scrollbar-hide">
+                    {HOURS.map((h) => (
+                      <button key={h} type="button" onClick={() => setHour(h)}
+                        className={`w-14 py-2 rounded-xl text-sm font-bold transition-colors flex-shrink-0 ${hour === h ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Minutes */}
+                <div className="flex flex-col gap-1 items-center">
+                  <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Min</p>
+                  <div className="flex flex-col gap-1">
+                    {MINUTES.map((m) => (
+                      <button key={m} type="button" onClick={() => setMinute(m)}
+                        className={`w-14 py-2 rounded-xl text-sm font-bold transition-colors ${minute === m ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+                        {String(m).padStart(2, "0")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AM/PM */}
+                <div className="flex flex-col gap-1 items-center">
+                  <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">—</p>
+                  <div className="flex flex-col gap-1">
+                    {["AM", "PM"].map((a) => (
+                      <button key={a} type="button" onClick={() => setAmpm(a)}
+                        className={`w-14 py-2 rounded-xl text-sm font-bold transition-colors ${ampm === a ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+                        {a}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" onClick={confirm}
+                className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">
+                Confirm
+              </button>
             </div>
           </div>
-          <button type="button" onClick={confirm}
-            className="w-full mt-2 py-2 rounded-xl bg-accent text-black font-bold text-xs">
-            Confirm
-          </button>
         </div>
       )}
-    </div>
+    </>
   );
 }

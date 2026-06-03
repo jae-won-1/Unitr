@@ -117,18 +117,21 @@ export default function PlayersPage() {
         if (!team) { setLoading(false); return; }
         setTeamName(team.name);
 
-        // Get approved members and their profiles
-        const { data } = await supabase
-          .from("team_members")
-          .select("profiles(id, full_name, position, experience, location)")
-          .eq("team_id", team.id)
-          .eq("status", "approved");
+        // Get captain profile + approved members
+        const [{ data: captainProfile }, { data: members }] = await Promise.all([
+          supabase.from("profiles").select("id, full_name, position, experience, location").eq("id", user!.id).maybeSingle(),
+          supabase.from("team_members")
+            .select("profiles(id, full_name, position, experience, location)")
+            .eq("team_id", team.id).eq("status", "approved"),
+        ]);
 
-        const profiles = (data ?? [])
-          .map((row: any) => row.profiles)
-          .filter(Boolean) as Player[];
+        const memberProfiles = (members ?? []).map((row: any) => row.profiles).filter(Boolean) as Player[];
+        const allProfiles = [
+          ...(captainProfile ? [captainProfile] : []),
+          ...memberProfiles.filter((p) => p.id !== user!.id),
+        ];
 
-        setPlayers(profiles);
+        setPlayers(allProfiles);
         setLoading(false);
       });
   }, [user]);

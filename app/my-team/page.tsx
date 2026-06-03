@@ -631,7 +631,7 @@ function FindMatchButton() {
         onClick={() => setOpen(true)}
         className="w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center"
       >
-        Find Match
+        Post Match
       </button>
 
       {open && (
@@ -711,7 +711,11 @@ function FindMatchButton() {
             </div>
 
             <a href={selected ? href : undefined}
-              onClick={(e) => { if (!selected) e.preventDefault(); else setOpen(false); }}
+              onClick={(e) => {
+                if (!selected) { e.preventDefault(); return; }
+                localStorage.setItem("unitr_payment_mode", selected);
+                setOpen(false);
+              }}
               className={`block w-full py-3.5 rounded-xl text-sm font-bold text-center transition-colors ${selected ? "bg-accent text-black" : "bg-surface-2 text-text-secondary cursor-not-allowed"}`}>
               Confirm
             </a>
@@ -951,15 +955,9 @@ function CaptainMyTeam() {
           </div>
         )}
         <div className="flex gap-2 mt-3">
-          {availabilityRequest ? (
-            <div className="flex-1 py-2.5 rounded-xl border border-border text-text-secondary text-sm font-semibold text-center opacity-40 cursor-not-allowed select-none">
-              Collect Availability
-            </div>
-          ) : (
-            <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
-              Collect Availability
-            </a>
-          )}
+          <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
+            Collect Availability
+          </a>
           <div className="flex-1">
             <FindMatchButton />
           </div>

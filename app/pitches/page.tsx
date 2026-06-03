@@ -62,7 +62,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>(FALLBACK_SLOTS);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const perPlayer = (pitch.price_per_hour / 11).toFixed(2);
+  const perPlayer = (pitch.price_per_hour / 22).toFixed(2);
 
   // Generate next 14 days
   const days = Array.from({ length: 14 }, (_, i) => {
@@ -169,7 +169,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
             <p className="text-xs font-semibold mb-1">Payment breakdown</p>
             <div className="space-y-1 text-xs text-text-secondary">
               <div className="flex justify-between"><span>Pitch hire (1hr)</span><span className="font-semibold text-text-primary">£{pitch.price_per_hour}</span></div>
-              <div className="flex justify-between"><span>Split across 11 players</span><span className="font-semibold text-text-primary">£{perPlayer}/player</span></div>
+              <div className="flex justify-between"><span>Split across 22 players (both teams)</span><span className="font-semibold text-text-primary">£{perPlayer}/player</span></div>
               <div className="flex justify-between"><span>Unitr fee (5%)</span><span className="font-semibold text-text-primary">£{(Number(perPlayer) * 0.05).toFixed(2)}/player</span></div>
               <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold text-text-primary">Total per player</span><span className="font-bold text-accent">£{(Number(perPlayer) * 1.05).toFixed(2)}</span></div>
             </div>
@@ -190,7 +190,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
 
 // ── Booking Confirmed ─────────────────────────────────────────
 function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: string; time: string; onDone: () => void }) {
-  const perPlayer = (pitch.price_per_hour / 11 * 1.05).toFixed(2);
+  const perPlayer = (pitch.price_per_hour / 22 * 1.05).toFixed(2);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 pb-16">
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
@@ -227,6 +227,7 @@ function PitchesContent() {
   const [filterFormat, setFilterFormat] = useState("All");
   const [pickedPitches, setPickedPitches] = useState<Pitch[]>([]);
   const [teamCredits, setTeamCredits] = useState<number | null>(null);
+  const [paymentMode, setPaymentMode] = useState<string | null>(null);
 
   // Fetch pitches from DB
   useEffect(() => {
@@ -234,9 +235,12 @@ function PitchesContent() {
       .then(({ data }) => { setPitches((data ?? []) as Pitch[]); setLoading(false); });
   }, []);
 
-  // Fetch team credits in select mode
+  // Read payment mode + fetch team credits in select mode
   useEffect(() => {
-    if (!selectMode || !user) return;
+    if (!selectMode) return;
+    const mode = localStorage.getItem("unitr_payment_mode");
+    setPaymentMode(mode);
+    if (mode !== "credit" || !user) return;
     async function loadCredits() {
       const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
       if (!team?.id) return;
@@ -261,7 +265,7 @@ function PitchesContent() {
   const filteredPitches = filterFormat === "All" ? pitches : pitches.filter((p) => p.formats.includes(filterFormat));
 
   const isAffordable = (pitch: Pitch) =>
-    teamCredits === null || pitch.price_per_hour <= teamCredits;
+    paymentMode !== "credit" || teamCredits === null || pitch.price_per_hour <= teamCredits;
 
   const togglePitch = (pitch: Pitch) => {
     if (!isAffordable(pitch)) return;
@@ -407,7 +411,7 @@ function PitchesContent() {
                         ))}
                       </div>
                       <p className="text-xs text-text-secondary mb-3">
-                        ≈ <span className="font-semibold text-accent">£{(pitch.price_per_hour / 11 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
+                        ≈ <span className="font-semibold text-accent">£{(pitch.price_per_hour / 22 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
                       </p>
                       {selectMode ? (
                         <>

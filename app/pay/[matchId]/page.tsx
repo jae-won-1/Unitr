@@ -197,21 +197,15 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         ? (challenge?.challenger_team_name ?? "Unknown")
         : post.team_name;
 
-      // Count players in both teams (approximate: use squad size from team_members)
-      const { data: posterTeam } = await supabase
-        .from("teams").select("id").eq("captain_id", post.captain_id).maybeSingle();
-      const { data: challengerTeam } = await supabase
-        .from("teams").select("id")
-        .eq("name", challenge?.challenger_team_name ?? "").maybeSingle();
-
+      // Count players from match_confirmations (includes captains + approved members)
       let playerCount = 22;
-      if (posterTeam || challengerTeam) {
-        const teamIds = [posterTeam?.id, challengerTeam?.id].filter(Boolean) as string[];
+      const { data: matchRecord } = await supabase
+        .from("matches").select("id").eq("post_id", params.matchId).maybeSingle();
+      if (matchRecord) {
         const { count } = await supabase
-          .from("team_members")
+          .from("match_confirmations")
           .select("id", { count: "exact", head: true })
-          .in("team_id", teamIds)
-          .eq("status", "approved");
+          .eq("match_id", matchRecord.id);
         if (count && count > 0) playerCount = count;
       }
 

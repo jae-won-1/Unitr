@@ -173,7 +173,8 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   }
 
   const confirmedCount = confirmations.filter((c) => c.status === "confirmed").length;
-  const effectivePlayers = confirmedCount > 0 ? confirmedCount : 22;
+  const totalPlayers = confirmations.length > 0 ? confirmations.length : 22;
+  const effectivePlayers = confirmedCount > 0 ? confirmedCount : totalPlayers;
   const perPlayer = ((match.confirmedPitch.price * 1.05) / effectivePlayers).toFixed(2);
   const myTeamName = myTeamId === match.postingTeamId ? match.postingTeamName : match.challengingTeamName;
   const opponentTeamId = myTeamId === match.postingTeamId ? match.challengingTeamId : match.postingTeamId;
