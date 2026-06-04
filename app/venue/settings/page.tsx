@@ -181,11 +181,13 @@ function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
   );
 }
 
-function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchContact, onPitchesChange }: {
+function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchContact, primaryPitchLat, primaryPitchLng, onPitchesChange }: {
   pitches: PitchItem[];
   venueOwnerId: string;
   primaryPitchAddress: string;
   primaryPitchContact: string;
+  primaryPitchLat: string;
+  primaryPitchLng: string;
   onPitchesChange: (pitches: PitchItem[]) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -203,7 +205,9 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
     const { data, error: dbErr } = await supabase.from("pitches").insert({
       venue_owner_id: venueOwnerId,
       name: addForm.name.trim(),
-      address: primaryPitchAddress,
+      address: primaryPitchAddress || "—",
+      lat: parseFloat(primaryPitchLat) || 0,
+      lng: parseFloat(primaryPitchLng) || 0,
       contact_email: primaryPitchContact,
       price_per_hour: parseFloat(addForm.price) || 0,
       capacity: addForm.capacity ? parseInt(addForm.capacity) : null,
@@ -805,6 +809,8 @@ export default function VenueSettingsPage() {
           venueOwnerId={user!.id}
           primaryPitchAddress={form.address}
           primaryPitchContact={form.contact_email}
+          primaryPitchLat={form.lat}
+          primaryPitchLng={form.lng}
           onPitchesChange={setAllPitches}
         />
       )}
