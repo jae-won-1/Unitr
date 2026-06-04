@@ -80,10 +80,40 @@ function ChallengePanel({
   const [matchId, setMatchId] = useState<string | null>(null);
   const [alreadyTaken, setAlreadyTaken] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pitchAvail, setPitchAvail] = useState<Record<string, boolean>>({});
+  const [checkingAvail, setCheckingAvail] = useState(true);
+  const [slotTakenError, setSlotTakenError] = useState<string | null>(null);
+
+  // Check which pitch options are still available for this date/time
+  useEffect(() => {
+    async function checkAvailability() {
+      const result: Record<string, boolean> = {};
+      await Promise.all(
+        post.pitchOptions.map(async (pitch) => {
+          const { data } = await supabase
+            .from("pitch_bookings")
+            .select("id")
+            .eq("pitch_id", pitch.id)
+            .eq("match_date", post.match_date)
+            .eq("start_time", post.match_time)
+            .neq("status", "cancelled")
+            .maybeSingle();
+          result[pitch.id] = !data;
+        })
+      );
+      setPitchAvail(result);
+      setCheckingAvail(false);
+    }
+    checkAvailability();
+  }, [post]);
+
+  const allPitchesTaken = !checkingAvail && post.pitchOptions.length > 0 &&
+    post.pitchOptions.every((p) => pitchAvail[p.id] === false);
 
   const handleConfirm = async () => {
     if (!selectedPitch || !user) return;
     setSaving(true);
+    setSlotTakenError(null);
 
     // Guard: check post is still open (race condition — someone else may have just taken it)
     const { data: current } = await supabase
@@ -110,6 +140,26 @@ function ChallengePanel({
       selected_pitch: pitch,
       status: "accepted",
     });
+
+    // Final double-booking check: pitch slot may have been taken since panel opened
+    if (pitch?.id) {
+      const { data: slotConflict } = await supabase
+        .from("pitch_bookings")
+        .select("id")
+        .eq("pitch_id", pitch.id)
+        .eq("match_date", post.match_date)
+        .eq("start_time", post.match_time)
+        .neq("status", "cancelled")
+        .maybeSingle();
+
+      if (slotConflict) {
+        setPitchAvail((prev) => ({ ...prev, [pitch.id]: false }));
+        setSelectedPitch(null);
+        setSaving(false);
+        setSlotTakenError(`${pitch.name} was just booked by another team. Select a different pitch option.`);
+        return;
+      }
+    }
 
     // Create a pitch_bookings row so the venue portal calendar shows this booking
     if (pitch?.id) {
@@ -180,6 +230,21 @@ function ChallengePanel({
   };
 
   const confirmedPitch = post.pitchOptions.find((p) => p.id === selectedPitch);
+
+  if (allPitchesTaken) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center mx-auto mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </div>
+          <p className="text-lg font-bold mb-1">No Pitches Available</p>
+          <p className="text-sm text-text-secondary mb-5">All pitch options for this match have been booked. The posting team needs to update their pitch selection before this match can be challenged.</p>
+          <button onClick={onClose} className="w-full py-3 rounded-xl bg-surface-2 border border-border text-text-primary font-bold text-sm">Back to Matches</button>
+        </div>
+      </div>
+    );
+  }
 
   if (alreadyTaken) {
     return (
@@ -253,26 +318,52 @@ function ChallengePanel({
 
           <p className="text-sm font-semibold mb-2">Select a pitch</p>
           <p className="text-xs text-text-secondary mb-3">
-            Choose from the posting team&apos;s preferred pitches. If their first choice has no slots, the backup applies automatically.
+            Choose from the posting team&apos;s preferred pitches for {post.date}.
           </p>
 
-          <div className="space-y-2 mb-4">
-            {post.pitchOptions.map((pitch, i) => (
-              <button key={pitch.id} onClick={() => setSelectedPitch(pitch.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${selectedPitch === pitch.id ? "bg-accent/10 border-accent/60" : "bg-surface-2 border-border"}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${selectedPitch === pitch.id ? "bg-accent text-black" : "bg-background text-text-secondary"}`}>
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{pitch.name}</p>
-                  <p className="text-xs text-text-secondary">{pitch.format} · £{pitch.price}/hr · {pitch.distance}</p>
-                </div>
-                {i === 0
-                  ? <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>
-                  : <span className="text-[10px] text-text-secondary flex-shrink-0">Backup {i}</span>}
-              </button>
-            ))}
-          </div>
+          {slotTakenError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5 mb-3">
+              <p className="text-xs text-red-400">{slotTakenError}</p>
+            </div>
+          )}
+
+          {checkingAvail ? (
+            <div className="flex items-center justify-center gap-2 py-6 mb-4 bg-surface-2 border border-border rounded-xl">
+              <div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+              <span className="text-xs text-text-secondary">Checking availability…</span>
+            </div>
+          ) : (
+            <div className="space-y-2 mb-4">
+              {post.pitchOptions.map((pitch, i) => {
+                const isBooked = pitchAvail[pitch.id] === false;
+                return (
+                  <button key={pitch.id}
+                    disabled={isBooked}
+                    onClick={() => { if (!isBooked) { setSelectedPitch(pitch.id); setSlotTakenError(null); } }}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
+                      isBooked ? "bg-surface-2 border-border opacity-50 cursor-not-allowed" :
+                      selectedPitch === pitch.id ? "bg-accent/10 border-accent/60" : "bg-surface-2 border-border"
+                    }`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                      isBooked ? "bg-background text-text-secondary" :
+                      selectedPitch === pitch.id ? "bg-accent text-black" : "bg-background text-text-secondary"
+                    }`}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-semibold truncate ${isBooked ? "line-through text-text-secondary" : ""}`}>{pitch.name}</p>
+                      <p className="text-xs text-text-secondary">{pitch.format} · £{pitch.price}/hr · {pitch.distance}</p>
+                    </div>
+                    {isBooked
+                      ? <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Taken</span>
+                      : i === 0
+                      ? <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>
+                      : <span className="text-[10px] text-text-secondary flex-shrink-0">Backup {i}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {selectedPitch && (
             <div className="bg-surface-2 border border-border rounded-xl p-3 text-xs text-text-secondary">
@@ -287,7 +378,7 @@ function ChallengePanel({
 
         <div className="px-5 pb-6 pt-3 flex-shrink-0 border-t border-border bg-[#141414]">
           <button
-            disabled={!selectedPitch || saving}
+            disabled={!selectedPitch || saving || checkingAvail}
             onClick={handleConfirm}
             className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >

@@ -105,6 +105,26 @@ export default function CreateMatchPage() {
     setManualDates((prev) => prev.map((d) => d.id === id ? { ...d, [field]: value } : d));
   };
 
+  const handleSelectPitch = () => {
+    let slots: { matchDate: string; time: string; dayName: string }[] = [];
+    if (availabilityRequest && selectedPollDates.length > 0) {
+      slots = availabilityRequest.date_options
+        .filter((o) => selectedPollDates.includes(o.id))
+        .map((o) => ({ matchDate: o.date, time: o.time, dayName: o.dayName }));
+    } else if (confirmedDates.length > 0) {
+      slots = confirmedDates.map((d) => ({ matchDate: d.date, time: d.time, dayName: d.dayName }));
+    } else {
+      const filled = manualDates.filter((d) => d.date && d.time);
+      slots = filled.map((d) => ({
+        matchDate: formatISODate(d.date),
+        time: d.time,
+        dayName: getDayName(d.date),
+      }));
+    }
+    localStorage.setItem("unitr_posting_slots", JSON.stringify(slots));
+    router.push("/pitches?mode=select");
+  };
+
   const removePitchOption = (id: string) => {
     setPitchOptions((prev) => {
       const updated = prev.filter((p) => p.id !== id);
@@ -160,6 +180,7 @@ export default function CreateMatchPage() {
     if (insertError) { setError(insertError.message); return; }
     localStorage.removeItem("unitr_confirmed_dates");
     localStorage.removeItem("unitr_pitch_options");
+    localStorage.removeItem("unitr_posting_slots");
     router.push("/play");
   };
 
@@ -333,11 +354,11 @@ export default function CreateMatchPage() {
           )}
 
           {pitchOptions.length < 3 && (
-            <a href="/pitches?mode=select"
+            <button onClick={handleSelectPitch}
               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-border text-sm text-text-secondary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
               Add Pitch Option
-            </a>
+            </button>
           )}
         </section>
 

@@ -65,7 +65,7 @@ export default function RegisterPitchPage() {
     });
 
     setSubmitting(false);
-    if (dbErr) { setError("Failed to submit. Please try again."); return; }
+    if (dbErr) { setError(dbErr.message || "Failed to submit. Please try again."); return; }
     setSubmitted(true);
   };
 

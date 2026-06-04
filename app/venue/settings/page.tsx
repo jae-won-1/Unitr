@@ -806,10 +806,10 @@ export default function VenueSettingsPage() {
       {activeTab === "info" && (
         <InfoTab form={form} setForm={setForm} saving={saving} saved={saved} onSave={handleSaveInfo} error={error} />
       )}
-      {activeTab === "pitches" && (
+      {activeTab === "pitches" && user && (
         <PitchesTab
           pitches={allPitches}
-          venueOwnerId={user!.id}
+          venueOwnerId={user.id}
           primaryPitchAddress={form.address}
           primaryPitchContact={form.contact_email}
           onPitchesChange={setAllPitches}

@@ -28,6 +28,13 @@ type Pitch = {
   is_verified: boolean;
 };
 
+type PostingSlot = { matchDate: string; time: string; dayName: string };
+type SlotStatus = "available" | "booked" | "closed";
+
+const DAY_MAP: Record<string, number> = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6,
+};
+
 const rankLabels = ["1st choice", "2nd choice", "3rd choice"];
 const FALLBACK_SLOTS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 
@@ -228,10 +235,15 @@ function PitchesContent() {
   const [pickedPitches, setPickedPitches] = useState<Pitch[]>([]);
   const [teamCredits, setTeamCredits] = useState<number | null>(null);
   const [paymentMode, setPaymentMode] = useState<string | null>(null);
+  const [postingSlots, setPostingSlots] = useState<PostingSlot[]>([]);
+  const [pitchSlotMap, setPitchSlotMap] = useState<Record<string, SlotStatus[]>>({});
+  const [checkingSlots, setCheckingSlots] = useState(false);
 
-  // Fetch pitches from DB
+  // Fetch pitches from DB — only real registered pitches (exclude seeded dummy data)
   useEffect(() => {
-    supabase.from("pitches").select("*").order("rating", { ascending: false })
+    supabase.from("pitches").select("*")
+      .not("venue_owner_id", "is", null)
+      .order("rating", { ascending: false })
       .then(({ data }) => { setPitches((data ?? []) as Pitch[]); setLoading(false); });
   }, []);
 
@@ -250,6 +262,51 @@ function PitchesContent() {
     loadCredits();
   }, [selectMode, user]);
 
+  // Load captain's posting slots (for availability display in select mode)
+  useEffect(() => {
+    if (!selectMode) return;
+    const saved = localStorage.getItem("unitr_posting_slots");
+    if (saved) setPostingSlots(JSON.parse(saved));
+  }, [selectMode]);
+
+  // Check pitch availability against the captain's posting slots
+  useEffect(() => {
+    if (!selectMode || pitches.length === 0 || postingSlots.length === 0) return;
+    setCheckingSlots(true);
+
+    const pitchIds = pitches.map((p) => p.id);
+    const daysNeeded = Array.from(new Set(postingSlots.map((s) => DAY_MAP[s.dayName]).filter((d) => d !== undefined)));
+    const matchDates = Array.from(new Set(postingSlots.map((s) => s.matchDate)));
+
+    Promise.all([
+      supabase.from("pitch_availability")
+        .select("pitch_id, day_of_week, open_time, close_time, is_active")
+        .in("pitch_id", pitchIds)
+        .in("day_of_week", daysNeeded),
+      supabase.from("pitch_bookings")
+        .select("pitch_id, match_date, start_time")
+        .in("pitch_id", pitchIds)
+        .in("match_date", matchDates)
+        .neq("status", "cancelled"),
+    ]).then(([{ data: avails }, { data: bookings }]) => {
+      const map: Record<string, SlotStatus[]> = {};
+      for (const pitch of pitches) {
+        map[pitch.id] = postingSlots.map((slot) => {
+          const dow = DAY_MAP[slot.dayName];
+          const avail = avails?.find((a) => a.pitch_id === pitch.id && a.day_of_week === dow);
+          if (!avail || !avail.is_active) return "closed";
+          if (slot.time < avail.open_time || slot.time >= avail.close_time) return "closed";
+          const isBooked = bookings?.some(
+            (b) => b.pitch_id === pitch.id && b.match_date === slot.matchDate && b.start_time === slot.time
+          );
+          return isBooked ? "booked" : "available";
+        });
+      }
+      setPitchSlotMap(map);
+      setCheckingSlots(false);
+    });
+  }, [selectMode, pitches, postingSlots]);
+
   // Restore existing pitch selections
   useEffect(() => {
     if (!selectMode || pitches.length === 0) return;
@@ -267,8 +324,13 @@ function PitchesContent() {
   const isAffordable = (pitch: Pitch) =>
     paymentMode !== "credit" || teamCredits === null || pitch.price_per_hour <= teamCredits;
 
+  const isAllSlotsTaken = (pitch: Pitch) => {
+    const statuses = pitchSlotMap[pitch.id];
+    return !checkingSlots && statuses !== undefined && statuses.length > 0 && statuses.every((s) => s !== "available");
+  };
+
   const togglePitch = (pitch: Pitch) => {
-    if (!isAffordable(pitch)) return;
+    if (!isAffordable(pitch) || isAllSlotsTaken(pitch)) return;
     setPickedPitches((prev) => {
       if (prev.find((p) => p.id === pitch.id)) return prev.filter((p) => p.id !== pitch.id);
       if (prev.length >= 3) return prev;
@@ -413,6 +475,41 @@ function PitchesContent() {
                       <p className="text-xs text-text-secondary mb-3">
                         ≈ <span className="font-semibold text-accent">£{(pitch.price_per_hour / 22 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
                       </p>
+
+                      {/* Slot availability for captain's posting dates */}
+                      {selectMode && postingSlots.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Your Match Dates</p>
+                          {checkingSlots ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-3 h-3 rounded-full border border-accent border-t-transparent animate-spin" />
+                              <span className="text-[10px] text-text-secondary">Checking availability…</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5">
+                              {postingSlots.map((slot, i) => {
+                                const status = pitchSlotMap[pitch.id]?.[i];
+                                return (
+                                  <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border ${
+                                    status === "available" ? "bg-accent/10 text-accent border-accent/20" :
+                                    status === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                                    "bg-surface text-text-secondary border-border opacity-60"
+                                  }`}>
+                                    {status === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                                    {status === "booked" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
+                                    {slot.dayName.slice(0, 3)} {slot.time}
+                                    {status === "booked" ? " · Taken" : status === "closed" ? " · Closed" : ""}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {!checkingSlots && isAllSlotsTaken(pitch) && (
+                            <p className="text-[10px] text-red-400 mt-1.5">All your slots are taken at this pitch.</p>
+                          )}
+                        </div>
+                      )}
+
                       {selectMode ? (
                         <>
                           {!isAffordable(pitch) && (
@@ -425,9 +522,9 @@ function PitchesContent() {
                           )}
                           <button
                             onClick={() => togglePitch(pitch)}
-                            disabled={!isAffordable(pitch) || (!isPicked && pickedPitches.length >= 3)}
-                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isPicked ? "bg-accent/20 text-accent border border-accent/40" : "bg-accent text-black"}`}>
-                            {isPicked ? `✓ ${rankLabels[pickIndex]} — tap to remove` : "Add as Option"}
+                            disabled={!isAffordable(pitch) || isAllSlotsTaken(pitch) || (!isPicked && pickedPitches.length >= 3)}
+                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isPicked ? "bg-accent/20 text-accent border border-accent/40" : isAllSlotsTaken(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-accent text-black"}`}>
+                            {isPicked ? `✓ ${rankLabels[pickIndex]} — tap to remove` : isAllSlotsTaken(pitch) ? "No slots available" : "Add as Option"}
                           </button>
                         </>
                       ) : (
