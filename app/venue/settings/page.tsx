@@ -45,7 +45,7 @@ function PitchSelector({ pitches, selectedId, onChange }: {
 // ── Info Tab ──────────────────────────────────────────────────
 function InfoTab({ form, setForm, saving, onSave, error, saved }: {
   form: {
-    name: string; address: string; lat: string; lng: string;
+    name: string; address: string;
     price_per_hour: string; capacity: string; contact_email: string; description: string;
     formats: string[]; surfaces: string[]; amenities: string[];
   };
@@ -75,20 +75,6 @@ function InfoTab({ form, setForm, saving, onSave, error, saved }: {
           <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
             placeholder="Tell teams what makes your pitch great…"
             className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary resize-none" />
-        </div>
-      </div>
-
-      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Map Location</p>
-        <div className="grid grid-cols-2 gap-3">
-          {(["lat", "lng"] as const).map((k) => (
-            <div key={k} className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">{k === "lat" ? "Latitude" : "Longitude"}</label>
-              <input value={form[k]} onChange={(e) => set(k, e.target.value)}
-                placeholder={k === "lat" ? "51.5432" : "-0.0432"}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
-          ))}
         </div>
       </div>
 
@@ -181,13 +167,11 @@ function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
   );
 }
 
-function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchContact, primaryPitchLat, primaryPitchLng, onPitchesChange }: {
+function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchContact, onPitchesChange }: {
   pitches: PitchItem[];
   venueOwnerId: string;
   primaryPitchAddress: string;
   primaryPitchContact: string;
-  primaryPitchLat: string;
-  primaryPitchLng: string;
   onPitchesChange: (pitches: PitchItem[]) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -206,8 +190,6 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
       venue_owner_id: venueOwnerId,
       name: addForm.name.trim(),
       address: primaryPitchAddress || "—",
-      lat: parseFloat(primaryPitchLat) || 0,
-      lng: parseFloat(primaryPitchLng) || 0,
       contact_email: primaryPitchContact,
       price_per_hour: parseFloat(addForm.price) || 0,
       capacity: addForm.capacity ? parseInt(addForm.capacity) : null,
@@ -705,7 +687,7 @@ export default function VenueSettingsPage() {
   const [selectedPitchId, setSelectedPitchId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("info");
   const [form, setForm] = useState({
-    name: "", address: "", lat: "", lng: "",
+    name: "", address: "",
     price_per_hour: "", capacity: "", contact_email: "", description: "",
     formats: [] as string[], surfaces: [] as string[], amenities: [] as string[],
   });
@@ -727,7 +709,6 @@ export default function VenueSettingsPage() {
           setSelectedPitchId(primary.id);
           setForm({
             name: primary.name ?? "", address: primary.address ?? "",
-            lat: String(primary.lat ?? ""), lng: String(primary.lng ?? ""),
             price_per_hour: String(primary.price_per_hour ?? ""),
             capacity: String(primary.capacity ?? ""),
             contact_email: primary.contact_email ?? "",
@@ -746,7 +727,6 @@ export default function VenueSettingsPage() {
     setSaving(true); setError(null);
     const { error: dbErr } = await supabase.from("pitches").update({
       name: form.name, address: form.address,
-      lat: parseFloat(form.lat) || null, lng: parseFloat(form.lng) || null,
       contact_email: form.contact_email, description: form.description || null,
       amenities: form.amenities,
     }).eq("id", primaryId);
@@ -809,8 +789,6 @@ export default function VenueSettingsPage() {
           venueOwnerId={user!.id}
           primaryPitchAddress={form.address}
           primaryPitchContact={form.contact_email}
-          primaryPitchLat={form.lat}
-          primaryPitchLng={form.lng}
           onPitchesChange={setAllPitches}
         />
       )}

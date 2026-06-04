@@ -18,8 +18,8 @@ type Pitch = {
   id: string;
   name: string;
   address: string;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   price_per_hour: number;
   formats: string[];
   surfaces: string[];

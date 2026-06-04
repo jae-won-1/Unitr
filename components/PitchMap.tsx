@@ -16,8 +16,8 @@ type Pitch = {
   id: string;
   name: string;
   address: string;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   price_per_hour: number;
   formats: string[];
   surfaces: string[];
@@ -42,8 +42,9 @@ function makeIcon(label: string, picked: boolean, rank: number | null, unafforda
 function FitBounds({ pitches }: { pitches: Pitch[] }) {
   const map = useMap();
   useEffect(() => {
-    if (pitches.length === 0) return;
-    const bounds = L.latLngBounds(pitches.map((p) => [p.lat, p.lng]));
+    const mapped = pitches.filter((p) => p.lat != null && p.lng != null);
+    if (mapped.length === 0) return;
+    const bounds = L.latLngBounds(mapped.map((p) => [p.lat!, p.lng!]));
     map.fitBounds(bounds, { padding: [40, 40] });
   }, [pitches, map]);
   return null;
@@ -76,14 +77,14 @@ export default function PitchMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <FitBounds pitches={pitches} />
-      {pitches.map((pitch) => {
+      {pitches.filter((p) => p.lat != null && p.lng != null).map((pitch) => {
         const rankIdx = pickedPitches.findIndex((p) => p.id === pitch.id);
         const isPicked = rankIdx !== -1;
         const unaffordable = unaffordableIds.has(pitch.id);
         return (
           <Marker
             key={pitch.id}
-            position={[pitch.lat, pitch.lng]}
+            position={[pitch.lat!, pitch.lng!]}
             icon={makeIcon(pitch.name, isPicked, isPicked ? rankIdx : null, unaffordable)}
             eventHandlers={{ click: () => onSelect(pitch) }}
           >

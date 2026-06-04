@@ -3,8 +3,6 @@ create table public.pitches (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   address text not null,
-  lat double precision not null,
-  lng double precision not null,
   price_per_hour integer not null,
   formats text[] not null default '{}',
   surfaces text[] not null default '{}',

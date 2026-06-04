@@ -11,8 +11,6 @@ const AMENITY_OPTIONS = ["Changing Rooms", "Showers", "Parking", "Floodlights", 
 type FormState = {
   name: string;
   address: string;
-  lat: string;
-  lng: string;
   price_per_hour: string;
   capacity: string;
   contact_email: string;
@@ -29,7 +27,7 @@ function toggle(arr: string[], val: string) {
 export default function RegisterPitchPage() {
   const { user } = useAuth();
   const [form, setForm] = useState<FormState>({
-    name: "", address: "", lat: "", lng: "",
+    name: "", address: "",
     price_per_hour: "", capacity: "",
     contact_email: "", description: "",
     formats: [], surfaces: [], amenities: [],
@@ -42,13 +40,10 @@ export default function RegisterPitchPage() {
     setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async () => {
-    if (!form.name || !form.address || !form.lat || !form.lng || !form.price_per_hour || !form.contact_email) {
+    if (!form.name || !form.address || !form.price_per_hour || !form.contact_email) {
       setError("Please fill in all required fields.");
       return;
     }
-    const lat = parseFloat(form.lat);
-    const lng = parseFloat(form.lng);
-    if (isNaN(lat) || isNaN(lng)) { setError("Latitude and longitude must be valid numbers."); return; }
     if (form.formats.length === 0) { setError("Select at least one format."); return; }
 
     setSubmitting(true);
@@ -57,8 +52,6 @@ export default function RegisterPitchPage() {
     const { error: dbErr } = await supabase.from("pitches").insert({
       name: form.name,
       address: form.address,
-      lat,
-      lng,
       price_per_hour: parseFloat(form.price_per_hour),
       capacity: form.capacity ? parseInt(form.capacity) : null,
       contact_email: form.contact_email,
@@ -134,32 +127,6 @@ export default function RegisterPitchPage() {
             <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)}
               placeholder="Tell teams what makes your pitch great…"
               className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary resize-none" />
-          </div>
-        </div>
-
-        {/* Location */}
-        <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Location Coordinates</p>
-          </div>
-          <p className="text-xs text-text-secondary -mt-2">
-            Find your coordinates on{" "}
-            <span className="text-accent">Google Maps</span>
-            {" "}→ right-click your pitch → copy the lat/lng numbers shown.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Latitude <span className="text-red-400">*</span></label>
-              <input value={form.lat} onChange={(e) => set("lat", e.target.value)}
-                placeholder="51.5432"
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Longitude <span className="text-red-400">*</span></label>
-              <input value={form.lng} onChange={(e) => set("lng", e.target.value)}
-                placeholder="-0.0432"
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
           </div>
         </div>
 
