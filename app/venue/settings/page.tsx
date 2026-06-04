@@ -9,7 +9,8 @@ import { supabase } from "@/lib/supabase";
 type DaySchedule = { day_of_week: number; open_time: string; close_time: string; is_active: boolean };
 type Block = { id: string; block_date: string; start_time: string | null; end_time: string | null; reason: string | null };
 type PricingRule = { id: string; name: string; days: number[]; start_time: string; end_time: string; price: number };
-type SettingsTab = "info" | "schedule" | "pricing" | "holidays";
+type SettingsTab = "info" | "pitches" | "schedule" | "pricing" | "holidays";
+type PitchItem = { id: string; name: string; price_per_hour: number; formats: string[]; surfaces: string[]; capacity: number | null };
 
 const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "11-a-side"];
 const SURFACE_OPTIONS = ["Natural Grass", "Artificial Grass (3G)", "Artificial Grass (4G)", "Indoor", "Concrete"];
@@ -22,6 +23,23 @@ function toggle(arr: string[], val: string) {
 }
 function toggleNum(arr: number[], val: number) {
   return arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
+}
+
+// ── Pitch Selector ────────────────────────────────────────────
+function PitchSelector({ pitches, selectedId, onChange }: {
+  pitches: PitchItem[]; selectedId: string; onChange: (id: string) => void;
+}) {
+  if (pitches.length <= 1) return null;
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {pitches.map((p) => (
+        <button key={p.id} onClick={() => onChange(p.id)}
+          className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${selectedId === p.id ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+          {p.name}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ── Info Tab ──────────────────────────────────────────────────
@@ -75,33 +93,17 @@ function InfoTab({ form, setForm, saving, onSave, error, saved }: {
       </div>
 
       <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Capacity</p>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium">Max Players</label>
-          <input type="number" value={form.capacity} onChange={(e) => set("capacity", e.target.value)}
-            placeholder="22"
-            className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Amenities</p>
+        <div className="flex flex-wrap gap-2">
+          {AMENITY_OPTIONS.map((o) => (
+            <button key={o}
+              onClick={() => setForm((f) => ({ ...f, amenities: toggle(f.amenities, o) }))}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.amenities.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              {o}
+            </button>
+          ))}
         </div>
       </div>
-
-      {[
-        { label: "Match Formats", key: "formats" as const, options: FORMAT_OPTIONS },
-        { label: "Surfaces", key: "surfaces" as const, options: SURFACE_OPTIONS },
-        { label: "Amenities", key: "amenities" as const, options: AMENITY_OPTIONS },
-      ].map(({ label, key, options }) => (
-        <div key={key} className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{label}</p>
-          <div className="flex flex-wrap gap-2">
-            {options.map((o) => (
-              <button key={o}
-                onClick={() => setForm((f) => ({ ...f, [key]: toggle(f[key] as string[], o) }))}
-                className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${(form[key] as string[]).includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
-                {o}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
@@ -117,8 +119,206 @@ function InfoTab({ form, setForm, saving, onSave, error, saved }: {
   );
 }
 
+// ── Pitches Tab ───────────────────────────────────────────────
+function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
+  form: { name: string; price: string; capacity: string; formats: string[]; surfaces: string[] };
+  setForm: React.Dispatch<React.SetStateAction<typeof form>>;
+  label: string; saving: boolean; onSave: () => void; onCancel: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium">Pitch Name</label>
+        <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="e.g. Pitch A – 5-a-side" autoFocus
+          className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium">Price / hr (£)</label>
+          <input type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+            placeholder="80"
+            className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium">Max players</label>
+          <input type="number" value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
+            placeholder="22"
+            className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium">Match Formats</label>
+        <div className="flex flex-wrap gap-2">
+          {FORMAT_OPTIONS.map((o) => (
+            <button key={o} onClick={() => setForm((f) => ({ ...f, formats: toggle(f.formats, o) }))}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.formats.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium">Surface</label>
+        <div className="flex flex-wrap gap-2">
+          {SURFACE_OPTIONS.map((o) => (
+            <button key={o} onClick={() => setForm((f) => ({ ...f, surfaces: toggle(f.surfaces, o) }))}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.surfaces.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onCancel}
+          className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
+        <button onClick={onSave} disabled={saving || !form.name.trim()}
+          className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+          {saving ? "Saving…" : label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchContact, onPitchesChange }: {
+  pitches: PitchItem[];
+  venueOwnerId: string;
+  primaryPitchAddress: string;
+  primaryPitchContact: string;
+  onPitchesChange: (pitches: PitchItem[]) => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ name: "", price: "", capacity: "", formats: [] as string[], surfaces: [] as string[] });
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", price: "", capacity: "", formats: [] as string[], surfaces: [] as string[] });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleAdd = async () => {
+    if (!addForm.name.trim()) { setAddError("Pitch name is required."); return; }
+    setAddSaving(true); setAddError(null);
+    const { data, error: dbErr } = await supabase.from("pitches").insert({
+      venue_owner_id: venueOwnerId,
+      name: addForm.name.trim(),
+      address: primaryPitchAddress,
+      contact_email: primaryPitchContact,
+      price_per_hour: parseFloat(addForm.price) || 0,
+      capacity: addForm.capacity ? parseInt(addForm.capacity) : null,
+      formats: addForm.formats,
+      surfaces: addForm.surfaces,
+    }).select("id, name, price_per_hour, formats, surfaces, capacity").single();
+    setAddSaving(false);
+    if (dbErr || !data) { setAddError("Failed to add pitch. Please try again."); return; }
+    onPitchesChange([...pitches, data as PitchItem]);
+    setAddForm({ name: "", price: "", capacity: "", formats: [], surfaces: [] });
+    setShowAdd(false);
+  };
+
+  const startEdit = (p: PitchItem) => {
+    setEditingId(p.id);
+    setEditForm({ name: p.name, price: String(p.price_per_hour), capacity: String(p.capacity ?? ""), formats: p.formats, surfaces: p.surfaces });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    setEditSaving(true);
+    await supabase.from("pitches").update({
+      name: editForm.name.trim(),
+      price_per_hour: parseFloat(editForm.price) || 0,
+      capacity: editForm.capacity ? parseInt(editForm.capacity) : null,
+      formats: editForm.formats,
+      surfaces: editForm.surfaces,
+    }).eq("id", editingId);
+    setEditSaving(false);
+    onPitchesChange(pitches.map((p) => p.id === editingId ? {
+      ...p,
+      name: editForm.name.trim(),
+      price_per_hour: parseFloat(editForm.price) || 0,
+      capacity: editForm.capacity ? parseInt(editForm.capacity) : null,
+      formats: editForm.formats,
+      surfaces: editForm.surfaces,
+    } : p));
+    setEditingId(null);
+  };
+
+  const handleRemove = async (id: string) => {
+    if (pitches.length <= 1) return;
+    await supabase.from("pitches").delete().eq("id", id);
+    onPitchesChange(pitches.filter((p) => p.id !== id));
+  };
+
+  return (
+    <div className="space-y-4 pb-8">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-secondary">Manage individual pitches at your venue. Each pitch can have its own size, surface, and pricing.</p>
+        <button onClick={() => { setShowAdd(true); setAddError(null); }}
+          className="flex-shrink-0 flex items-center gap-1 text-xs text-accent font-semibold ml-3">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {pitches.map((p, i) => (
+          <div key={p.id} className="bg-surface-2 border border-border rounded-2xl p-4">
+            {editingId === p.id ? (
+              <PitchEditForm
+                form={editForm} setForm={setEditForm}
+                label="Save Changes" saving={editSaving}
+                onSave={handleSaveEdit} onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm">{p.name}</p>
+                    {i === 0 && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-accent/10 text-accent flex-shrink-0">Primary</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    £{p.price_per_hour}/hr{p.capacity ? ` · ${p.capacity} players max` : ""}
+                    {p.formats.length > 0 ? ` · ${p.formats.join(", ")}` : ""}
+                  </p>
+                  {p.surfaces.length > 0 && (
+                    <p className="text-xs text-text-secondary">{p.surfaces.join(", ")}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <button onClick={() => startEdit(p)} className="text-xs text-accent font-medium">Edit</button>
+                  {pitches.length > 1 && (
+                    <button onClick={() => handleRemove(p.id)} className="text-xs text-red-400 font-medium">Remove</button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add pitch modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <p className="font-bold mb-4">Add Pitch</p>
+            {addError && <p className="text-xs text-red-400 mb-3">{addError}</p>}
+            <PitchEditForm
+              form={addForm} setForm={setAddForm}
+              label="Add Pitch" saving={addSaving}
+              onSave={handleAdd} onCancel={() => { setShowAdd(false); setAddError(null); }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Schedule Tab ──────────────────────────────────────────────
-function ScheduleTab({ pitchId }: { pitchId: string }) {
+function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]; pitchId: string; onPitchChange: (id: string) => void }) {
   const [schedule, setSchedule] = useState<DaySchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -126,6 +326,7 @@ function ScheduleTab({ pitchId }: { pitchId: string }) {
   const [editingDay, setEditingDay] = useState<number | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     supabase.from("pitch_availability").select("*").eq("pitch_id", pitchId).order("day_of_week")
       .then(({ data }) => {
         if (data && data.length > 0) {
@@ -160,6 +361,7 @@ function ScheduleTab({ pitchId }: { pitchId: string }) {
 
   return (
     <div className="space-y-3 pb-8">
+      <PitchSelector pitches={pitches} selectedId={pitchId} onChange={onPitchChange} />
       <p className="text-xs text-text-secondary">Set opening hours for each day. Toggle off to mark as closed.</p>
       {schedule.map((d) => (
         <div key={d.day_of_week}
@@ -210,8 +412,8 @@ function ScheduleTab({ pitchId }: { pitchId: string }) {
 }
 
 // ── Pricing Tab ───────────────────────────────────────────────
-function PricingTab({ pitchId, basePrice, onBasePriceChange }: {
-  pitchId: string; basePrice: string; onBasePriceChange: (v: string) => void;
+function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchChange }: {
+  pitches: PitchItem[]; pitchId: string; basePrice: string; onBasePriceChange: (v: string) => void; onPitchChange: (id: string) => void;
 }) {
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,20 +424,29 @@ function PricingTab({ pitchId, basePrice, onBasePriceChange }: {
     name: "", days: [], start_time: "18:00", end_time: "22:00", price: 0,
   });
 
+  // Load pricing for the selected pitch
+  const selectedPitch = pitches.find((p) => p.id === pitchId);
+  const [localBasePrice, setLocalBasePrice] = useState(String(selectedPitch?.price_per_hour ?? ""));
+
   useEffect(() => {
+    setLoading(true);
+    const p = pitches.find((x) => x.id === pitchId);
+    setLocalBasePrice(String(p?.price_per_hour ?? ""));
     supabase.from("pitches").select("pricing_rules").eq("id", pitchId).maybeSingle()
       .then(({ data }) => {
         if (data?.pricing_rules) setRules(data.pricing_rules as PricingRule[]);
+        else setRules([]);
         setLoading(false);
       });
-  }, [pitchId]);
+  }, [pitchId, pitches]);
 
   const handleSave = async () => {
     setSaving(true);
     await supabase.from("pitches").update({
-      price_per_hour: parseFloat(basePrice) || 0,
+      price_per_hour: parseFloat(localBasePrice) || 0,
       pricing_rules: rules,
     }).eq("id", pitchId);
+    onBasePriceChange(localBasePrice);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -252,12 +463,14 @@ function PricingTab({ pitchId, basePrice, onBasePriceChange }: {
 
   return (
     <div className="space-y-5 pb-8">
+      <PitchSelector pitches={pitches} selectedId={pitchId} onChange={onPitchChange} />
+
       <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Base Price</p>
         <p className="text-xs text-text-secondary">Default rate. Rules below override this for specific times.</p>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-text-secondary">£</span>
-          <input type="number" value={basePrice} onChange={(e) => onBasePriceChange(e.target.value)}
+          <input type="number" value={localBasePrice} onChange={(e) => setLocalBasePrice(e.target.value)}
             placeholder="80"
             className="flex-1 bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
           <span className="text-sm text-text-secondary">/ hr</span>
@@ -354,7 +567,7 @@ function PricingTab({ pitchId, basePrice, onBasePriceChange }: {
 }
 
 // ── Holidays Tab ──────────────────────────────────────────────
-function HolidaysTab({ pitchId }: { pitchId: string }) {
+function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]; pitchId: string; onPitchChange: (id: string) => void }) {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -363,6 +576,7 @@ function HolidaysTab({ pitchId }: { pitchId: string }) {
   });
 
   useEffect(() => {
+    setLoading(true);
     supabase.from("pitch_blocks").select("*").eq("pitch_id", pitchId)
       .order("block_date", { ascending: true })
       .then(({ data }) => { setBlocks((data ?? []) as Block[]); setLoading(false); });
@@ -393,6 +607,8 @@ function HolidaysTab({ pitchId }: { pitchId: string }) {
 
   return (
     <div className="space-y-4 pb-8">
+      <PitchSelector pitches={pitches} selectedId={pitchId} onChange={onPitchChange} />
+
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs text-text-secondary">Block specific dates for maintenance, holidays, or private events.</p>
         <button onClick={() => setShowAdd(true)}
@@ -481,7 +697,8 @@ function HolidaysTab({ pitchId }: { pitchId: string }) {
 export default function VenueSettingsPage() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [pitchId, setPitchId] = useState<string | null>(null);
+  const [allPitches, setAllPitches] = useState<PitchItem[]>([]);
+  const [selectedPitchId, setSelectedPitchId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("info");
   const [form, setForm] = useState({
     name: "", address: "", lat: "", lng: "",
@@ -495,18 +712,23 @@ export default function VenueSettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("pitches").select("*").eq("venue_owner_id", user.id).maybeSingle()
-      .then(({ data: p }) => {
-        if (p) {
-          setPitchId(p.id);
+    supabase.from("pitches").select("*").eq("venue_owner_id", user.id).order("created_at", { ascending: true })
+      .then(({ data: ps }) => {
+        if (ps && ps.length > 0) {
+          const primary = ps[0];
+          setAllPitches(ps.map((p) => ({
+            id: p.id, name: p.name ?? "", price_per_hour: p.price_per_hour ?? 0,
+            formats: p.formats ?? [], surfaces: p.surfaces ?? [], capacity: p.capacity ?? null,
+          })));
+          setSelectedPitchId(primary.id);
           setForm({
-            name: p.name ?? "", address: p.address ?? "",
-            lat: String(p.lat ?? ""), lng: String(p.lng ?? ""),
-            price_per_hour: String(p.price_per_hour ?? ""),
-            capacity: String(p.capacity ?? ""),
-            contact_email: p.contact_email ?? "",
-            description: p.description ?? "",
-            formats: p.formats ?? [], surfaces: p.surfaces ?? [], amenities: p.amenities ?? [],
+            name: primary.name ?? "", address: primary.address ?? "",
+            lat: String(primary.lat ?? ""), lng: String(primary.lng ?? ""),
+            price_per_hour: String(primary.price_per_hour ?? ""),
+            capacity: String(primary.capacity ?? ""),
+            contact_email: primary.contact_email ?? "",
+            description: primary.description ?? "",
+            formats: primary.formats ?? [], surfaces: primary.surfaces ?? [], amenities: primary.amenities ?? [],
           });
         }
         setLoading(false);
@@ -514,16 +736,21 @@ export default function VenueSettingsPage() {
   }, [user]);
 
   const handleSaveInfo = async () => {
-    if (!pitchId) return;
+    const primaryId = allPitches[0]?.id;
+    if (!primaryId) return;
     if (!form.name || !form.address) { setError("Name and address are required."); return; }
     setSaving(true); setError(null);
     const { error: dbErr } = await supabase.from("pitches").update({
       name: form.name, address: form.address,
       lat: parseFloat(form.lat) || null, lng: parseFloat(form.lng) || null,
-      capacity: form.capacity ? parseInt(form.capacity) : null,
       contact_email: form.contact_email, description: form.description || null,
-      formats: form.formats, surfaces: form.surfaces, amenities: form.amenities,
-    }).eq("id", pitchId);
+      amenities: form.amenities,
+    }).eq("id", primaryId);
+    // Propagate address/contact to all other pitches
+    if (allPitches.length > 1) {
+      await supabase.from("pitches").update({ address: form.address, contact_email: form.contact_email })
+        .in("id", allPitches.slice(1).map((p) => p.id));
+    }
     setSaving(false);
     if (dbErr) { setError("Failed to save."); return; }
     setSaved(true);
@@ -536,15 +763,18 @@ export default function VenueSettingsPage() {
     </div>
   );
 
-  if (!pitchId) return (
+  if (allPitches.length === 0) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-4">
       <p className="font-bold text-lg">No pitch registered</p>
       <a href="/pitches/register" className="px-6 py-3 bg-accent text-black rounded-xl font-bold text-sm">Register Your Pitch</a>
     </div>
   );
 
+  const pitchId = selectedPitchId ?? allPitches[0].id;
+
   const TABS: { key: SettingsTab; label: string }[] = [
     { key: "info", label: "Info" },
+    { key: "pitches", label: "Pitches" },
     { key: "schedule", label: "Schedule" },
     { key: "pricing", label: "Pricing" },
     { key: "holidays", label: "Holidays" },
@@ -554,13 +784,13 @@ export default function VenueSettingsPage() {
     <div className="px-4 pt-5 pb-6 space-y-5">
       <div>
         <h1 className="text-xl font-bold">Settings</h1>
-        <p className="text-xs text-text-secondary mt-0.5">Manage your pitch details, hours, and pricing.</p>
+        <p className="text-xs text-text-secondary mt-0.5">Manage your venue details, pitches, hours, and pricing.</p>
       </div>
 
-      <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-0.5">
+      <div className="flex overflow-x-auto bg-surface-2 border border-border rounded-xl p-1 gap-0.5 flex-shrink-0">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${activeTab === t.key ? "bg-accent text-black" : "text-text-secondary"}`}>
+            className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${activeTab === t.key ? "bg-accent text-black" : "text-text-secondary"}`}>
             {t.label}
           </button>
         ))}
@@ -569,12 +799,30 @@ export default function VenueSettingsPage() {
       {activeTab === "info" && (
         <InfoTab form={form} setForm={setForm} saving={saving} saved={saved} onSave={handleSaveInfo} error={error} />
       )}
-      {activeTab === "schedule" && <ScheduleTab pitchId={pitchId} />}
-      {activeTab === "pricing" && (
-        <PricingTab pitchId={pitchId} basePrice={form.price_per_hour}
-          onBasePriceChange={(v) => setForm((f) => ({ ...f, price_per_hour: v }))} />
+      {activeTab === "pitches" && (
+        <PitchesTab
+          pitches={allPitches}
+          venueOwnerId={user!.id}
+          primaryPitchAddress={form.address}
+          primaryPitchContact={form.contact_email}
+          onPitchesChange={setAllPitches}
+        />
       )}
-      {activeTab === "holidays" && <HolidaysTab pitchId={pitchId} />}
+      {activeTab === "schedule" && (
+        <ScheduleTab pitches={allPitches} pitchId={pitchId} onPitchChange={setSelectedPitchId} />
+      )}
+      {activeTab === "pricing" && (
+        <PricingTab
+          pitches={allPitches}
+          pitchId={pitchId}
+          basePrice={form.price_per_hour}
+          onBasePriceChange={(v) => setForm((f) => ({ ...f, price_per_hour: v }))}
+          onPitchChange={setSelectedPitchId}
+        />
+      )}
+      {activeTab === "holidays" && (
+        <HolidaysTab pitches={allPitches} pitchId={pitchId} onPitchChange={setSelectedPitchId} />
+      )}
 
       <button onClick={async () => { await signOut(); router.push("/"); }}
         className="w-full py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm flex items-center justify-center gap-2">

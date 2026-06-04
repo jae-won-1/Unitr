@@ -8,10 +8,13 @@ type Booking = {
   id: string;
   match_date: string;
   start_time: string;
-  player_count: number;
+  end_time: string | null;
+  total_price_pence: number;
   per_player_pence: number;
-  unitr_fee_pence: number;
+  player_count: number;
   status: string;
+  booking_type: string;
+  payment_status: string;
   booker_name: string;
 };
 
@@ -30,6 +33,18 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function PaymentBadge({ status }: { status: string }) {
+  if (status === "paid") return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent">Paid</span>
+  );
+  if (status === "after_match") return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">Pay after match</span>
+  );
+  return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Unpaid</span>
+  );
+}
+
 export default function VenueBookingsPage() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -39,17 +54,22 @@ export default function VenueBookingsPage() {
   useEffect(() => {
     if (!user) return;
     async function load() {
-      const { data: p } = await supabase.from("pitches").select("id")
-        .eq("venue_owner_id", user!.id).maybeSingle();
-      if (!p) { setLoading(false); return; }
+      const { data: ps } = await supabase.from("pitches").select("id")
+        .eq("venue_owner_id", user!.id);
+      if (!ps || ps.length === 0) { setLoading(false); return; }
 
       const { data: bks } = await supabase.from("pitch_bookings")
-        .select("id, match_date, start_time, player_count, per_player_pence, unitr_fee_pence, status, booked_by")
-        .eq("pitch_id", p.id).order("match_date", { ascending: false });
+        .select("id, match_date, start_time, end_time, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status, booker_name, booked_by")
+        .in("pitch_id", ps.map((p) => p.id)).order("match_date", { ascending: false });
 
+      // Use booker_name from DB if set (manual bookings), otherwise look up profile
       const enriched = await Promise.all((bks ?? []).map(async (b) => {
-        const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
-        return { ...b, booker_name: (prof as { full_name: string } | null)?.full_name ?? "Unknown" } as Booking;
+        let name = b.booker_name;
+        if (!name) {
+          const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
+          name = (prof as { full_name: string } | null)?.full_name ?? "Unknown";
+        }
+        return { ...b, booker_name: name, payment_status: b.payment_status ?? "unpaid" } as Booking;
       }));
       setBookings(enriched);
       setLoading(false);
@@ -62,13 +82,32 @@ export default function VenueBookingsPage() {
     setBookings((b) => b.map((x) => x.id === id ? { ...x, status } : x));
   };
 
+  const updatePaymentStatus = async (id: string, payment_status: string) => {
+    await supabase.from("pitch_bookings").update({ payment_status }).eq("id", id);
+    setBookings((b) => b.map((x) => x.id === id ? { ...x, payment_status } : x));
+  };
+
   const filtered = filter === "All" ? bookings : bookings.filter((b) => b.status === filter.toLowerCase());
 
+  // Group by upcoming vs past using match_date string comparison
+  const today = new Date();
   const grouped: Record<string, Booking[]> = {};
   for (const b of filtered) {
-    const key = b.match_date >= new Date().toISOString().slice(0, 10) ? "Upcoming" : "Past";
+    // match_date is display string like "Fri, 12 Jun 2026" — compare loosely by parsing
+    const isPast = (() => {
+      try {
+        return new Date(b.match_date) < today;
+      } catch { return false; }
+    })();
+    const key = isPast ? "Past" : "Upcoming";
     grouped[key] = grouped[key] ? [...grouped[key], b] : [b];
   }
+
+  const getPrice = (b: Booking) => {
+    if (b.total_price_pence && b.total_price_pence > 0) return b.total_price_pence / 100;
+    if (b.per_player_pence && b.player_count) return (b.per_player_pence * b.player_count) / 100;
+    return 0;
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
@@ -96,34 +135,62 @@ export default function VenueBookingsPage() {
           <p className="text-sm text-text-secondary">No {filter !== "All" ? filter.toLowerCase() : ""} bookings</p>
         </div>
       ) : (
-        Object.entries(grouped).map(([group, items]) => (
+        ["Upcoming", "Past"].filter((g) => grouped[g]?.length).map((group) => (
           <div key={group}>
             <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">{group}</p>
             <div className="space-y-3">
-              {items.map((b) => {
-                const pitchRevenue = (b.per_player_pence * b.player_count) / 100;
-                const isFuture = b.match_date >= new Date().toISOString().slice(0, 10);
+              {grouped[group].map((b) => {
+                const price = getPrice(b);
+                const endTime = b.end_time ?? "";
                 return (
-                  <div key={b.id} className="bg-surface-2 border border-border rounded-2xl p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-semibold text-sm">{b.booker_name}</p>
+                  <div key={b.id} className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="font-semibold text-sm truncate">{b.booker_name}</p>
                         <p className="text-xs text-text-secondary mt-0.5">
-                          {new Date(b.match_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · {b.start_time}
+                          {b.match_date} · {b.start_time}{endTime ? `–${endTime}` : ""}
                         </p>
+                        {b.booking_type === "manual" && (
+                          <span className="text-[10px] text-text-secondary italic">External booking</span>
+                        )}
                       </div>
                       <StatusBadge status={b.status} />
                     </div>
-                    <div className="flex items-center justify-between text-xs mb-3">
-                      <span className="text-text-secondary">{b.player_count} players</span>
-                      <span className="font-bold text-accent">£{pitchRevenue.toFixed(2)}</span>
+
+                    {/* Price + payment status */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PaymentBadge status={b.payment_status} />
+                      </div>
+                      {price > 0 && (
+                        <span className="text-sm font-bold text-accent">£{price.toFixed(2)}</span>
+                      )}
                     </div>
-                    {isFuture && b.status !== "cancelled" && (
+
+                    {/* Payment status controls */}
+                    {b.status !== "cancelled" && b.payment_status !== "paid" && (
+                      <div className="flex gap-2">
+                        <button onClick={() => updatePaymentStatus(b.id, "paid")}
+                          className="flex-1 py-2 rounded-xl bg-accent text-black text-xs font-bold">
+                          Mark as Paid
+                        </button>
+                        {b.payment_status !== "after_match" && (
+                          <button onClick={() => updatePaymentStatus(b.id, "after_match")}
+                            className="flex-1 py-2 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs font-semibold">
+                            Pay After Match
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Booking status controls */}
+                    {b.status !== "cancelled" && (
                       <div className="flex gap-2">
                         {b.status === "pending" && (
                           <button onClick={() => updateStatus(b.id, "confirmed")}
-                            className="flex-1 py-2 rounded-xl bg-accent text-black text-xs font-bold">
-                            Confirm
+                            className="flex-1 py-2 rounded-xl border border-accent/40 text-accent text-xs font-semibold">
+                            Confirm Booking
                           </button>
                         )}
                         <button onClick={() => updateStatus(b.id, "cancelled")}

@@ -30,8 +30,12 @@ type Booking = {
   booker_name: string | null;
   status: string;
   booking_type: string;
+  payment_status: string;
   notes: string | null;
   booked_by: string;
+  total_price_pence?: number;
+  per_player_pence?: number;
+  player_count?: number;
 };
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -294,6 +298,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       unitr_fee_pence: 0,
       status: "confirmed",
       booking_type: "manual",
+      payment_status: "unpaid",
       booker_name: form.booker_name.trim(),
       notes: form.notes.trim() || null,
     }).select().single();
@@ -371,11 +376,12 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
 }
 
 // ── View Booking Modal ────────────────────────────────────────
-function ViewBookingModal({ booking, pitch, onClose, onCancel }: {
+function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }: {
   booking: Booking;
   pitch: Pitch | undefined;
   onClose: () => void;
   onCancel: () => void;
+  onPaymentUpdate: (id: string, status: string) => void;
 }) {
   const [cancelling, setCancelling] = useState(false);
   const endTime = booking.end_time ?? addOneHour(booking.start_time);
@@ -386,19 +392,29 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel }: {
     setCancelling(false);
   };
 
+  const paymentStatus = booking.payment_status ?? "unpaid";
+
+  const price = (() => {
+    if (booking.total_price_pence && booking.total_price_pence > 0) return booking.total_price_pence / 100;
+    if (booking.per_player_pence && booking.player_count) return (booking.per_player_pence * booking.player_count) / 100;
+    return 0;
+  })();
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
-        <div className="px-5 pb-6 space-y-4">
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-border" /></div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 px-5 pb-6 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-bold">{booking.booker_name ?? "Unitr Booking"}</p>
               <p className="text-xs text-text-secondary mt-0.5">
-                {booking.booking_type === "platform" ? "Booked via Unitr" : "Manual entry"}
+                {booking.booking_type === "platform" ? "Booked via Unitr" : "External / manual entry"}
               </p>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
@@ -417,7 +433,35 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel }: {
             ))}
           </div>
 
-          <div className="flex gap-2">
+          {/* Payment status */}
+          <div className="bg-surface-2 border border-border rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Payment</p>
+              {price > 0 && (
+                <span className="text-sm font-bold text-accent">£{price.toFixed(2)}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {(["unpaid", "after_match", "paid"] as const).map((s) => {
+                const labels = { unpaid: "Unpaid", after_match: "After Match", paid: "Paid" };
+                const active = paymentStatus === s;
+                return (
+                  <button key={s} onClick={() => onPaymentUpdate(booking.id, s)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                      active
+                        ? s === "paid" ? "bg-accent text-black border-accent"
+                          : s === "after_match" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                          : "bg-red-500/20 text-red-400 border-red-500/40"
+                        : "bg-surface border-border text-text-secondary"
+                    }`}>
+                    {labels[s]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-2 pb-2">
             <button onClick={onClose}
               className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">
               Close
@@ -457,7 +501,7 @@ export default function VenueCalendarPage() {
 
       // Fetch all non-cancelled bookings for this venue's pitches
       const { data: bks } = await supabase.from("pitch_bookings")
-        .select("id, pitch_id, match_date, start_time, end_time, booker_name, status, booking_type, notes, booked_by")
+        .select("id, pitch_id, match_date, start_time, end_time, booker_name, status, booking_type, notes, booked_by, payment_status, total_price_pence, per_player_pence, player_count")
         .in("pitch_id", ps.map((p) => p.id))
         .neq("status", "cancelled");
 
@@ -496,6 +540,12 @@ export default function VenueCalendarPage() {
     await supabase.from("pitch_bookings").update({ status: "cancelled" }).eq("id", selectedBooking.id);
     setBookings((prev) => prev.filter((b) => b.id !== selectedBooking.id));
     setSelectedBooking(null);
+  };
+
+  const handlePaymentUpdate = async (id: string, status: string) => {
+    await supabase.from("pitch_bookings").update({ payment_status: status }).eq("id", id);
+    setBookings((prev) => prev.map((b) => b.id === id ? { ...b, payment_status: status } : b));
+    setSelectedBooking((b) => b && b.id === id ? { ...b, payment_status: status } : b);
   };
 
   // Filter bookings for current view — case-insensitive to handle "JUN" vs "Jun"
@@ -605,6 +655,7 @@ export default function VenueCalendarPage() {
           pitch={pitches.find((p) => p.id === selectedBooking.pitch_id)}
           onClose={() => setSelectedBooking(null)}
           onCancel={handleCancelBooking}
+          onPaymentUpdate={handlePaymentUpdate}
         />
       )}
     </div>
