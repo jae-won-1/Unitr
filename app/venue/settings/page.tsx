@@ -557,6 +557,8 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [newBlock, setNewBlock] = useState({
     block_date: "", start_time: "", end_time: "", reason: "", whole_day: true,
   });
@@ -565,23 +567,31 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
     setLoading(true);
     supabase.from("pitch_blocks").select("*").eq("pitch_id", pitchId)
       .order("block_date", { ascending: true })
-      .then(({ data }) => { setBlocks((data ?? []) as Block[]); setLoading(false); });
+      .then(({ data, error: dbErr }) => {
+        if (!dbErr) setBlocks((data ?? []) as Block[]);
+        setLoading(false);
+      });
   }, [pitchId]);
 
   const handleAdd = async () => {
     if (!newBlock.block_date) return;
-    const { data } = await supabase.from("pitch_blocks").insert({
+    setSaving(true);
+    setError(null);
+    const { data, error: dbErr } = await supabase.from("pitch_blocks").insert({
       pitch_id: pitchId,
       block_date: newBlock.block_date,
       start_time: newBlock.whole_day ? null : (newBlock.start_time || null),
       end_time: newBlock.whole_day ? null : (newBlock.end_time || null),
       reason: newBlock.reason || null,
     }).select().single();
-    if (data) {
-      setBlocks((prev) => [...prev, data as Block].sort((a, b) => a.block_date.localeCompare(b.block_date)));
-      setNewBlock({ block_date: "", start_time: "", end_time: "", reason: "", whole_day: true });
-      setShowAdd(false);
+    setSaving(false);
+    if (dbErr || !data) {
+      setError("Failed to block date. Please try again.");
+      return;
     }
+    setBlocks((prev) => [...prev, data as Block].sort((a, b) => a.block_date.localeCompare(b.block_date)));
+    setNewBlock({ block_date: "", start_time: "", end_time: "", reason: "", whole_day: true });
+    setShowAdd(false);
   };
 
   const handleRemove = async (id: string) => {
@@ -597,7 +607,7 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
 
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs text-text-secondary">Block specific dates for maintenance, holidays, or private events.</p>
-        <button onClick={() => setShowAdd(true)}
+        <button onClick={() => { setShowAdd(true); setError(null); }}
           className="flex-shrink-0 flex items-center gap-1 text-xs text-accent font-semibold">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Add
@@ -633,44 +643,50 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
 
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <p className="font-bold">Block a Date</p>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Date</label>
-              <input type="date" value={newBlock.block_date}
-                onChange={(e) => setNewBlock((b) => ({ ...b, block_date: e.target.value }))}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
-            </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setNewBlock((b) => ({ ...b, whole_day: !b.whole_day }))}
-                className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${newBlock.whole_day ? "bg-accent" : "bg-surface"}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${newBlock.whole_day ? "translate-x-5" : "translate-x-0.5"}`} />
-              </button>
-              <span className="text-sm font-medium">Whole day closure</span>
-            </div>
-            {!newBlock.whole_day && (
-              <div className="grid grid-cols-2 gap-3">
-                {(["start_time", "end_time"] as const).map((k) => (
-                  <div key={k} className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium">{k === "start_time" ? "From" : "Until"}</label>
-                    <input type="time" value={newBlock[k]}
-                      onChange={(e) => setNewBlock((b) => ({ ...b, [k]: e.target.value }))}
-                      className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
-                  </div>
-                ))}
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-border" /></div>
+            <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-4">
+              <p className="font-bold">Block a Date</p>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium">Date</label>
+                <input type="date" value={newBlock.block_date}
+                  onChange={(e) => setNewBlock((b) => ({ ...b, block_date: e.target.value }))}
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
               </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Reason <span className="text-text-secondary font-normal">(optional)</span></label>
-              <input value={newBlock.reason} onChange={(e) => setNewBlock((b) => ({ ...b, reason: e.target.value }))}
-                placeholder="e.g. Maintenance, Bank Holiday"
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowAdd(false)}
-                className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
-              <button onClick={handleAdd} disabled={!newBlock.block_date}
-                className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">Block Date</button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setNewBlock((b) => ({ ...b, whole_day: !b.whole_day }))}
+                  className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${newBlock.whole_day ? "bg-accent" : "bg-surface"}`}>
+                  <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${newBlock.whole_day ? "translate-x-5" : "translate-x-0.5"}`} />
+                </button>
+                <span className="text-sm font-medium">Whole day closure</span>
+              </div>
+              {!newBlock.whole_day && (
+                <div className="grid grid-cols-2 gap-3">
+                  {(["start_time", "end_time"] as const).map((k) => (
+                    <div key={k} className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium">{k === "start_time" ? "From" : "Until"}</label>
+                      <input type="time" value={newBlock[k]}
+                        onChange={(e) => setNewBlock((b) => ({ ...b, [k]: e.target.value }))}
+                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium">Reason <span className="text-text-secondary font-normal">(optional)</span></label>
+                <input value={newBlock.reason} onChange={(e) => setNewBlock((b) => ({ ...b, reason: e.target.value }))}
+                  placeholder="e.g. Maintenance, Bank Holiday"
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <div className="flex gap-2 pb-2">
+                <button onClick={() => setShowAdd(false)}
+                  className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
+                <button onClick={handleAdd} disabled={!newBlock.block_date || saving}
+                  className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                  {saving ? "Saving…" : "Block Date"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
