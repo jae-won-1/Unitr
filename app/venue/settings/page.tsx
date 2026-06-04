@@ -565,38 +565,45 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
 
   useEffect(() => {
     setLoading(true);
-    supabase.from("pitch_blocks").select("*").eq("pitch_id", pitchId)
-      .order("block_date", { ascending: true })
-      .then(({ data, error: dbErr }) => {
-        if (!dbErr) setBlocks((data ?? []) as Block[]);
+    supabase.from("pitches").select("blocked_dates").eq("id", pitchId).maybeSingle()
+      .then(({ data }) => {
+        const raw = (data as { blocked_dates?: Block[] } | null)?.blocked_dates ?? [];
+        setBlocks([...raw].sort((a, b) => a.block_date.localeCompare(b.block_date)));
         setLoading(false);
       });
   }, [pitchId]);
+
+  const persist = async (updated: Block[]) => {
+    const { error: dbErr } = await supabase.from("pitches")
+      .update({ blocked_dates: updated })
+      .eq("id", pitchId);
+    return dbErr;
+  };
 
   const handleAdd = async () => {
     if (!newBlock.block_date) return;
     setSaving(true);
     setError(null);
-    const { data, error: dbErr } = await supabase.from("pitch_blocks").insert({
-      pitch_id: pitchId,
+    const entry: Block = {
+      id: crypto.randomUUID(),
       block_date: newBlock.block_date,
       start_time: newBlock.whole_day ? null : (newBlock.start_time || null),
       end_time: newBlock.whole_day ? null : (newBlock.end_time || null),
       reason: newBlock.reason || null,
-    }).select().single();
+    };
+    const updated = [...blocks, entry].sort((a, b) => a.block_date.localeCompare(b.block_date));
+    const dbErr = await persist(updated);
     setSaving(false);
-    if (dbErr || !data) {
-      setError("Failed to block date. Please try again.");
-      return;
-    }
-    setBlocks((prev) => [...prev, data as Block].sort((a, b) => a.block_date.localeCompare(b.block_date)));
+    if (dbErr) { setError("Failed to block date. Please try again."); return; }
+    setBlocks(updated);
     setNewBlock({ block_date: "", start_time: "", end_time: "", reason: "", whole_day: true });
     setShowAdd(false);
   };
 
   const handleRemove = async (id: string) => {
-    await supabase.from("pitch_blocks").delete().eq("id", id);
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
+    const updated = blocks.filter((b) => b.id !== id);
+    await persist(updated);
+    setBlocks(updated);
   };
 
   if (loading) return <div className="py-12 text-center text-sm text-text-secondary">Loading…</div>;
