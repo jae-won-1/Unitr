@@ -320,7 +320,7 @@ function PitchAvailabilityPanel({
     });
   }, [selectedDate, pitch.id]);
 
-  const postingSlotForDate = postingSlots.find(s => s.matchDate === selectedDate);
+  const postingSlotForDate = postingSlots.find(s => normalizeSlotDate(s.matchDate) === selectedDate);
   const postingTime = postingSlotForDate?.time;
   const allPostingSlotsUnavailable = pitchSlotStatuses.length > 0 && pitchSlotStatuses.every(s => s !== "available");
 
@@ -447,7 +447,7 @@ function PitchAvailabilityPanel({
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-3">
               <p className="text-xs text-yellow-400 font-semibold mb-1">Adjust your posting time?</p>
               <p className="text-[11px] text-text-secondary mb-2.5">
-                Update <span className="text-text-primary font-medium">{postingSlotForDate.dayName} {fmtSlotDate(postingSlotForDate.matchDate)}</span> from{" "}
+                Update <span className="text-text-primary font-medium">{new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</span> from{" "}
                 <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
                 <span className="text-accent font-semibold">{selectedTime}</span>
               </p>
