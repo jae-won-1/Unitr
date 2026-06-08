@@ -116,7 +116,7 @@ export default function CreateMatchPage() {
     } else {
       const filled = manualDates.filter((d) => d.date && d.time);
       slots = filled.map((d) => ({
-        matchDate: formatISODate(d.date),
+        matchDate: d.date,
         time: d.time,
         dayName: getDayName(d.date),
       }));

@@ -6,7 +6,14 @@ export type MediaItem = {
   id: string;
   type: "image" | "video";
   label: string;
-  matchId?: string; // if match-specific, else team tactics
+  matchId?: string;
+};
+
+export type TacticPoint = {
+  id: string;
+  title: string;
+  description: string;
+  videoUrl: string;
 };
 
 export type TacticsData = {
@@ -15,6 +22,7 @@ export type TacticsData = {
   pressing: string | null;
   notes: string;
   media: MediaItem[];
+  tacticPoints: TacticPoint[];
 };
 
 type TacticsContextType = {
@@ -31,6 +39,20 @@ const defaults: TacticsData = {
     { id: "m1", type: "image", label: "Corner routine — near post flick-on" },
     { id: "m2", type: "video", label: "High press trigger zones" },
     { id: "m3", type: "image", label: "Defensive shape out of possession" },
+  ],
+  tacticPoints: [
+    {
+      id: "tp1",
+      title: "High Press Trigger",
+      description: "Press is triggered when the opponent's centre-back receives a back-pass. Forwards press as a unit, cutting off the passing lane to the keeper. Midfield steps up to prevent easy switch of play.",
+      videoUrl: "",
+    },
+    {
+      id: "tp2",
+      title: "Corner Routine — Near Post",
+      description: "Two players on the near post — one blocks, one attacks. Third player runs to the far post. Fourth attacks the penalty spot. Fifth positions for a second ball outside the box.",
+      videoUrl: "",
+    },
   ],
 };
 

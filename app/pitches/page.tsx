@@ -38,6 +38,28 @@ const DAY_MAP: Record<string, number> = {
 const rankLabels = ["1st choice", "2nd choice", "3rd choice"];
 const FALLBACK_SLOTS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 
+const NORM_MONTHS: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function normalizeSlotDate(raw: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m && NORM_MONTHS[m[2]] !== undefined) {
+    const d = new Date(Number(m[3]), NORM_MONTHS[m[2]], Number(m[1]));
+    return localISO(d);
+  }
+  return raw;
+}
+function fmtSlotDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(iso + "T12:00:00");
+  return `${d.getDate()} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]}`;
+}
+
 function generateSlots(openTime: string, closeTime: string): string[] {
   const slots: string[] = [];
   const [oh, om] = openTime.split(":").map(Number);
@@ -76,7 +98,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
     const d = new Date();
     d.setDate(d.getDate() + i + 1);
     return {
-      key: d.toISOString().slice(0, 10),
+      key: localISO(d),
       day: d.toLocaleDateString("en-GB", { weekday: "short" }),
       date: d.getDate(),
       month: d.toLocaleDateString("en-GB", { month: "short" }),
@@ -218,6 +240,255 @@ function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: s
   );
 }
 
+// ── Pitch Availability Panel (Select Mode) ────────────────────
+function PitchAvailabilityPanel({
+  pitch, postingSlots, pitchSlotStatuses, isPicked, pickIndex,
+  onClose, onToggle, onReplaceSlot, canAdd,
+}: {
+  pitch: Pitch;
+  postingSlots: PostingSlot[];
+  pitchSlotStatuses: SlotStatus[];
+  isPicked: boolean;
+  pickIndex: number;
+  onClose: () => void;
+  onToggle: () => void;
+  onReplaceSlot: (date: string, newTime: string) => void;
+  canAdd: boolean;
+}) {
+  const firstPostingDate = postingSlots[0]?.matchDate ?? localISO(new Date());
+  const [selectedDate, setSelectedDate] = useState<string>(firstPostingDate);
+  const [daySlots, setDaySlots] = useState<{ time: string; status: SlotStatus }[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+
+  const ALL_HOURS = Array.from({ length: 16 }, (_, i) => `${String(i + 7).padStart(2, "0")}:00`);
+
+  const days = Array.from({ length: 21 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const key = localISO(d);
+    return {
+      key,
+      day: d.toLocaleDateString("en-GB", { weekday: "short" }),
+      date: d.getDate(),
+      month: d.toLocaleDateString("en-GB", { month: "short" }),
+      isPostingDate: postingSlots.some(s => s.matchDate === key),
+    };
+  });
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    setLoadingSlots(true);
+    setSelectedTime(null);
+    const dayOfWeek = new Date(selectedDate + "T12:00:00").getDay();
+
+    Promise.all([
+      supabase.from("pitch_availability")
+        .select("open_time, close_time, is_active")
+        .eq("pitch_id", pitch.id)
+        .eq("day_of_week", dayOfWeek)
+        .maybeSingle(),
+      supabase.from("pitch_bookings")
+        .select("start_time, end_time")
+        .eq("pitch_id", pitch.id)
+        .eq("match_date", selectedDate)
+        .neq("status", "cancelled"),
+      supabase.from("pitch_blocks")
+        .select("start_time, end_time")
+        .eq("pitch_id", pitch.id)
+        .eq("block_date", selectedDate),
+    ]).then(([{ data: avail }, { data: booked }, { data: blocks }]) => {
+      const taken = new Set<string>();
+      for (const b of [...(booked ?? []), ...(blocks ?? [])]) {
+        const [sh] = b.start_time.split(":").map(Number);
+        const eh = b.end_time ? b.end_time.split(":").map(Number)[0] : sh + 1;
+        for (let h = sh; h < eh; h++) taken.add(`${String(h).padStart(2, "0")}:00`);
+      }
+      if (avail && !avail.is_active) {
+        setDaySlots(ALL_HOURS.map(t => ({ time: t, status: "closed" })));
+      } else {
+        const oh = avail ? Number(avail.open_time.split(":")[0]) : 7;
+        const ch = avail ? Number(avail.close_time.split(":")[0]) : 22;
+        setDaySlots(ALL_HOURS.map(t => {
+          const h = Number(t.split(":")[0]);
+          if (h < oh || h >= ch) return { time: t, status: "closed" };
+          if (taken.has(t)) return { time: t, status: "booked" };
+          return { time: t, status: "available" };
+        }));
+      }
+      setLoadingSlots(false);
+    });
+  }, [selectedDate, pitch.id]);
+
+  const postingSlotForDate = postingSlots.find(s => s.matchDate === selectedDate);
+  const postingTime = postingSlotForDate?.time;
+  const allPostingSlotsUnavailable = pitchSlotStatuses.length > 0 && pitchSlotStatuses.every(s => s !== "available");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[92vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
+        <div className="px-5 pb-6">
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="font-bold">{pitch.name}</p>
+              <p className="text-xs text-text-secondary">{pitch.address}</p>
+            </div>
+            <div className="text-right ml-3 flex-shrink-0">
+              <p className="text-base font-bold text-accent">£{pitch.price_per_hour}/hr</p>
+              <button onClick={onClose} className="text-xs text-text-secondary mt-0.5">✕ close</button>
+            </div>
+          </div>
+
+          {/* Posting slot status chips */}
+          {postingSlots.length > 0 && (
+            <div className="mb-4">
+              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Your Posting Times</p>
+              <div className="flex flex-wrap gap-1.5">
+                {postingSlots.map((slot, i) => {
+                  const st = pitchSlotStatuses[i];
+                  return (
+                    <button key={i}
+                      onClick={() => setSelectedDate(slot.matchDate)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                        selectedDate === slot.matchDate ? "ring-1 ring-white/20" : ""
+                      } ${
+                        st === "available" ? "bg-accent/10 text-accent border-accent/20" :
+                        st === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                        "bg-surface text-text-secondary border-border"
+                      }`}>
+                      {st === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                      {(st === "booked" || st === "closed") && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
+                      {slot.dayName.slice(0, 3)} {fmtSlotDate(slot.matchDate)} · {slot.time}
+                      {st === "booked" ? " · Taken" : st === "closed" ? " · Unavailable" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+              {allPostingSlotsUnavailable && (
+                <p className="text-[11px] text-yellow-400 mt-1.5 font-medium">None of your posting times are free — browse below for an alternative slot.</p>
+              )}
+            </div>
+          )}
+
+          {/* Date picker */}
+          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Browse Availability</p>
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+            {days.map(d => (
+              <button key={d.key} onClick={() => setSelectedDate(d.key)}
+                className={`flex-shrink-0 w-14 rounded-xl border flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                  selectedDate === d.key ? "border-accent bg-accent/10" : "border-border bg-surface-2"
+                }`}>
+                <span className={`text-[10px] font-medium ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.day}</span>
+                <span className={`text-xl font-bold leading-none ${selectedDate === d.key ? "text-accent" : "text-text-primary"}`}>{d.date}</span>
+                <span className={`text-[10px] ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.month}</span>
+                {d.isPostingDate && (
+                  <div className={`w-1.5 h-1.5 rounded-full ${selectedDate === d.key ? "bg-accent" : "bg-accent/50"}`} />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Time grid */}
+          {loadingSlots ? (
+            <div className="flex items-center justify-center h-20 mb-4">
+              <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-4 gap-1.5 mb-3">
+                {daySlots.map(({ time, status }) => {
+                  const isPosting = time === postingTime;
+                  const isSelected = time === selectedTime;
+                  return (
+                    <button key={time}
+                      disabled={status !== "available"}
+                      onClick={() => setSelectedTime(isSelected ? null : time)}
+                      className={`py-2.5 rounded-lg text-[13px] font-medium transition-colors relative ${
+                        isSelected
+                          ? "bg-accent text-black"
+                          : status === "available"
+                            ? isPosting
+                              ? "border border-accent/70 bg-accent/5 text-accent"
+                              : "border border-white/20 text-text-primary"
+                            : "line-through text-text-secondary/30 cursor-not-allowed"
+                      }`}>
+                      {time}
+                      {isPosting && !isSelected && status === "available" && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent border border-[#141414]" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-4 mb-4 text-[10px] text-text-secondary">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded bg-accent/10 border border-accent/60 inline-block" />
+                  Your time
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded border border-white/20 inline-block" />
+                  Available
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded bg-surface-2 inline-block opacity-40" />
+                  Taken / Closed
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* Replace slot CTA */}
+          {selectedTime && selectedTime !== postingTime && postingSlotForDate && (
+            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-3">
+              <p className="text-xs text-yellow-400 font-semibold mb-1">Adjust your posting time?</p>
+              <p className="text-[11px] text-text-secondary mb-2.5">
+                Update <span className="text-text-primary font-medium">{postingSlotForDate.dayName} {fmtSlotDate(postingSlotForDate.matchDate)}</span> from{" "}
+                <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
+                <span className="text-accent font-semibold">{selectedTime}</span>
+              </p>
+              <button
+                onClick={() => { onReplaceSlot(selectedDate, selectedTime!); setSelectedTime(null); }}
+                className="w-full py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-xs font-semibold">
+                Use {selectedTime} as posting time
+              </button>
+            </div>
+          )}
+
+          {/* No posting slot for this date — info */}
+          {selectedTime && !postingSlotForDate && (
+            <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 mb-3">
+              <p className="text-[11px] text-text-secondary">
+                <span className="text-text-primary font-medium">{selectedTime}</span> is available on this date but it&apos;s not one of your posting dates. Go back and update your posting schedule to include it.
+              </p>
+            </div>
+          )}
+
+          {/* Add / Remove */}
+          <button
+            onClick={onToggle}
+            disabled={!isPicked && (!canAdd || allPostingSlotsUnavailable)}
+            className={`w-full py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              isPicked
+                ? "bg-accent/20 text-accent border border-accent/40"
+                : allPostingSlotsUnavailable
+                  ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                  : "bg-accent text-black"
+            }`}>
+            {isPicked
+              ? `✓ ${rankLabels[pickIndex]} — tap to remove`
+              : allPostingSlotsUnavailable
+                ? "No slots at your posting times"
+                : "Add as Option"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Content ──────────────────────────────────────────────
 function PitchesContent() {
   const searchParams = useSearchParams();
@@ -238,6 +509,7 @@ function PitchesContent() {
   const [postingSlots, setPostingSlots] = useState<PostingSlot[]>([]);
   const [pitchSlotMap, setPitchSlotMap] = useState<Record<string, SlotStatus[]>>({});
   const [checkingSlots, setCheckingSlots] = useState(false);
+  const [detailPitch, setDetailPitch] = useState<Pitch | null>(null);
 
   // Fetch pitches from DB — only real registered pitches (exclude seeded dummy data)
   useEffect(() => {
@@ -266,7 +538,10 @@ function PitchesContent() {
   useEffect(() => {
     if (!selectMode) return;
     const saved = localStorage.getItem("unitr_posting_slots");
-    if (saved) setPostingSlots(JSON.parse(saved));
+    if (saved) {
+      const parsed: PostingSlot[] = JSON.parse(saved);
+      setPostingSlots(parsed.map(s => ({ ...s, matchDate: normalizeSlotDate(s.matchDate) })));
+    }
   }, [selectMode]);
 
   // Check pitch availability against the captain's posting slots
@@ -284,7 +559,7 @@ function PitchesContent() {
         .in("pitch_id", pitchIds)
         .in("day_of_week", daysNeeded),
       supabase.from("pitch_bookings")
-        .select("pitch_id, match_date, start_time")
+        .select("pitch_id, match_date, start_time, end_time")
         .in("pitch_id", pitchIds)
         .in("match_date", matchDates)
         .neq("status", "cancelled"),
@@ -294,10 +569,15 @@ function PitchesContent() {
         map[pitch.id] = postingSlots.map((slot) => {
           const dow = DAY_MAP[slot.dayName];
           const avail = avails?.find((a) => a.pitch_id === pitch.id && a.day_of_week === dow);
-          if (!avail || !avail.is_active) return "closed";
-          if (slot.time < avail.open_time || slot.time >= avail.close_time) return "closed";
+          if (avail && !avail.is_active) return "closed";
+          if (avail && (slot.time < avail.open_time || slot.time >= avail.close_time)) return "closed";
           const isBooked = bookings?.some(
-            (b) => b.pitch_id === pitch.id && b.match_date === slot.matchDate && b.start_time === slot.time
+            (b) =>
+              b.pitch_id === pitch.id &&
+              b.match_date === slot.matchDate &&
+              (b.end_time
+                ? b.start_time <= slot.time && slot.time < b.end_time
+                : b.start_time === slot.time)
           );
           return isBooked ? "booked" : "available";
         });
@@ -340,7 +620,7 @@ function PitchesContent() {
 
   const handleMapSelect = (pitch: Pitch) => {
     if (selectMode) {
-      togglePitch(pitch);
+      setDetailPitch(pitch);
     } else {
       setSelectedPitch(pitch);
       setShowBooking(true);
@@ -359,6 +639,15 @@ function PitchesContent() {
   const handleBook = (date: string, time: string) => {
     setShowBooking(false);
     setBookedInfo({ date, time });
+  };
+
+  const replaceSlot = (date: string, newTime: string) => {
+    const updated = postingSlots.map(s =>
+      s.matchDate === date ? { ...s, time: newTime } : s
+    );
+    setPostingSlots(updated);
+    localStorage.setItem("unitr_posting_slots", JSON.stringify(updated));
+    setPitchSlotMap({});
   };
 
   return (
@@ -521,10 +810,17 @@ function PitchesContent() {
                             </div>
                           )}
                           <button
-                            onClick={() => togglePitch(pitch)}
-                            disabled={!isAffordable(pitch) || isAllSlotsTaken(pitch) || (!isPicked && pickedPitches.length >= 3)}
-                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isPicked ? "bg-accent/20 text-accent border border-accent/40" : isAllSlotsTaken(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-accent text-black"}`}>
-                            {isPicked ? `✓ ${rankLabels[pickIndex]} — tap to remove` : isAllSlotsTaken(pitch) ? "No slots available" : "Add as Option"}
+                            onClick={() => setDetailPitch(pitch)}
+                            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${
+                              isPicked ? "bg-accent/20 text-accent border border-accent/40" :
+                              isAllSlotsTaken(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                              "bg-accent text-black"
+                            }`}>
+                            {isPicked
+                              ? `✓ ${rankLabels[pickIndex]} · View →`
+                              : isAllSlotsTaken(pitch)
+                                ? "Check alternatives →"
+                                : "Select this pitch →"}
                           </button>
                         </>
                       ) : (
@@ -569,6 +865,29 @@ function PitchesContent() {
             {pickedPitches.length === 0 ? "Select at least 1 pitch" : `Confirm ${pickedPitches.length} Pitch${pickedPitches.length > 1 ? "es" : ""} →`}
           </button>
         </div>
+      )}
+
+      {/* Pitch availability panel (select mode) */}
+      {detailPitch && selectMode && (
+        <PitchAvailabilityPanel
+          pitch={detailPitch}
+          postingSlots={postingSlots}
+          pitchSlotStatuses={pitchSlotMap[detailPitch.id] ?? []}
+          isPicked={pickedPitches.some(p => p.id === detailPitch.id)}
+          pickIndex={pickedPitches.findIndex(p => p.id === detailPitch.id)}
+          onClose={() => setDetailPitch(null)}
+          onToggle={() => {
+            const already = pickedPitches.some(p => p.id === detailPitch.id);
+            if (already) {
+              setPickedPitches(prev => prev.filter(p => p.id !== detailPitch.id));
+            } else if (isAffordable(detailPitch) && pickedPitches.length < 3) {
+              setPickedPitches(prev => [...prev, detailPitch]);
+            }
+            setDetailPitch(null);
+          }}
+          onReplaceSlot={replaceSlot}
+          canAdd={isAffordable(detailPitch) && pickedPitches.length < 3}
+        />
       )}
 
       {/* Booking panel */}

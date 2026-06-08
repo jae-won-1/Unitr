@@ -61,7 +61,22 @@ function displayDate(d: Date): string {
 }
 
 function toInputISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Normalise legacy "Sat, 13 Jun 2026" format to ISO "2026-06-13"
+function normalizeMatchDate(raw: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const MONTHS: Record<string, number> = {
+    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+  };
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m && MONTHS[m[2]] !== undefined) {
+    const d = new Date(Number(m[3]), MONTHS[m[2]], Number(m[1]));
+    return toInputISO(d);
+  }
+  return raw;
 }
 
 function fromInputISO(s: string): Date {
@@ -218,9 +233,9 @@ function WeekView({ pitches, bookings, weekDates, onCellClick, onBookingClick }:
       <div className="flex-1 overflow-x-auto">
         <div className="flex" style={{ minWidth: 7 * 110 }}>
           {weekDates.map((date, di) => {
-            const dateStr = displayDate(date);
-            const isToday = toInputISO(date) === today;
-            const dayBookings = bookings.filter((b) => b.match_date.toLowerCase() === dateStr.toLowerCase());
+            const dateStr = toInputISO(date);
+            const isToday = dateStr === today;
+            const dayBookings = bookings.filter((b) => b.match_date === dateStr);
 
             return (
               <div key={dateStr} className="flex-1 min-w-[110px] border-r border-border/30 flex flex-col">
@@ -283,7 +298,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     setSaving(true);
     setError(null);
 
-    const matchDate = displayDate(fromInputISO(form.date));
+    const matchDate = toInputISO(fromInputISO(form.date));
     const pitch = pitches.find((p) => p.id === form.pitch_id);
 
     const { data, error: dbErr } = await supabase.from("pitch_bookings").insert({
@@ -512,7 +527,7 @@ export default function VenueCalendarPage() {
         return { ...b, booker_name: prof?.full_name ?? "Unitr Booking" };
       }));
 
-      setBookings(enriched as Booking[]);
+      setBookings((enriched as Booking[]).map(b => ({ ...b, match_date: normalizeMatchDate(b.match_date) })));
       setLoading(false);
     }
     load();
@@ -551,9 +566,9 @@ export default function VenueCalendarPage() {
   // Filter bookings for current view — case-insensitive to handle "JUN" vs "Jun"
   const weekDates = getWeekDates(selectedDate);
   const visibleDates = view === "day"
-    ? new Set([displayDate(selectedDate).toLowerCase()])
-    : new Set(weekDates.map((d) => displayDate(d).toLowerCase()));
-  const visibleBookings = bookings.filter((b) => visibleDates.has(b.match_date.toLowerCase()));
+    ? new Set([toInputISO(selectedDate)])
+    : new Set(weekDates.map((d) => toInputISO(d)));
+  const visibleBookings = bookings.filter((b) => visibleDates.has(b.match_date));
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">

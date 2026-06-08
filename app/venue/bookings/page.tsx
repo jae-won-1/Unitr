@@ -4,6 +4,25 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
+const MONTHS: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+function normalizeMatchDate(raw: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m && MONTHS[m[2]] !== undefined) {
+    const d = new Date(Number(m[3]), MONTHS[m[2]], Number(m[1]));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return raw;
+}
+function formatMatchDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+}
+
 type Booking = {
   id: string;
   match_date: string;
@@ -69,7 +88,7 @@ export default function VenueBookingsPage() {
           const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
           name = (prof as { full_name: string } | null)?.full_name ?? "Unknown";
         }
-        return { ...b, booker_name: name, payment_status: b.payment_status ?? "unpaid" } as Booking;
+        return { ...b, booker_name: name, payment_status: b.payment_status ?? "unpaid", match_date: normalizeMatchDate(b.match_date) } as Booking;
       }));
       setBookings(enriched);
       setLoading(false);
@@ -96,7 +115,7 @@ export default function VenueBookingsPage() {
     // match_date is display string like "Fri, 12 Jun 2026" — compare loosely by parsing
     const isPast = (() => {
       try {
-        return new Date(b.match_date) < today;
+        return new Date(b.match_date + "T12:00:00") < today;
       } catch { return false; }
     })();
     const key = isPast ? "Past" : "Upcoming";
@@ -149,7 +168,7 @@ export default function VenueBookingsPage() {
                       <div className="flex-1 min-w-0 pr-2">
                         <p className="font-semibold text-sm truncate">{b.booker_name}</p>
                         <p className="text-xs text-text-secondary mt-0.5">
-                          {b.match_date} · {b.start_time}{endTime ? `–${endTime}` : ""}
+                          {formatMatchDate(b.match_date)} · {b.start_time}{endTime ? `–${endTime}` : ""}
                         </p>
                         {b.booking_type === "manual" && (
                           <span className="text-[10px] text-text-secondary italic">External booking</span>
