@@ -255,7 +255,7 @@ function PitchAvailabilityPanel({
   onReplaceSlot: (date: string, newTime: string) => void;
   canAdd: boolean;
 }) {
-  const firstPostingDate = postingSlots[0]?.matchDate ?? localISO(new Date());
+  const firstPostingDate = normalizeSlotDate(postingSlots[0]?.matchDate ?? localISO(new Date()));
   const [selectedDate, setSelectedDate] = useState<string>(firstPostingDate);
   const [daySlots, setDaySlots] = useState<{ time: string; status: SlotStatus }[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -348,12 +348,14 @@ function PitchAvailabilityPanel({
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Your Posting Times</p>
               <div className="flex flex-wrap gap-1.5">
                 {postingSlots.map((slot, i) => {
+                  const isoDate = normalizeSlotDate(slot.matchDate);
+                  const dayLabel = new Date(isoDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" });
                   const st = pitchSlotStatuses[i];
                   return (
                     <button key={i}
-                      onClick={() => setSelectedDate(slot.matchDate)}
+                      onClick={() => setSelectedDate(isoDate)}
                       className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
-                        selectedDate === slot.matchDate ? "ring-1 ring-white/20" : ""
+                        selectedDate === isoDate ? "ring-1 ring-white/20" : ""
                       } ${
                         st === "available" ? "bg-accent/10 text-accent border-accent/20" :
                         st === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
@@ -361,7 +363,7 @@ function PitchAvailabilityPanel({
                       }`}>
                       {st === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
                       {(st === "booked" || st === "closed") && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
-                      {slot.dayName.slice(0, 3)} {fmtSlotDate(slot.matchDate)} · {slot.time}
+                      {dayLabel} {fmtSlotDate(isoDate)} · {slot.time}
                       {st === "booked" ? " · Taken" : st === "closed" ? " · Unavailable" : ""}
                     </button>
                   );
