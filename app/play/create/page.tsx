@@ -59,16 +59,23 @@ export default function CreateMatchPage() {
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
   const [selectedPollDates, setSelectedPollDates] = useState<string[]>([]);
+  const [paymentMode, setPaymentMode] = useState<string | null>(null);
+  const [teamCredits, setTeamCredits] = useState<number | null>(null);
 
   useEffect(() => {
+    const mode = localStorage.getItem("unitr_payment_mode");
+    setPaymentMode(mode);
     const savedDates = localStorage.getItem("unitr_confirmed_dates");
-    if (savedDates) {
-      setConfirmedDates(JSON.parse(savedDates));
-    }
-
+    if (savedDates) setConfirmedDates(JSON.parse(savedDates));
     const savedOptions: PitchOption[] = JSON.parse(localStorage.getItem("unitr_pitch_options") ?? "[]");
     setPitchOptions(savedOptions);
   }, []);
+
+  useEffect(() => {
+    if (!team || paymentMode !== "credit") return;
+    supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle()
+      .then(({ data }) => setTeamCredits(data?.balance ?? 0));
+  }, [team, paymentMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -122,6 +129,16 @@ export default function CreateMatchPage() {
       }));
     }
     localStorage.setItem("unitr_posting_slots", JSON.stringify(slots));
+
+    if (paymentMode === "individual" && availabilityRequest && selectedPollDates.length > 0) {
+      const counts = selectedPollDates.map((id) =>
+        availabilityResponses.filter((r) => r.available_date_ids.includes(id)).length
+      );
+      localStorage.setItem("unitr_squad_count", String(Math.min(...counts)));
+    } else {
+      localStorage.removeItem("unitr_squad_count");
+    }
+
     router.push("/pitches?mode=select");
   };
 
@@ -194,10 +211,21 @@ export default function CreateMatchPage() {
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold">Create Match Post</h1>
           <p className="text-xs text-text-secondary mt-0.5">Post a match for other teams to challenge</p>
         </div>
+        {paymentMode === "credit" && (
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-text-secondary">Team Credit</span>
+            <span className="text-sm font-bold text-accent">
+              {teamCredits !== null ? `£${teamCredits.toFixed(2)}` : "—"}
+            </span>
+          </div>
+        )}
+        {paymentMode === "individual" && (
+          <span className="text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary px-2.5 py-1 rounded-full">Split Pay</span>
+        )}
       </div>
 
       <div className="flex flex-col gap-5">

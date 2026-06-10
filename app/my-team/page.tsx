@@ -680,30 +680,32 @@ function FindMatchButton() {
                   <button
                     onClick={() => canSelect && setSelected("individual")}
                     disabled={!canSelect}
-                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                      <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
-                    </div>
-                    <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
-                    {!canSelect && (
-                      <>
+                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                    <div className={!canSelect ? "opacity-50" : ""}>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
+                      </div>
+                      <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
+                      {!canSelect && (
                         <div className="flex items-center gap-1.5 mt-1.5">
                           <div className="w-4 h-4 rounded-full border border-yellow-400 flex items-center justify-center flex-shrink-0">
                             <span className="text-[9px] font-bold text-yellow-400">i</span>
                           </div>
                           <p className="text-[11px] text-yellow-400">Collect team availability first</p>
                         </div>
-                        <a href="/my-team/availability"
-                          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-                          className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                          Collect Availability Now
-                        </a>
-                      </>
+                      )}
+                    </div>
+                    {!canSelect && (
+                      <a href="/my-team/availability"
+                        onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+                        className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        Collect Availability Now
+                      </a>
                     )}
                   </button>
                 );
@@ -740,6 +742,8 @@ function CaptainMyTeam() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [unavailableSelected, setUnavailableSelected] = useState(false);
   const [submittingVote, setSubmittingVote] = useState(false);
+  const [deletingPoll, setDeletingPoll] = useState(false);
+  const [confirmDeletePoll, setConfirmDeletePoll] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -864,7 +868,62 @@ function CaptainMyTeam() {
         </div>
         {availabilityRequest && (
           <div className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4 mb-1">
-            <h3 className="text-base font-bold mb-3">Availability Status</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-bold">Availability Status</h3>
+              <button
+                type="button"
+                disabled={deletingPoll}
+                onClick={() => setConfirmDeletePoll(true)}
+                className="p-1.5 rounded-lg text-text-secondary hover:text-red-400 hover:bg-red-400/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deletingPoll ? (
+                  <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                )}
+              </button>
+              {confirmDeletePoll && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
+                  <div className="bg-surface-2 border border-border rounded-2xl p-6 w-full max-w-xs shadow-xl">
+                    <h3 className="text-base font-bold mb-1">Remove Poll?</h3>
+                    <p className="text-sm text-text-secondary mb-5">This will delete the availability poll and all responses. This cannot be undone.</p>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeletePoll(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold"
+                      >
+                        No
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!availabilityRequest || !user) return;
+                          setConfirmDeletePoll(false);
+                          setDeletingPoll(true);
+                          await fetch("/api/availability/delete", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ requestId: availabilityRequest.id, captainId: user.id }),
+                          });
+                          setAvailabilityRequest(null);
+                          setAvailabilityResponses([]);
+                          setMyResponse(null);
+                          setSelectedDates([]);
+                          setUnavailableSelected(false);
+                          setDeletingPoll(false);
+                        }}
+                        className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold"
+                      >
+                        Yes, Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {myResponse === null ? (
               <div className="space-y-2">
@@ -955,9 +1014,15 @@ function CaptainMyTeam() {
           </div>
         )}
         <div className="flex gap-2 mt-3">
-          <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
-            Collect Availability
-          </a>
+          {availabilityRequest ? (
+            <span className="flex-1 py-2.5 rounded-xl border border-border text-text-secondary/50 text-sm font-semibold text-center cursor-not-allowed select-none">
+              Collect Availability
+            </span>
+          ) : (
+            <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
+              Collect Availability
+            </a>
+          )}
           <div className="flex-1">
             <FindMatchButton />
           </div>
@@ -1258,7 +1323,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
           player_id: t.player_id,
           amount: t.amount,
           created_at: t.created_at,
-          player_name: (t.profiles as { full_name: string } | null)?.full_name ?? "Unknown",
+          player_name: (t.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
         }))
       );
     }
@@ -1321,8 +1386,8 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
       .order("created_at", { ascending: false });
     setBookingTx((payments ?? []).map((p) => ({
       id: p.id,
-      player_name: (p.profiles as { full_name: string } | null)?.full_name ?? "Unknown",
-      opponent: (p.match_posts as { team_name: string } | null)?.team_name ?? "Match",
+      player_name: (p.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
+      opponent: (p.match_posts as unknown as { team_name: string } | null)?.team_name ?? "Match",
       amount_pence: p.amount_pence,
       created_at: p.created_at,
     })));

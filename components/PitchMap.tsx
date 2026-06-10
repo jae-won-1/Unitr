@@ -26,7 +26,7 @@ type Pitch = {
   is_verified: boolean;
 };
 
-function makeIcon(label: string, picked: boolean, rank: number | null, unaffordable: boolean = false) {
+function makeIcon(_label: string, picked: boolean, rank: number | null, unaffordable: boolean = false) {
   const bg = picked ? "#00E676" : unaffordable ? "#EF4444" : "#166534";
   const color = picked ? "#000" : "#fff";
   const content = rank !== null ? String(rank + 1) : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
@@ -54,7 +54,6 @@ export default function PitchMap({
   pitches,
   pickedPitches,
   onSelect,
-  selectMode,
   unaffordableIds = new Set(),
 }: {
   pitches: Pitch[];
@@ -69,7 +68,7 @@ export default function PitchMap({
     <MapContainer
       center={center}
       zoom={12}
-      style={{ height: "300px", width: "100%", borderRadius: "16px" }}
+      style={{ height: "900px", width: "100%", borderRadius: "16px" }}
       zoomControl={false}
     >
       <TileLayer

@@ -208,6 +208,22 @@ function CreateRequestForm({ teamId, onCreated }: { teamId: string; onCreated: (
     setSaving(true);
     setError(null);
 
+    // Remove any existing poll for this team before creating a new one
+    const { data: existing } = await supabase
+      .from("availability_requests")
+      .select("id")
+      .eq("team_id", teamId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      await fetch("/api/availability/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: existing.id, captainId: user.id }),
+      });
+    }
+
     const date_options = filled.map((r) => parseDateOption(r.date, r.time));
 
     const { data, error: insertError } = await supabase
@@ -361,7 +377,7 @@ function CaptainAvailability() {
   }
 
   if (!request) {
-    return <CreateRequestForm teamId={teamId} onCreated={setRequest} />;
+    return <CreateRequestForm teamId={teamId} onCreated={() => router.push("/my-team")} />;
   }
 
   const best = getBestDate();
@@ -373,7 +389,20 @@ function CaptainAvailability() {
           <p className="text-xs text-text-secondary mb-1">{responses.length}/{totalMembers} players responded</p>
           <p className="text-sm font-semibold">Select up to 3 dates to post matches</p>
         </div>
-        <button onClick={() => setRequest(null)} className="ml-3 px-3 py-2 rounded-xl border border-border text-xs text-text-secondary">
+        <button
+          onClick={async () => {
+            if (!request || !user) return;
+            await fetch("/api/availability/delete", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ requestId: request.id, captainId: user.id }),
+            });
+            setRequest(null);
+            setResponses([]);
+            setChosenDates([]);
+          }}
+          className="ml-3 px-3 py-2 rounded-xl border border-border text-xs text-text-secondary"
+        >
           New request
         </button>
       </div>

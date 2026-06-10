@@ -9,7 +9,7 @@ import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
 const PitchMap = dynamic(() => import("@/components/PitchMap"), { ssr: false, loading: () => (
-  <div className="mx-4 rounded-2xl bg-surface-2 border border-border flex items-center justify-center" style={{ height: 300 }}>
+  <div className="mx-4 rounded-2xl bg-surface-2 border border-border flex items-center justify-center" style={{ height: 900 }}>
     <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
   </div>
 ) });
@@ -279,7 +279,8 @@ function PitchAvailabilityPanel({
   useEffect(() => {
     if (!selectedDate) return;
     setLoadingSlots(true);
-    setSelectedTime(null);
+    const postingSlot = postingSlots.find(s => normalizeSlotDate(s.matchDate) === selectedDate);
+    setSelectedTime(postingSlot?.time ?? null);
     const dayOfWeek = new Date(selectedDate + "T12:00:00").getDay();
 
     Promise.all([
@@ -318,17 +319,16 @@ function PitchAvailabilityPanel({
       }
       setLoadingSlots(false);
     });
-  }, [selectedDate, pitch.id]);
+  }, [selectedDate, pitch.id, postingSlots]);
 
   const postingSlotForDate = postingSlots.find(s => normalizeSlotDate(s.matchDate) === selectedDate);
   const postingTime = postingSlotForDate?.time;
   const allPostingSlotsUnavailable = pitchSlotStatuses.length > 0 && pitchSlotStatuses.every(s => s !== "available");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[92vh]" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
-        <div className="px-5 pb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-2xl overflow-y-auto max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-6">
 
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
@@ -512,6 +512,7 @@ function PitchesContent() {
   const [pitchSlotMap, setPitchSlotMap] = useState<Record<string, SlotStatus[]>>({});
   const [checkingSlots, setCheckingSlots] = useState(false);
   const [detailPitch, setDetailPitch] = useState<Pitch | null>(null);
+  const [squadCount, setSquadCount] = useState<number | null>(null);
 
   // Fetch pitches from DB — only real registered pitches (exclude seeded dummy data)
   useEffect(() => {
@@ -526,6 +527,10 @@ function PitchesContent() {
     if (!selectMode) return;
     const mode = localStorage.getItem("unitr_payment_mode");
     setPaymentMode(mode);
+    if (mode === "individual") {
+      const sc = localStorage.getItem("unitr_squad_count");
+      if (sc) setSquadCount(parseInt(sc));
+    }
     if (mode !== "credit" || !user) return;
     async function loadCredits() {
       const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
@@ -606,13 +611,21 @@ function PitchesContent() {
   const isAffordable = (pitch: Pitch) =>
     paymentMode !== "credit" || teamCredits === null || pitch.price_per_hour <= teamCredits;
 
+  const minPlayersForFormats = (formats: string[]) => {
+    const nums = formats.flatMap((f) => { const m = f.match(/(\d+)/); return m ? [parseInt(m[1])] : []; });
+    return nums.length > 0 ? Math.min(...nums) : 5;
+  };
+
+  const isEnoughPlayers = (pitch: Pitch) =>
+    paymentMode !== "individual" || squadCount === null || squadCount >= minPlayersForFormats(pitch.formats);
+
   const isAllSlotsTaken = (pitch: Pitch) => {
     const statuses = pitchSlotMap[pitch.id];
     return !checkingSlots && statuses !== undefined && statuses.length > 0 && statuses.every((s) => s !== "available");
   };
 
   const togglePitch = (pitch: Pitch) => {
-    if (!isAffordable(pitch) || isAllSlotsTaken(pitch)) return;
+    if (!isAffordable(pitch) || !isEnoughPlayers(pitch) || isAllSlotsTaken(pitch)) return;
     setPickedPitches((prev) => {
       if (prev.find((p) => p.id === pitch.id)) return prev.filter((p) => p.id !== pitch.id);
       if (prev.length >= 3) return prev;
@@ -695,9 +708,8 @@ function PitchesContent() {
                 pickedPitches={pickedPitches}
                 onSelect={handleMapSelect}
                 selectMode={selectMode}
-                unaffordableIds={selectMode && teamCredits !== null ? new Set(pitches.filter(p => p.price_per_hour > teamCredits).map(p => p.id)) : new Set()}
+                unaffordableIds={selectMode ? new Set(pitches.filter(p => !isAffordable(p) || !isEnoughPlayers(p)).map(p => p.id)) : new Set()}
               />
-              {/* Selected pitch card below map */}
             </div>
           )}
 
@@ -811,18 +823,28 @@ function PitchesContent() {
                               <span className="text-[11px] text-red-400">Insufficient team credits to book this pitch</span>
                             </div>
                           )}
+                          {!isEnoughPlayers(pitch) && (
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
+                                <span className="text-[9px] font-bold text-red-400">i</span>
+                              </div>
+                              <span className="text-[11px] text-red-400">Not enough available players for this pitch size</span>
+                            </div>
+                          )}
                           <button
                             onClick={() => setDetailPitch(pitch)}
                             className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${
                               isPicked ? "bg-accent/20 text-accent border border-accent/40" :
-                              isAllSlotsTaken(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                              isAllSlotsTaken(pitch) || !isAffordable(pitch) || !isEnoughPlayers(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" :
                               "bg-accent text-black"
                             }`}>
                             {isPicked
                               ? `✓ ${rankLabels[pickIndex]} · View →`
                               : isAllSlotsTaken(pitch)
                                 ? "Check alternatives →"
-                                : "Select this pitch →"}
+                                : !isAffordable(pitch) || !isEnoughPlayers(pitch)
+                                  ? "Unavailable →"
+                                  : "Select this pitch →"}
                           </button>
                         </>
                       ) : (
@@ -847,7 +869,7 @@ function PitchesContent() {
 
       {/* SELECT MODE: sticky confirm bar */}
       {selectMode && (
-        <div className="fixed bottom-16 left-0 right-0 z-[60] bg-surface border-t border-border px-4 pt-3 pb-3">
+        <div className="fixed bottom-20 left-0 right-0 z-[60] bg-surface border-t border-border px-4 pt-3 pb-3">
           {pickedPitches.length > 0 && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto">
               {pickedPitches.map((p, i) => (
