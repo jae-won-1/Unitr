@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -445,19 +445,20 @@ function PitchAvailabilityPanel({
             </>
           )}
 
-          {/* Replace slot CTA */}
+          {/* Replace slot CTA — only changes the time for THIS pitch */}
           {selectedTime && selectedTime !== postingTime && postingSlotForDate && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-3">
-              <p className="text-xs text-yellow-400 font-semibold mb-1">Adjust your posting time?</p>
+              <p className="text-xs text-yellow-400 font-semibold mb-1">Different time for this pitch?</p>
               <p className="text-[11px] text-text-secondary mb-2.5">
-                Update <span className="text-text-primary font-medium">{new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</span> from{" "}
+                Book <span className="text-text-primary font-medium">{pitch.name}</span> on{" "}
+                <span className="text-text-primary font-medium">{new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</span> at{" "}
                 <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
-                <span className="text-accent font-semibold">{selectedTime}</span>
+                <span className="text-accent font-semibold">{selectedTime}</span>. Your other pitches keep their times.
               </p>
               <button
-                onClick={() => { onReplaceSlot(selectedDate, selectedTime!); setSelectedTime(null); }}
+                onClick={() => onReplaceSlot(selectedDate, selectedTime!)}
                 className="w-full py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-xs font-semibold">
-                Use {selectedTime} as posting time
+                {isPicked ? `Update ${pitch.name} to ${selectedTime}` : `Add ${pitch.name} at ${selectedTime}`}
               </button>
             </div>
           )}
@@ -512,6 +513,9 @@ function PitchesContent() {
   const [teamCredits, setTeamCredits] = useState<number | null>(null);
   const [paymentMode, setPaymentMode] = useState<string | null>(null);
   const [postingSlots, setPostingSlots] = useState<PostingSlot[]>([]);
+  // Per-pitch time overrides: pitchId → { matchDate(ISO) → chosen time }.
+  // Lets a captain pick a different time for one pitch without affecting the others.
+  const [pitchOverrides, setPitchOverrides] = useState<Record<string, Record<string, string>>>({});
   const [pitchSlotMap, setPitchSlotMap] = useState<Record<string, SlotStatus[]>>({});
   const [checkingSlots, setCheckingSlots] = useState(false);
   const [detailPitch, setDetailPitch] = useState<Pitch | null>(null);
@@ -552,6 +556,8 @@ function PitchesContent() {
       const parsed: PostingSlot[] = JSON.parse(saved);
       setPostingSlots(parsed.map(s => ({ ...s, matchDate: normalizeSlotDate(s.matchDate) })));
     }
+    const savedOv = localStorage.getItem("unitr_pitch_overrides");
+    if (savedOv) setPitchOverrides(JSON.parse(savedOv));
   }, [selectMode]);
 
   // Check pitch availability against the captain's posting slots
@@ -577,17 +583,19 @@ function PitchesContent() {
       const map: Record<string, SlotStatus[]> = {};
       for (const pitch of pitches) {
         map[pitch.id] = postingSlots.map((slot) => {
+          // Use this pitch's overridden time for the date, if the captain set one.
+          const time = pitchOverrides[pitch.id]?.[slot.matchDate] ?? slot.time;
           const dow = DAY_MAP[slot.dayName];
           const avail = avails?.find((a) => a.pitch_id === pitch.id && a.day_of_week === dow);
           if (avail && !avail.is_active) return "closed";
-          if (avail && (slot.time < avail.open_time || slot.time >= avail.close_time)) return "closed";
+          if (avail && (time < avail.open_time || time >= avail.close_time)) return "closed";
           const isBooked = bookings?.some(
             (b) =>
               b.pitch_id === pitch.id &&
               b.match_date === slot.matchDate &&
               (b.end_time
-                ? b.start_time <= slot.time && slot.time < b.end_time
-                : b.start_time === slot.time)
+                ? b.start_time <= time && time < b.end_time
+                : b.start_time === time)
           );
           return isBooked ? "booked" : "available";
         });
@@ -595,7 +603,7 @@ function PitchesContent() {
       setPitchSlotMap(map);
       setCheckingSlots(false);
     });
-  }, [selectMode, pitches, postingSlots]);
+  }, [selectMode, pitches, postingSlots, pitchOverrides]);
 
   // Restore existing pitch selections
   useEffect(() => {
@@ -627,6 +635,17 @@ function PitchesContent() {
     return !checkingSlots && statuses !== undefined && statuses.length > 0 && statuses.every((s) => s !== "available");
   };
 
+  // The captain's posting slots with this pitch's time overrides applied.
+  const effectiveSlots = (pitchId: string): PostingSlot[] =>
+    postingSlots.map((s) => ({ ...s, time: pitchOverrides[pitchId]?.[s.matchDate] ?? s.time }));
+
+  // Stable reference for the currently-open panel so its DB effect doesn't re-fire each render.
+  const detailSlots = useMemo(
+    () => (detailPitch ? effectiveSlots(detailPitch.id) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [detailPitch, postingSlots, pitchOverrides]
+  );
+
   const togglePitch = (pitch: Pitch) => {
     if (!isAffordable(pitch) || !isEnoughPlayers(pitch) || isAllSlotsTaken(pitch)) return;
     setPickedPitches((prev) => {
@@ -649,6 +668,8 @@ function PitchesContent() {
     const options = pickedPitches.map((p) => ({
       id: p.id, name: p.name, address: p.address,
       price: p.price_per_hour, format: p.formats[0] ?? "", distance: "",
+      // Per-date times for this pitch (overrides baked in) so each post books the right slot.
+      slotTimes: Object.fromEntries(effectiveSlots(p.id).map((s) => [s.matchDate, s.time])),
     }));
     localStorage.setItem("unitr_pitch_options", JSON.stringify(options));
     router.push("/play/create");
@@ -659,13 +680,21 @@ function PitchesContent() {
     setBookedInfo({ date, time });
   };
 
-  const replaceSlot = (date: string, newTime: string) => {
-    const updated = postingSlots.map(s =>
-      s.matchDate === date ? { ...s, time: newTime } : s
-    );
-    setPostingSlots(updated);
-    localStorage.setItem("unitr_posting_slots", JSON.stringify(updated));
-    setPitchSlotMap({});
+  // Set an alternative time for ONE pitch on a given date, add it to the
+  // selection, and close the panel — other pitches keep their own times.
+  const replaceSlot = (pitchId: string, date: string, newTime: string) => {
+    setPitchOverrides((prev) => {
+      const next = { ...prev, [pitchId]: { ...(prev[pitchId] ?? {}), [date]: newTime } };
+      localStorage.setItem("unitr_pitch_overrides", JSON.stringify(next));
+      return next;
+    });
+    setPickedPitches((prev) => {
+      if (prev.find((p) => p.id === pitchId)) return prev;
+      if (prev.length >= 3) return prev;
+      const p = pitches.find((x) => x.id === pitchId);
+      return p ? [...prev, p] : prev;
+    });
+    setDetailPitch(null);
   };
 
   return (
@@ -793,8 +822,9 @@ function PitchesContent() {
                             </div>
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
-                              {postingSlots.map((slot, i) => {
+                              {effectiveSlots(pitch.id).map((slot, i) => {
                                 const status = pitchSlotMap[pitch.id]?.[i];
+                                const overridden = pitchOverrides[pitch.id]?.[slot.matchDate] !== undefined;
                                 return (
                                   <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border ${
                                     status === "available" ? "bg-accent/10 text-accent border-accent/20" :
@@ -804,7 +834,7 @@ function PitchesContent() {
                                     {status === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
                                     {status === "booked" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
                                     {slot.dayName.slice(0, 3)} {slot.time}
-                                    {status === "booked" ? " · Taken" : status === "closed" ? " · Closed" : ""}
+                                    {overridden ? " · adjusted" : status === "booked" ? " · Taken" : status === "closed" ? " · Closed" : ""}
                                   </span>
                                 );
                               })}
@@ -898,7 +928,7 @@ function PitchesContent() {
       {detailPitch && selectMode && (
         <PitchAvailabilityPanel
           pitch={detailPitch}
-          postingSlots={postingSlots}
+          postingSlots={detailSlots}
           pitchSlotStatuses={pitchSlotMap[detailPitch.id] ?? []}
           isPicked={pickedPitches.some(p => p.id === detailPitch.id)}
           pickIndex={pickedPitches.findIndex(p => p.id === detailPitch.id)}
@@ -912,7 +942,7 @@ function PitchesContent() {
             }
             setDetailPitch(null);
           }}
-          onReplaceSlot={replaceSlot}
+          onReplaceSlot={(date, newTime) => replaceSlot(detailPitch.id, date, newTime)}
           canAdd={isAffordable(detailPitch) && pickedPitches.length < 3}
         />
       )}

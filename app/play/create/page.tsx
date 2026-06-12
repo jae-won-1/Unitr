@@ -22,6 +22,9 @@ type PitchOption = {
   price: number;
   format: string;
   distance: string;
+  // Per-date times for this pitch (ISO date → time), set when the captain
+  // picks an alternative slot for one pitch in the pitch-selection step.
+  slotTimes?: Record<string, string>;
 };
 
 type ManualDate = {
@@ -33,16 +36,28 @@ type ManualDate = {
 const rankLabels = ["1st choice", "2nd choice", "3rd choice"];
 
 
-function formatISODate(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${days[d.getDay()]}, ${String(d.getDate()).padStart(2,"0")} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-
 function getDayName(iso: string): string {
   const d = new Date(iso + "T12:00:00");
   return ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()];
+}
+
+const ISO_MONTHS: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+// Convert a display date like "Sat, 13 JUN 2026" to ISO "2026-06-13".
+// Idempotent: already-ISO strings pass through unchanged.
+function toISODate(raw: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m) {
+    const key = m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase();
+    if (ISO_MONTHS[key] !== undefined) {
+      const d = new Date(Number(m[3]), ISO_MONTHS[key], Number(m[1]));
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+  }
+  return raw;
 }
 
 export default function CreateMatchPage() {
@@ -162,14 +177,14 @@ export default function CreateMatchPage() {
       if (selectedPollDates.length === 0) { setError("Select at least one date from the poll."); return; }
       datesToPost = availabilityRequest.date_options
         .filter((o) => selectedPollDates.includes(o.id))
-        .map((o) => ({ date: o.date, time: o.time, dayName: o.dayName }));
+        .map((o) => ({ date: toISODate(o.date), time: o.time, dayName: o.dayName }));
     } else if (confirmedDates.length > 0) {
-      datesToPost = confirmedDates.map((d) => ({ date: d.date, time: d.time, dayName: d.dayName }));
+      datesToPost = confirmedDates.map((d) => ({ date: toISODate(d.date), time: d.time, dayName: d.dayName }));
     } else {
       const filled = manualDates.filter((d) => d.date && d.time);
       if (filled.length === 0) { setError("Add at least one date."); return; }
       datesToPost = filled.map((d) => ({
-        date: d.date,
+        date: toISODate(d.date),
         time: d.time,
         dayName: getDayName(d.date),
       }));
@@ -186,7 +201,12 @@ export default function CreateMatchPage() {
       match_date: d.date,
       match_time: d.time,
       day_name: d.dayName,
-      pitch_options: pitchOptions,
+      // Each pitch option carries its own time for this date (an override if the
+      // captain picked an alternative slot, otherwise the post's default time).
+      pitch_options: pitchOptions.map(({ slotTimes, ...p }) => ({
+        ...p,
+        time: slotTimes?.[d.date] ?? d.time,
+      })),
       description,
       status: "open",
     }));
@@ -198,6 +218,7 @@ export default function CreateMatchPage() {
     localStorage.removeItem("unitr_confirmed_dates");
     localStorage.removeItem("unitr_pitch_options");
     localStorage.removeItem("unitr_posting_slots");
+    localStorage.removeItem("unitr_pitch_overrides");
     router.push("/play");
   };
 

@@ -14,7 +14,34 @@ type PitchOption = {
   price: number;
   format: string;
   distance: string;
+  // Optional per-pitch kickoff time. Older posts won't have it → fall back to the post time.
+  time?: string;
 };
+
+const ISO_MONTHS: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+function toISODate(raw: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (m) {
+    const key = m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase();
+    if (ISO_MONTHS[key] !== undefined) {
+      const d = new Date(Number(m[3]), ISO_MONTHS[key], Number(m[1]));
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+  }
+  return raw;
+}
+// Friendly "Sat, 13 Jun · 16:00" from an ISO (or legacy display) match_date.
+function fmtPostDate(matchDate: string, matchTime: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(matchDate)) {
+    const d = new Date(matchDate + "T12:00:00");
+    return `${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · ${matchTime}`;
+  }
+  return `${matchDate} · ${matchTime}`;
+}
 
 type MatchPost = {
   id: string;
@@ -95,7 +122,7 @@ function ChallengePanel({
             .select("id")
             .eq("pitch_id", pitch.id)
             .eq("match_date", post.match_date)
-            .eq("start_time", post.match_time)
+            .eq("start_time", pitch.time ?? post.match_time)
             .neq("status", "cancelled")
             .maybeSingle();
           result[pitch.id] = !data;
@@ -141,6 +168,8 @@ function ChallengePanel({
       status: "accepted",
     });
 
+    const pitchTime = pitch?.time ?? post.match_time;
+
     // Final double-booking check: pitch slot may have been taken since panel opened
     if (pitch?.id) {
       const { data: slotConflict } = await supabase
@@ -148,7 +177,7 @@ function ChallengePanel({
         .select("id")
         .eq("pitch_id", pitch.id)
         .eq("match_date", post.match_date)
-        .eq("start_time", post.match_time)
+        .eq("start_time", pitchTime)
         .neq("status", "cancelled")
         .maybeSingle();
 
@@ -164,7 +193,7 @@ function ChallengePanel({
     // Create a pitch_bookings row so the venue portal calendar shows this booking
     if (pitch?.id) {
       const perPlayerPence = Math.round((pitch.price * 100) / 22);
-      const startTime = post.match_time || "12:00";
+      const startTime = pitchTime || "12:00";
       const [h, m] = startTime.split(":").map(Number);
       const endTime = `${String(Math.min((h || 12) + 1, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
       const { error: bookingErr } = await supabase.from("pitch_bookings").insert({
@@ -200,7 +229,7 @@ function ChallengePanel({
         challenging_team_id: team.id,
         confirmed_pitch: pitch,
         match_date: post.match_date,
-        match_time: post.match_time,
+        match_time: pitchTime,
       }).select("id").single();
 
       if (matchRecord) {
@@ -352,7 +381,7 @@ function ChallengePanel({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-semibold truncate ${isBooked ? "line-through text-text-secondary" : ""}`}>{pitch.name}</p>
-                      <p className="text-xs text-text-secondary">{pitch.format} · £{pitch.price}/hr · {pitch.distance}</p>
+                      <p className="text-xs text-text-secondary">KO {pitch.time ?? post.match_time} · {pitch.format} · £{pitch.price}/hr</p>
                     </div>
                     {isBooked
                       ? <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Taken</span>
@@ -625,7 +654,7 @@ function usePosts(excludeCaptainId: string | null, userId?: string) {
             .limit(1).maybeSingle();
 
           if (req?.date_options) {
-            availabilityDates = (req.date_options as { date: string }[]).map((d) => d.date);
+            availabilityDates = (req.date_options as { date: string }[]).map((d) => toISODate(d.date));
           }
         }
       }
@@ -646,12 +675,12 @@ function usePosts(excludeCaptainId: string | null, userId?: string) {
         captain_id: row.captain_id,
         team: row.team_name,
         location: row.team_location ?? "",
-        date: `${row.match_date} · ${row.match_time}`,
+        date: fmtPostDate(row.match_date, row.match_time),
         match_date: row.match_date,
         match_time: row.match_time,
         pitchOptions: (row.pitch_options ?? []) as PitchOption[],
         description: row.description ?? "",
-        availabilityMatch: availabilityDates.includes(row.match_date),
+        availabilityMatch: availabilityDates.includes(toISODate(row.match_date)),
         status: row.status,
       }));
 
@@ -688,7 +717,7 @@ function useMyPosts(captainId?: string) {
           captain_id: row.captain_id,
           team: row.team_name,
           location: row.team_location ?? "",
-          date: `${row.match_date} · ${row.match_time}`,
+          date: fmtPostDate(row.match_date, row.match_time),
           match_date: row.match_date,
           match_time: row.match_time,
           pitchOptions: (row.pitch_options ?? []) as PitchOption[],
