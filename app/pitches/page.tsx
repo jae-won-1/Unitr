@@ -48,9 +48,12 @@ function localISO(d: Date): string {
 function normalizeSlotDate(raw: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-  if (m && NORM_MONTHS[m[2]] !== undefined) {
-    const d = new Date(Number(m[3]), NORM_MONTHS[m[2]], Number(m[1]));
-    return localISO(d);
+  if (m) {
+    const monthKey = m[2].charAt(0).toUpperCase() + m[2].slice(1).toLowerCase();
+    if (NORM_MONTHS[monthKey] !== undefined) {
+      const d = new Date(Number(m[3]), NORM_MONTHS[monthKey], Number(m[1]));
+      return localISO(d);
+    }
   }
   return raw;
 }

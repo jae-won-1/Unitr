@@ -169,7 +169,7 @@ export default function CreateMatchPage() {
       const filled = manualDates.filter((d) => d.date && d.time);
       if (filled.length === 0) { setError("Add at least one date."); return; }
       datesToPost = filled.map((d) => ({
-        date: formatISODate(d.date),
+        date: d.date,
         time: d.time,
         dayName: getDayName(d.date),
       }));
