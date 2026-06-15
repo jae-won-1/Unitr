@@ -266,18 +266,30 @@ function PitchAvailabilityPanel({
 
   const ALL_HOURS = Array.from({ length: 16 }, (_, i) => `${String(i + 7).padStart(2, "0")}:00`);
 
-  const days = Array.from({ length: 21 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const key = localISO(d);
-    return {
-      key,
-      day: d.toLocaleDateString("en-GB", { weekday: "short" }),
-      date: d.getDate(),
-      month: d.toLocaleDateString("en-GB", { month: "short" }),
-      isPostingDate: postingSlots.some(s => s.matchDate === key),
-    };
-  });
+  const days = (() => {
+    const todayISO = localISO(new Date());
+    // Start from whichever is earlier: today or the earliest posting slot.
+    const slotDates = postingSlots.map(s => s.matchDate).filter(Boolean).sort();
+    const startISO = slotDates.length > 0 && slotDates[0] < todayISO ? slotDates[0] : todayISO;
+    const latestSlot = slotDates[slotDates.length - 1] ?? todayISO;
+    // Show at least 21 days from start, or up to 7 days past the latest posting slot.
+    const startDate = new Date(startISO + "T12:00:00");
+    const endDate = new Date(latestSlot + "T12:00:00");
+    endDate.setDate(endDate.getDate() + 7);
+    const totalDays = Math.max(21, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1);
+    return Array.from({ length: totalDays }, (_, i) => {
+      const d = new Date(startISO + "T12:00:00");
+      d.setDate(d.getDate() + i);
+      const key = localISO(d);
+      return {
+        key,
+        day: d.toLocaleDateString("en-GB", { weekday: "short" }),
+        date: d.getDate(),
+        month: d.toLocaleDateString("en-GB", { month: "short" }),
+        isPostingDate: postingSlots.some(s => s.matchDate === key),
+      };
+    });
+  })();
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -622,13 +634,7 @@ function PitchesContent() {
   const isAffordable = (pitch: Pitch) =>
     paymentMode !== "credit" || teamCredits === null || pitch.price_per_hour <= teamCredits;
 
-  const minPlayersForFormats = (formats: string[]) => {
-    const nums = formats.flatMap((f) => { const m = f.match(/(\d+)/); return m ? [parseInt(m[1])] : []; });
-    return nums.length > 0 ? Math.min(...nums) : 5;
-  };
-
-  const isEnoughPlayers = (pitch: Pitch) =>
-    paymentMode !== "individual" || squadCount === null || squadCount >= minPlayersForFormats(pitch.formats);
+  const isEnoughPlayers = (_pitch: Pitch) => true;
 
   const isAllSlotsTaken = (pitch: Pitch) => {
     const statuses = pitchSlotMap[pitch.id];
