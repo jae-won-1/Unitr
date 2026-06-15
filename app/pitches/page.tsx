@@ -246,13 +246,14 @@ function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: s
 // ── Pitch Availability Panel (Select Mode) ────────────────────
 function PitchAvailabilityPanel({
   pitch, postingSlots, pitchSlotStatuses, isPicked, pickIndex,
-  onClose, onToggle, onReplaceSlot, canAdd,
+  slotOverrides, onClose, onToggle, onReplaceSlot, canAdd,
 }: {
   pitch: Pitch;
   postingSlots: PostingSlot[];
   pitchSlotStatuses: SlotStatus[];
   isPicked: boolean;
   pickIndex: number;
+  slotOverrides: Record<string, string>;
   onClose: () => void;
   onToggle: () => void;
   onReplaceSlot: (date: string, newTime: string) => void;
@@ -339,11 +340,13 @@ function PitchAvailabilityPanel({
   const postingSlotForDate = postingSlots.find(s => normalizeSlotDate(s.matchDate) === selectedDate);
   const postingTime = postingSlotForDate?.time;
   const allPostingSlotsUnavailable = pitchSlotStatuses.length > 0 && pitchSlotStatuses.every(s => s !== "available");
+  // How many of the captain's posting dates already have a chosen slot for THIS pitch.
+  const confirmedCount = postingSlots.filter(s => slotOverrides[normalizeSlotDate(s.matchDate)] !== undefined).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-2xl overflow-y-auto max-h-[85vh]" onClick={e => e.stopPropagation()}>
-        <div className="px-5 pt-5 pb-6">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className="overflow-y-auto flex-1 px-5 pt-5 pb-3">
 
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
@@ -366,20 +369,24 @@ function PitchAvailabilityPanel({
                   const isoDate = normalizeSlotDate(slot.matchDate);
                   const dayLabel = new Date(isoDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" });
                   const st = pitchSlotStatuses[i];
+                  const confirmed = slotOverrides[isoDate] !== undefined;
+                  const confirmedTime = slotOverrides[isoDate];
                   return (
                     <button key={i}
                       onClick={() => setSelectedDate(isoDate)}
                       className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                         selectedDate === isoDate ? "ring-1 ring-white/20" : ""
                       } ${
+                        confirmed ? "bg-accent/20 text-accent border-accent/40" :
                         st === "available" ? "bg-accent/10 text-accent border-accent/20" :
                         st === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
                         "bg-surface text-text-secondary border-border"
                       }`}>
-                      {st === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                      {(st === "booked" || st === "closed") && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
-                      {dayLabel} {fmtSlotDate(isoDate)} · {slot.time}
-                      {st === "booked" ? " · Taken" : st === "closed" ? " · Unavailable" : ""}
+                      {confirmed && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                      {!confirmed && st === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                      {!confirmed && (st === "booked" || st === "closed") && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
+                      {dayLabel} {fmtSlotDate(isoDate)} · {confirmed ? confirmedTime : slot.time}
+                      {confirmed ? " · ✓" : st === "booked" ? " · Taken" : st === "closed" ? " · Unavailable" : ""}
                     </button>
                   );
                 })}
@@ -457,21 +464,14 @@ function PitchAvailabilityPanel({
             </>
           )}
 
-          {/* Replace slot CTA — only changes the time for THIS pitch */}
+          {/* Changed-time note */}
           {selectedTime && selectedTime !== postingTime && postingSlotForDate && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-3">
-              <p className="text-xs text-yellow-400 font-semibold mb-1">Different time for this pitch?</p>
-              <p className="text-[11px] text-text-secondary mb-2.5">
-                Book <span className="text-text-primary font-medium">{pitch.name}</span> on{" "}
-                <span className="text-text-primary font-medium">{new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</span> at{" "}
-                <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
-                <span className="text-accent font-semibold">{selectedTime}</span>. Your other pitches keep their times.
+              <p className="text-xs text-yellow-400 font-semibold mb-0.5">Different time for this pitch?</p>
+              <p className="text-[11px] text-text-secondary">
+                Booking at <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
+                <span className="text-accent font-semibold">{selectedTime}</span> on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.
               </p>
-              <button
-                onClick={() => onReplaceSlot(selectedDate, selectedTime!)}
-                className="w-full py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-xs font-semibold">
-                {isPicked ? `Update ${pitch.name} to ${selectedTime}` : `Add ${pitch.name} at ${selectedTime}`}
-              </button>
             </div>
           )}
 
@@ -479,28 +479,65 @@ function PitchAvailabilityPanel({
           {selectedTime && !postingSlotForDate && (
             <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 mb-3">
               <p className="text-[11px] text-text-secondary">
-                <span className="text-text-primary font-medium">{selectedTime}</span> is available on this date but it&apos;s not one of your posting dates. Go back and update your posting schedule to include it.
+                <span className="text-text-primary font-medium">{selectedTime}</span> isn&apos;t one of your posting dates — update your schedule to include it.
               </p>
             </div>
           )}
 
-          {/* Add / Remove */}
-          <button
-            onClick={onToggle}
-            disabled={!isPicked && (!canAdd || allPostingSlotsUnavailable)}
-            className={`w-full py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              isPicked
-                ? "bg-accent/20 text-accent border border-accent/40"
-                : allPostingSlotsUnavailable
+        </div>
+
+        {/* Sticky footer — compact, always visible regardless of scroll */}
+        <div className="px-5 pb-4 pt-3 border-t border-border flex-shrink-0">
+
+          {/* Progress hint — how many of your dates have a slot set for this pitch */}
+          {postingSlots.length > 1 && (
+            <p className="text-[11px] text-text-secondary text-center mb-2">
+              {confirmedCount} of {postingSlots.length} date{postingSlots.length > 1 ? "s" : ""} set for this pitch
+              {confirmedCount < postingSlots.length && confirmedCount > 0 ? " — pick a slot for the rest" : ""}
+            </p>
+          )}
+
+          {/* Primary: confirm this date's slot, then auto-advance to next unconfirmed date */}
+          {selectedTime && postingSlotForDate && (
+            <button
+              onClick={() => {
+                onReplaceSlot(selectedDate, selectedTime!);
+                // Advance to next posting date that hasn't been confirmed yet
+                const next = postingSlots.find(s => {
+                  const iso = normalizeSlotDate(s.matchDate);
+                  return iso !== selectedDate && slotOverrides[iso] === undefined;
+                });
+                if (next) setSelectedDate(normalizeSlotDate(next.matchDate));
+              }}
+              className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">
+              {slotOverrides[selectedDate] !== undefined
+                ? `Update ${new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" })} to ${selectedTime} ✓`
+                : `Confirm ${new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" })} at ${selectedTime}`}
+            </button>
+          )}
+
+          <div className="flex gap-2">
+            {/* Done — close panel once pitch is added */}
+            {isPicked && (
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-xl bg-accent/20 text-accent border border-accent/40 font-bold text-sm">
+                ✓ {rankLabels[pickIndex]} · Done
+              </button>
+            )}
+
+            {/* Secondary: add at default posting times / remove */}
+            <button
+              onClick={onToggle}
+              disabled={!isPicked && !canAdd}
+              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                isPicked
                   ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                  : "bg-accent text-black"
-            }`}>
-            {isPicked
-              ? `✓ ${rankLabels[pickIndex]} — tap to remove`
-              : allPostingSlotsUnavailable
-                ? "No slots at your posting times"
-                : "Add as Option"}
-          </button>
+                  : "bg-surface-2 border border-border text-text-primary"
+              }`}>
+              {isPicked ? "Remove" : "Add with my posting times"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -639,8 +676,10 @@ function PitchesContent() {
     return nums.length > 0 ? Math.min(...nums) : 5;
   };
 
-  const isEnoughPlayers = (pitch: Pitch) =>
-    paymentMode !== "individual" || squadCount === null || squadCount >= minPlayersForFormats(pitch.formats);
+  // TODO: re-enable min-player check before launch
+  // const isEnoughPlayers = (pitch: Pitch) =>
+  //   paymentMode !== "individual" || squadCount === null || squadCount >= minPlayersForFormats(pitch.formats);
+  const isEnoughPlayers = (_pitch: Pitch) => true;
 
   const isAllSlotsTaken = (pitch: Pitch) => {
     const statuses = pitchSlotMap[pitch.id];
@@ -692,8 +731,8 @@ function PitchesContent() {
     setBookedInfo({ date, time });
   };
 
-  // Set an alternative time for ONE pitch on a given date, add it to the
-  // selection, and close the panel — other pitches keep their own times.
+  // Set an alternative time for ONE pitch on a given date. Panel stays open
+  // so the captain can confirm additional dates for the same pitch.
   const replaceSlot = (pitchId: string, date: string, newTime: string) => {
     setPitchOverrides((prev) => {
       const next = { ...prev, [pitchId]: { ...(prev[pitchId] ?? {}), [date]: newTime } };
@@ -706,7 +745,6 @@ function PitchesContent() {
       const p = pitches.find((x) => x.id === pitchId);
       return p ? [...prev, p] : prev;
     });
-    setDetailPitch(null);
   };
 
   return (
@@ -912,8 +950,8 @@ function PitchesContent() {
         </>
       )}
 
-      {/* SELECT MODE: sticky confirm bar */}
-      {selectMode && (
+      {/* SELECT MODE: sticky confirm bar — hidden while the detail panel is open so it doesn't cover the panel's controls */}
+      {selectMode && !detailPitch && (
         <div className="fixed bottom-20 left-0 right-0 z-[60] bg-surface border-t border-border px-4 pt-3 pb-3">
           {pickedPitches.length > 0 && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto">
@@ -954,6 +992,7 @@ function PitchesContent() {
             }
             setDetailPitch(null);
           }}
+          slotOverrides={pitchOverrides[detailPitch.id] ?? {}}
           onReplaceSlot={(date, newTime) => replaceSlot(detailPitch.id, date, newTime)}
           canAdd={isAffordable(detailPitch) && pickedPitches.length < 3}
         />

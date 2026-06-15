@@ -647,8 +647,10 @@ function FindMatchButton() {
     if (selected === "individual") {
       e.preventDefault();
       const count = maxVoteCount ?? 0;
-      if (count < 7) { setVoteWarning("too_few"); return; }
-      if (count <= 10) { setVoteWarning("seven_aside"); return; }
+      // TODO: re-enable min-player checks before launch
+      // if (count < 7) { setVoteWarning("too_few"); return; }
+      // if (count <= 10) { setVoteWarning("seven_aside"); return; }
+      void count;
       localStorage.setItem("unitr_payment_mode", "individual");
       setOpen(false);
       window.location.href = href;
