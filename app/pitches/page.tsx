@@ -634,7 +634,13 @@ function PitchesContent() {
   const isAffordable = (pitch: Pitch) =>
     paymentMode !== "credit" || teamCredits === null || pitch.price_per_hour <= teamCredits;
 
-  const isEnoughPlayers = (_pitch: Pitch) => true;
+  const minPlayersForFormats = (formats: string[]) => {
+    const nums = formats.flatMap((f) => { const m = f.match(/(\d+)/); return m ? [parseInt(m[1])] : []; });
+    return nums.length > 0 ? Math.min(...nums) : 5;
+  };
+
+  const isEnoughPlayers = (pitch: Pitch) =>
+    paymentMode !== "individual" || squadCount === null || squadCount >= minPlayersForFormats(pitch.formats);
 
   const isAllSlotsTaken = (pitch: Pitch) => {
     const statuses = pitchSlotMap[pitch.id];
