@@ -594,6 +594,8 @@ function FindMatchButton() {
   const [teamCredits, setTeamCredits] = useState<number | null>(null);
   const [hasAvailability, setHasAvailability] = useState(false);
   const [hasAvailabilityRequest, setHasAvailabilityRequest] = useState(false);
+  const [maxVoteCount, setMaxVoteCount] = useState<number | null>(null);
+  const [voteWarning, setVoteWarning] = useState<"too_few" | "seven_aside" | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.search.includes("findMatch=1")) {
@@ -614,16 +616,47 @@ function FindMatchButton() {
       if (!team?.id) return;
       const [{ data: credits }, { data: req }] = await Promise.all([
         supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle(),
-        supabase.from("availability_requests").select("id").eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("availability_requests").select("id, date_options").eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       setTeamCredits(credits?.balance ?? 0);
       setHasAvailabilityRequest(!!req);
+
+      if (req?.id && req?.date_options?.length > 0) {
+        const { data: responses } = await supabase
+          .from("availability_responses")
+          .select("available_date_ids")
+          .eq("request_id", req.id);
+        if (responses) {
+          const max = Math.max(
+            ...req.date_options.map((opt: { id: string }) =>
+              responses.filter((r: { available_date_ids: string[] }) => r.available_date_ids.includes(opt.id)).length
+            )
+          );
+          setMaxVoteCount(max);
+        }
+      }
     }
     load();
   }, [user, open]);
 
   const insufficientCredits = teamCredits !== null && teamCredits < MIN_PITCH_COST;
-  const href = selected === "credit" ? "/play/create" : "/play/create";
+  const href = "/play/create";
+
+  function handleConfirm(e: React.MouseEvent) {
+    if (!selected) { e.preventDefault(); return; }
+    if (selected === "individual") {
+      e.preventDefault();
+      const count = maxVoteCount ?? 0;
+      if (count < 7) { setVoteWarning("too_few"); return; }
+      if (count <= 10) { setVoteWarning("seven_aside"); return; }
+      localStorage.setItem("unitr_payment_mode", "individual");
+      setOpen(false);
+      window.location.href = href;
+      return;
+    }
+    localStorage.setItem("unitr_payment_mode", selected);
+    setOpen(false);
+  }
 
   return (
     <>
@@ -635,92 +668,134 @@ function FindMatchButton() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={() => { setOpen(false); setVoteWarning(null); }}>
           <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
 
-            <div className="flex items-start justify-between mb-6">
-              <p className="text-xl font-bold leading-tight">How would you like to book the pitch?</p>
-              <button onClick={() => setOpen(false)} className="ml-3 flex-shrink-0 mt-0.5">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3 mb-5">
-              <button
-                disabled={insufficientCredits}
-                onClick={() => !insufficientCredits && setSelected("credit")}
-                className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${insufficientCredits ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "credit" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
-                <div className="flex items-center justify-between mb-0.5">
-                  <div className="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "credit" && !insufficientCredits ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
-                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+            {voteWarning === "too_few" ? (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                     </svg>
-                    <p className={`text-sm font-bold ${selected === "credit" && !insufficientCredits ? "text-accent" : "text-text-primary"}`}>Pay with Team Credit</p>
                   </div>
-                  {teamCredits !== null && (
-                    <span className={`text-xs font-semibold ${insufficientCredits ? "text-red-400" : "text-accent"}`}>
-                      £{teamCredits.toFixed(2)}
-                    </span>
-                  )}
+                  <p className="text-lg font-bold leading-tight">More players needed</p>
                 </div>
-                <p className="text-xs text-text-secondary">Use your team&apos;s credit balance to cover the pitch fee upfront.</p>
-                {insufficientCredits && (
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[9px] font-bold text-red-400">i</span>
-                    </div>
-                    <p className="text-[11px] text-red-400">Insufficient team credits to book this pitch</p>
+                <p className="text-sm text-text-secondary mb-6">
+                  Only <span className="text-text-primary font-semibold">{maxVoteCount ?? 0} player{(maxVoteCount ?? 0) !== 1 ? "s" : ""}</span> agreed on the most popular time slot. At least 7 players need to be available before you can post a match.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setVoteWarning(null)} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary">Back</button>
+                  <a href="/my-team/availability" onClick={() => { setVoteWarning(null); setOpen(false); }} className="flex-1 py-3 rounded-xl bg-surface-2 border border-border text-sm font-semibold text-text-primary text-center">Collect Availability</a>
+                </div>
+              </>
+            ) : voteWarning === "seven_aside" ? (
+              <>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2.5" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
                   </div>
-                )}
-              </button>
+                  <p className="text-lg font-bold leading-tight">7-a-side pitches only</p>
+                </div>
+                <p className="text-sm text-text-secondary mb-6">
+                  <span className="text-text-primary font-semibold">{maxVoteCount} players</span> are available for the most popular time slot. Only 7-a-side pitches will be shown during pitch selection.
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setVoteWarning(null)} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary">Back</button>
+                  <a
+                    href="/play/create"
+                    onClick={() => { localStorage.setItem("unitr_payment_mode", "individual"); setVoteWarning(null); setOpen(false); }}
+                    className="flex-1 py-3 rounded-xl bg-accent text-black text-sm font-bold text-center"
+                  >Continue</a>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between mb-6">
+                  <p className="text-xl font-bold leading-tight">How would you like to book the pitch?</p>
+                  <button onClick={() => setOpen(false)} className="ml-3 flex-shrink-0 mt-0.5">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
 
-              {(() => {
-                const canSelect = hasAvailability || hasAvailabilityRequest;
-                return (
+                <div className="flex flex-col gap-3 mb-5">
                   <button
-                    onClick={() => canSelect && setSelected("individual")}
-                    disabled={!canSelect}
-                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
-                    <div className={!canSelect ? "opacity-50" : ""}>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                    disabled={insufficientCredits}
+                    onClick={() => !insufficientCredits && setSelected("credit")}
+                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${insufficientCredits ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "credit" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "credit" && !insufficientCredits ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
                         </svg>
-                        <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
+                        <p className={`text-sm font-bold ${selected === "credit" && !insufficientCredits ? "text-accent" : "text-text-primary"}`}>Pay with Team Credit</p>
                       </div>
-                      <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
-                      {!canSelect && (
-                        <div className="flex items-center gap-1.5 mt-1.5">
-                          <div className="w-4 h-4 rounded-full border border-yellow-400 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[9px] font-bold text-yellow-400">i</span>
-                          </div>
-                          <p className="text-[11px] text-yellow-400">Collect team availability first</p>
-                        </div>
+                      {teamCredits !== null && (
+                        <span className={`text-xs font-semibold ${insufficientCredits ? "text-red-400" : "text-accent"}`}>
+                          £{teamCredits.toFixed(2)}
+                        </span>
                       )}
                     </div>
-                    {!canSelect && (
-                      <a href="/my-team/availability"
-                        onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-                        className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                        Collect Availability Now
-                      </a>
+                    <p className="text-xs text-text-secondary">Use your team&apos;s credit balance to cover the pitch fee upfront.</p>
+                    {insufficientCredits && (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[9px] font-bold text-red-400">i</span>
+                        </div>
+                        <p className="text-[11px] text-red-400">Insufficient team credits to book this pitch</p>
+                      </div>
                     )}
                   </button>
-                );
-              })()}
-            </div>
 
-            <a href={selected ? href : undefined}
-              onClick={(e) => {
-                if (!selected) { e.preventDefault(); return; }
-                localStorage.setItem("unitr_payment_mode", selected);
-                setOpen(false);
-              }}
-              className={`block w-full py-3.5 rounded-xl text-sm font-bold text-center transition-colors ${selected ? "bg-accent text-black" : "bg-surface-2 text-text-secondary cursor-not-allowed"}`}>
-              Confirm
-            </a>
+                  {(() => {
+                    const canSelect = hasAvailability || hasAvailabilityRequest;
+                    return (
+                      <button
+                        onClick={() => canSelect && setSelected("individual")}
+                        disabled={!canSelect}
+                        className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                        <div className={!canSelect ? "opacity-50" : ""}>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
+                          </div>
+                          <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
+                          {!canSelect && (
+                            <div className="flex items-center gap-1.5 mt-1.5">
+                              <div className="w-4 h-4 rounded-full border border-yellow-400 flex items-center justify-center flex-shrink-0">
+                                <span className="text-[9px] font-bold text-yellow-400">i</span>
+                              </div>
+                              <p className="text-[11px] text-yellow-400">Collect team availability first</p>
+                            </div>
+                          )}
+                        </div>
+                        {!canSelect && (
+                          <a href="/my-team/availability"
+                            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+                            className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            Collect Availability Now
+                          </a>
+                        )}
+                      </button>
+                    );
+                  })()}
+                </div>
+
+                <a href={selected ? href : undefined}
+                  onClick={handleConfirm}
+                  className={`block w-full py-3.5 rounded-xl text-sm font-bold text-center transition-colors ${selected ? "bg-accent text-black" : "bg-surface-2 text-text-secondary cursor-not-allowed"}`}>
+                  Confirm
+                </a>
+              </>
+            )}
           </div>
         </div>
       )}
