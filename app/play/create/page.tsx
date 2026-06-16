@@ -193,23 +193,46 @@ export default function CreateMatchPage() {
     setLoading(true);
     setError(null);
 
-    const inserts = datesToPost.map((d) => ({
+    const base = {
       team_id: team.id,
       captain_id: user.id,
       team_name: team.name,
       team_location: team.location ?? "",
-      match_date: d.date,
-      match_time: d.time,
-      day_name: d.dayName,
-      // Each pitch option carries its own time for this date (an override if the
-      // captain picked an alternative slot, otherwise the post's default time).
-      pitch_options: pitchOptions.map(({ slotTimes, ...p }) => ({
-        ...p,
-        time: slotTimes?.[d.date] ?? d.time,
-      })),
       description,
       status: "open",
-    }));
+    };
+
+    // For each date: pitches kept at the original time are bundled into one main
+    // post (ranked options the opponent chooses from). Each pitch given an
+    // alternative time becomes its own standalone post alongside the main one.
+    const inserts: Record<string, unknown>[] = [];
+    for (const d of datesToPost) {
+      const withTimes = pitchOptions.map(({ slotTimes, ...p }) => ({
+        ...p,
+        time: slotTimes?.[d.date] ?? d.time,
+      }));
+      const originalTimePitches = withTimes.filter((p) => p.time === d.time);
+      const altTimePitches = withTimes.filter((p) => p.time !== d.time);
+
+      if (originalTimePitches.length > 0) {
+        inserts.push({
+          ...base,
+          match_date: d.date,
+          match_time: d.time,
+          day_name: d.dayName,
+          pitch_options: originalTimePitches,
+        });
+      }
+      for (const p of altTimePitches) {
+        inserts.push({
+          ...base,
+          match_date: d.date,
+          match_time: p.time,
+          day_name: d.dayName,
+          pitch_options: [p],
+        });
+      }
+    }
 
     const { error: insertError } = await supabase.from("match_posts").insert(inserts);
 
@@ -222,7 +245,40 @@ export default function CreateMatchPage() {
     router.push("/play");
   };
 
-  const postCount = confirmedDates.length > 0 ? confirmedDates.length : manualDates.filter((d) => d.date && d.time).length;
+  // The single original date/time the admin is posting for (used to flag which
+  // pitches sit at the original time vs an alternative). Uses the first date.
+  const originalSlot = (() => {
+    if (availabilityRequest) {
+      const o = availabilityRequest.date_options.find((x) => selectedPollDates.includes(x.id));
+      return o ? { date: toISODate(o.date), time: o.time } : null;
+    }
+    if (confirmedDates.length > 0) return { date: toISODate(confirmedDates[0].date), time: confirmedDates[0].time };
+    const f = manualDates.find((d) => d.date && d.time);
+    return f ? { date: toISODate(f.date), time: f.time } : null;
+  })();
+
+  // Number of posts that will be created: one bundled post per date for the
+  // original-time pitches, plus one standalone post per pitch given an alt time.
+  const plannedPostCount = (() => {
+    let dates: { date: string; time: string }[] = [];
+    if (availabilityRequest) {
+      dates = availabilityRequest.date_options
+        .filter((o) => selectedPollDates.includes(o.id))
+        .map((o) => ({ date: toISODate(o.date), time: o.time }));
+    } else if (confirmedDates.length > 0) {
+      dates = confirmedDates.map((d) => ({ date: toISODate(d.date), time: d.time }));
+    } else {
+      dates = manualDates.filter((d) => d.date && d.time).map((d) => ({ date: toISODate(d.date), time: d.time }));
+    }
+    let n = 0;
+    for (const d of dates) {
+      const times = pitchOptions.map((p) => p.slotTimes?.[d.date] ?? d.time);
+      const hasOriginal = times.some((t) => t === d.time);
+      const altCount = times.filter((t) => t !== d.time).length;
+      n += (hasOriginal ? 1 : 0) + altCount;
+    }
+    return n;
+  })();
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
@@ -276,21 +332,21 @@ export default function CreateMatchPage() {
           {availabilityRequest ? (
             /* ── Select from poll ── */
             <div className="flex flex-col gap-2">
-              <p className="text-xs text-text-secondary mb-1">Select the dates you want to post — tap to choose.</p>
+              <p className="text-xs text-text-secondary mb-1">Pick one date/time for this match — tap to choose.</p>
               {availabilityRequest.date_options.map((opt) => {
                 const picked = selectedPollDates.includes(opt.id);
                 const votes = availabilityResponses.filter((r) => r.available_date_ids.includes(opt.id)).length;
                 const total = availabilityResponses.length;
                 const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
                 return (
-                  <button key={opt.id} type="button" onClick={() => setSelectedPollDates((prev) => prev.includes(opt.id) ? prev.filter((d) => d !== opt.id) : [...prev, opt.id])}
+                  <button key={opt.id} type="button" onClick={() => setSelectedPollDates((prev) => prev.includes(opt.id) ? [] : [opt.id])}
                     className={`w-full text-left border rounded-xl px-3 py-2.5 transition-colors ${picked ? "bg-accent/10 border-accent" : "bg-background border-border"}`}>
                     <div className="flex items-center justify-between mb-1.5">
                       <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
-                          {picked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                          {picked && <span className="w-2 h-2 rounded-full bg-black" />}
                         </div>
                       </div>
                     </div>
@@ -303,7 +359,7 @@ export default function CreateMatchPage() {
               })}
               {selectedPollDates.length > 0 && (
                 <p className="text-xs text-text-secondary mt-1">
-                  {selectedPollDates.length} date{selectedPollDates.length > 1 ? "s" : ""} selected — each becomes a separate post.
+                  This is your match&apos;s original time. Pitches you pick at this time share one post; any pitch you give an alternative time becomes its own post.
                 </p>
               )}
             </div>
@@ -381,24 +437,34 @@ export default function CreateMatchPage() {
             <span className="text-xs text-text-secondary ml-auto">{pitchOptions.length}/3</span>
           </div>
           <p className="text-xs text-text-secondary mb-3">
-            Add up to 3 pitches in order of preference. The challenging team picks from these.
+            Add up to 3 pitches in order of preference. Pitches at your match&apos;s original time share one post the opponent picks from. A pitch at an alternative time goes out as its own separate post.
           </p>
 
           {pitchOptions.length > 0 && (
             <div className="flex flex-col gap-2 mb-3">
-              {pitchOptions.map((p, i) => (
-                <div key={p.id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
-                  <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-bold text-accent">{i + 1}</span>
+              {pitchOptions.map((p, i) => {
+                const pitchTime = originalSlot ? (p.slotTimes?.[originalSlot.date] ?? originalSlot.time) : undefined;
+                const isAlt = originalSlot ? pitchTime !== originalSlot.time : false;
+                return (
+                  <div key={p.id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+                    <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-bold text-accent">{i + 1}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{p.name}</p>
+                      <p className="text-xs text-text-secondary">
+                        {p.format} · £{p.price}/hr{pitchTime ? ` · ${pitchTime}` : ""}
+                      </p>
+                    </div>
+                    {isAlt ? (
+                      <span className="text-[9px] font-semibold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-1.5 py-0.5 rounded-full flex-shrink-0">Own post</span>
+                    ) : (
+                      <span className="text-[10px] text-text-secondary flex-shrink-0">{rankLabels[i]}</span>
+                    )}
+                    <button onClick={() => removePitchOption(p.id)} className="text-xs text-red-400 flex-shrink-0 ml-1">✕</button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{p.name}</p>
-                    <p className="text-xs text-text-secondary">{p.format} · £{p.price}/hr · {p.distance}</p>
-                  </div>
-                  <span className="text-[10px] text-text-secondary flex-shrink-0">{rankLabels[i]}</span>
-                  <button onClick={() => removePitchOption(p.id)} className="text-xs text-red-400 flex-shrink-0 ml-1">✕</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -429,7 +495,7 @@ export default function CreateMatchPage() {
             className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             {loading ? (
               <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Posting…</>
-            ) : postCount > 1 ? `Post ${postCount} Matches` : "Post Match"}
+            ) : plannedPostCount > 1 ? `Post ${plannedPostCount} Matches` : "Post Match"}
           </button>
         </div>
       </div>
