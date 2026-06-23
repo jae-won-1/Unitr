@@ -6,7 +6,9 @@
       "Bash(xargs wc -l)",
       "Bash(git stash *)",
       "Bash(npx next *)",
-      "Bash(grep -n \"my-team/match/\\\\${f.postId}\\\\|my-team/match/\\\\${fixture.postId}\" app/my-team/page.tsx)"
+      "Bash(grep -n \"my-team/match/\\\\${f.postId}\\\\|my-team/match/\\\\${fixture.postId}\" app/my-team/page.tsx)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)"
     ]
   }
 }
