@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function VenuePage() {
-  redirect("/venue/dashboard");
+  redirect("/venue/calendar");
 }

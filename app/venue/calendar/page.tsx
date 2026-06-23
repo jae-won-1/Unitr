@@ -271,6 +271,27 @@ function WeekView({ pitches, bookings, weekDates, onCellClick, onBookingClick }:
 }
 
 // ── Add Booking Modal ─────────────────────────────────────────
+// Booking types the venue can drop onto a slot. The last three all create an
+// `open_matches` listing (so they appear in the players' Play feed) and reserve
+// the slot via a `pitch_bookings` row; only `match_type` differs.
+type BookingType = "manual" | "open_match" | "tournament" | "league";
+
+const BOOKING_TYPES: { k: BookingType; label: string; desc: string; matchType?: string }[] = [
+  { k: "manual", label: "Regular booking", desc: "Private hire, maintenance or a team paying directly." },
+  { k: "open_match", label: "Open match", desc: "Block the slot and let teams buy in.", matchType: "match" },
+  { k: "tournament", label: "Tournament", desc: "Multi-team event teams can enter.", matchType: "tournament" },
+  { k: "league", label: "League", desc: "A league fixture teams can register for.", matchType: "league" },
+];
+
+function TypeIcon({ type, active }: { type: BookingType; active: boolean }) {
+  const c = active ? "#000" : "#9E9E9E";
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: c, strokeWidth: 2, strokeLinecap: "round" as const };
+  if (type === "manual") return <svg {...common}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+  if (type === "open_match") return <svg {...common}><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>;
+  if (type === "tournament") return <svg {...common}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>;
+  return <svg {...common}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+}
+
 function AddBookingModal({ pitches, defaults, onSave, onClose }: {
   pitches: Pitch[];
   defaults: { pitchId: string; date: string; startTime: string } | null;
@@ -278,7 +299,8 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
   onClose: () => void;
 }) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<"manual" | "open_match">("manual");
+  // null = on the type-picker step; otherwise we're on the form for that type.
+  const [bookingType, setBookingType] = useState<BookingType | null>(null);
   const [form, setForm] = useState({
     pitch_id: defaults?.pitchId ?? pitches[0]?.id ?? "",
     date: defaults?.date ?? toInputISO(new Date()),
@@ -289,7 +311,6 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
   });
   const [omForm, setOmForm] = useState({
     title: "",
-    match_type: "match",
     format: "5-a-side",
     skill_level: "Mixed",
     price_per_team: "",
@@ -301,6 +322,10 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const setOm = (k: string, v: string) => setOmForm((f) => ({ ...f, [k]: v }));
+
+  const isListing = bookingType !== null && bookingType !== "manual";
+  const typeMeta = BOOKING_TYPES.find((t) => t.k === bookingType);
+  const teamWord = bookingType === "league" ? "Teams in the league" : "Teams that can join";
 
   const handleSaveManual = async () => {
     if (!user) return;
@@ -334,9 +359,9 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     onSave(data as Booking);
   };
 
-  const handleSaveOpenMatch = async () => {
-    if (!user) return;
-    if (!omForm.title.trim()) { setError("Give the match a title."); return; }
+  const handleSaveListing = async () => {
+    if (!user || !typeMeta) return;
+    if (!omForm.title.trim()) { setError(`Give the ${typeMeta.label.toLowerCase()} a title.`); return; }
     if (form.start_time >= form.end_time) { setError("End time must be after start time."); return; }
     const maxTeams = Number(omForm.max_teams);
     if (!maxTeams || maxTeams < 2) { setError("Allow at least 2 teams."); return; }
@@ -347,14 +372,14 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     const pitch = pitches.find((p) => p.id === form.pitch_id);
     const pricePence = Math.round(Number(omForm.price_per_team || "0") * 100);
 
-    // 1) Reserve the slot on the calendar
+    // 1) Reserve the slot on the calendar (also blocks /book and syncs to player portal)
     const { data: booking, error: bookErr } = await supabase.from("pitch_bookings").insert({
       pitch_id: form.pitch_id,
       booked_by: user.id,
       match_date: matchDate,
       start_time: form.start_time,
       end_time: form.end_time,
-      booker_name: `Open match: ${omForm.title.trim()}`,
+      booker_name: `${typeMeta.label}: ${omForm.title.trim()}`,
       booking_type: "open_match",
       total_price_pence: pricePence * maxTeams,
       player_count: 0,
@@ -366,7 +391,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
 
     if (bookErr) { setSaving(false); setError(`Couldn't reserve the slot: ${bookErr.message}`); return; }
 
-    // 2) Create the open match listing
+    // 2) Create the open match / tournament / league listing
     const { error: omErr } = await supabase.from("open_matches").insert({
       pitch_id: form.pitch_id,
       venue_owner_id: user.id,
@@ -376,7 +401,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       start_time: form.start_time,
       end_time: form.end_time,
       title: omForm.title.trim(),
-      match_type: omForm.match_type,
+      match_type: typeMeta.matchType,
       format: omForm.format,
       skill_level: omForm.skill_level,
       price_per_team_pence: pricePence,
@@ -392,7 +417,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       setError(
         omErr.code === "42P01"
           ? "The open_matches table doesn't exist yet — run supabase_open_matches.sql in Supabase first."
-          : `Couldn't create the match: ${omErr.message}`
+          : `Couldn't create the listing: ${omErr.message}`
       );
       return;
     }
@@ -401,147 +426,165 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     onSave(booking as Booking);
   };
 
-  const handleSave = () => mode === "manual" ? handleSaveManual() : handleSaveOpenMatch();
+  const handleSave = () => bookingType === "manual" ? handleSaveManual() : handleSaveListing();
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-border" /></div>
-        <div className="px-5 pt-2 pb-8 space-y-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
+        <div className="px-5 pt-2 md:pt-5 pb-8 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
-            <p className="font-bold">{mode === "manual" ? "Add Booking" : "Create Open Match"}</p>
+            <div className="flex items-center gap-2">
+              {bookingType && (
+                <button onClick={() => { setBookingType(null); setError(null); }}
+                  className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center" title="Back">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+              )}
+              <p className="font-bold">{bookingType ? typeMeta?.label : "New booking"}</p>
+            </div>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
-          {/* Mode toggle */}
-          <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-0.5">
-            {([{ k: "manual", l: "Manual Booking" }, { k: "open_match", l: "Open Match" }] as const).map((m) => (
-              <button key={m.k} onClick={() => { setMode(m.k); setError(null); }}
-                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${mode === m.k ? "bg-accent text-black" : "text-text-secondary"}`}>
-                {m.l}
-              </button>
-            ))}
-          </div>
-          {mode === "open_match" && (
-            <p className="text-xs text-text-secondary -mt-1">Block this slot and let teams buy in — it appears in the players&apos; Play feed.</p>
-          )}
-
-          {pitches.length > 1 && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Pitch</label>
-              <select value={form.pitch_id} onChange={(e) => set("pitch_id", e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
-                {pitches.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {mode === "manual" ? (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Booker / Team Name</label>
-              <input value={form.booker_name} onChange={(e) => set("booker_name", e.target.value)}
-                placeholder="e.g. Hackney United" autoFocus
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
-          ) : (
+          {/* ── Step 1: pick a booking type ── */}
+          {!bookingType && (
             <>
-              <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-0.5">
-                {(["match", "tournament"] as const).map((t) => (
-                  <button key={t} onClick={() => setOm("match_type", t)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${omForm.match_type === t ? "bg-accent text-black" : "text-text-secondary"}`}>
-                    {t}
+              <p className="text-xs text-text-secondary -mt-1">What kind of booking is this slot for?</p>
+              <div className="grid grid-cols-1 gap-2">
+                {BOOKING_TYPES.map((t) => (
+                  <button key={t.k} onClick={() => { setBookingType(t.k); setError(null); }}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-border bg-surface-2 hover:border-accent/50 transition-colors text-left">
+                    <div className="w-9 h-9 rounded-lg bg-background border border-border flex items-center justify-center flex-shrink-0">
+                      <TypeIcon type={t.k} active={false} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold">{t.label}</p>
+                      <p className="text-xs text-text-secondary">{t.desc}</p>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
                 ))}
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium">Title</label>
-                <input value={omForm.title} onChange={(e) => setOm("title", e.target.value)}
-                  placeholder="e.g. Friday Night Friendly" autoFocus
-                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium">Format</label>
-                  <select value={omForm.format} onChange={(e) => setOm("format", e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
-                    {["5-a-side", "7-a-side", "11-a-side"].map((f) => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium">Level</label>
-                  <select value={omForm.skill_level} onChange={(e) => setOm("skill_level", e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
-                    {["Mixed", "Casual", "Competitive"].map((f) => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-              </div>
             </>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium">Date</label>
-            <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)}
-              className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Start time</label>
-              <input type="time" value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">End time</label>
-              <input type="time" value={form.end_time} onChange={(e) => set("end_time", e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
-            </div>
-          </div>
-
-          {mode === "manual" ? (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
-              <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
-                placeholder="e.g. Maintenance, private hire, league game…"
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-            </div>
-          ) : (
+          {/* ── Step 2: the form ── */}
+          {bookingType && (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              {isListing && (
+                <p className="text-xs text-text-secondary -mt-1">Block this slot and let teams buy in — it appears in the players&apos; Play feed.</p>
+              )}
+
+              {pitches.length > 1 && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium">Price per team (£)</label>
-                  <input type="number" inputMode="decimal" value={omForm.price_per_team} onChange={(e) => setOm("price_per_team", e.target.value)}
-                    placeholder="e.g. 40"
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium">Teams that can join</label>
-                  <input type="number" inputMode="numeric" min={2} value={omForm.max_teams} onChange={(e) => setOm("max_teams", e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50" />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium">Description <span className="text-text-secondary font-normal">(optional)</span></label>
-                <input value={omForm.description} onChange={(e) => setOm("description", e.target.value)}
-                  placeholder="Anything teams should know…"
-                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-              </div>
-              {omForm.price_per_team && omForm.max_teams && (
-                <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5">
-                  <p className="text-xs text-text-secondary">Potential revenue if full</p>
-                  <p className="text-sm font-bold text-accent">£{(Number(omForm.price_per_team || 0) * Number(omForm.max_teams || 0)).toFixed(2)}</p>
+                  <label className="text-xs font-medium">Pitch</label>
+                  <select value={form.pitch_id} onChange={(e) => set("pitch_id", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                    {pitches.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 </div>
               )}
+
+              {bookingType === "manual" ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Booker / Team Name</label>
+                  <input value={form.booker_name} onChange={(e) => set("booker_name", e.target.value)}
+                    placeholder="e.g. Hackney United" autoFocus
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium">Title</label>
+                    <input value={omForm.title} onChange={(e) => setOm("title", e.target.value)}
+                      placeholder={bookingType === "tournament" ? "e.g. Summer 7s Cup" : bookingType === "league" ? "e.g. Tuesday Night League" : "e.g. Friday Night Friendly"} autoFocus
+                      className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium">Format</label>
+                      <select value={omForm.format} onChange={(e) => setOm("format", e.target.value)}
+                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                        {["5-a-side", "7-a-side", "11-a-side"].map((f) => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium">Level</label>
+                      <select value={omForm.skill_level} onChange={(e) => setOm("skill_level", e.target.value)}
+                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                        {["Mixed", "Casual", "Competitive"].map((f) => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium">Date</label>
+                <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)}
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Start time</label>
+                  <input type="time" value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">End time</label>
+                  <input type="time" value={form.end_time} onChange={(e) => set("end_time", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
+                </div>
+              </div>
+
+              {bookingType === "manual" ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
+                  <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
+                    placeholder="e.g. Maintenance, private hire, league game…"
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium">{bookingType === "league" ? "Entry fee per team (£)" : "Price per team (£)"}</label>
+                      <input type="number" inputMode="decimal" value={omForm.price_per_team} onChange={(e) => setOm("price_per_team", e.target.value)}
+                        placeholder="e.g. 40"
+                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium">{teamWord}</label>
+                      <input type="number" inputMode="numeric" min={2} value={omForm.max_teams} onChange={(e) => setOm("max_teams", e.target.value)}
+                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium">Description <span className="text-text-secondary font-normal">(optional)</span></label>
+                    <input value={omForm.description} onChange={(e) => setOm("description", e.target.value)}
+                      placeholder="Anything teams should know…"
+                      className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                  </div>
+                  {omForm.price_per_team && omForm.max_teams && (
+                    <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5">
+                      <p className="text-xs text-text-secondary">Potential revenue if full</p>
+                      <p className="text-sm font-bold text-accent">£{(Number(omForm.price_per_team || 0) * Number(omForm.max_teams || 0)).toFixed(2)}</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {error && <p className="text-xs text-red-400">{error}</p>}
+
+              <button onClick={handleSave} disabled={saving}
+                className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                {saving ? "Saving…" : bookingType === "manual" ? "Add to Calendar" : `Post ${typeMeta?.label}`}
+              </button>
             </>
           )}
-
-          {error && <p className="text-xs text-red-400">{error}</p>}
-
-          <button onClick={handleSave} disabled={saving}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
-            {saving ? "Saving…" : mode === "manual" ? "Add to Calendar" : "Post Open Match"}
-          </button>
         </div>
       </div>
     </div>
@@ -742,7 +785,7 @@ export default function VenueCalendarPage() {
   );
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 6rem)" }}>
+    <div className="flex flex-col" style={{ height: "100vh" }}>
       {/* Toolbar */}
       <div className="px-4 pt-3 pb-3 border-b border-border flex-shrink-0 space-y-2.5">
         {/* Date navigation */}

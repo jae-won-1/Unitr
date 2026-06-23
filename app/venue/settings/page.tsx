@@ -788,7 +788,7 @@ export default function VenueSettingsPage() {
   ];
 
   return (
-    <div className="px-4 pt-5 pb-6 space-y-5">
+    <div className="px-4 md:px-8 pt-6 pb-10 max-w-3xl mx-auto space-y-5">
       <div>
         <h1 className="text-xl font-bold">Settings</h1>
         <p className="text-xs text-text-secondary mt-0.5">Manage your venue details, pitches, hours, and pricing.</p>
