@@ -591,8 +591,8 @@ function PitchesContent() {
     async function loadCredits() {
       const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
       if (!team?.id) return;
-      const { data } = await supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle();
-      setTeamCredits(data?.balance ?? 0);
+      const { data } = await supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
+      setTeamCredits(((data?.balance_pence ?? 0) - (data?.reserved_pence ?? 0)) / 100);
     }
     loadCredits();
   }, [selectMode, user]);

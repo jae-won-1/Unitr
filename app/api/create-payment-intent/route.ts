@@ -3,13 +3,20 @@ import { stripe, calcSplit } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
   try {
-    const { pitchPricePerHour, playerCount, bookingId, playerId } = await req.json();
+    const { pitchPricePerHour, playerCount, bookingId, playerId, amountPence } = await req.json();
 
-    if (!pitchPricePerHour || !playerCount) {
+    // Credit-replenishment path passes an exact pre-computed amount (the player's
+    // pitch share + fee). Individual path passes price + headcount to split here.
+    let perPlayer: number, unitrFee: number, totalPerPlayer: number;
+    if (amountPence && amountPence > 0) {
+      totalPerPlayer = Math.round(amountPence);
+      unitrFee = Math.round(totalPerPlayer - totalPerPlayer / 1.05);
+      perPlayer = totalPerPlayer - unitrFee;
+    } else if (pitchPricePerHour && playerCount) {
+      ({ totalPerPlayer, perPlayer, unitrFee } = calcSplit(pitchPricePerHour, playerCount));
+    } else {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-
-    const { totalPerPlayer, perPlayer, unitrFee } = calcSplit(pitchPricePerHour, playerCount);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalPerPlayer,

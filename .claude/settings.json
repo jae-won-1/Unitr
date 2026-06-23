@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull *)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "Bash(xargs wc -l)",
+      "Bash(git stash *)",
+      "Bash(npx next *)",
+      "Bash(grep -n \"my-team/match/\\\\${f.postId}\\\\|my-team/match/\\\\${fixture.postId}\" app/my-team/page.tsx)"
+    ]
+  }
+}

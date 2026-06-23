@@ -166,6 +166,16 @@ export default function VenueDashboard() {
 
       {/* Quick actions */}
       <div className="grid grid-cols-2 gap-3">
+        <Link href="/venue/open-matches" className="bg-surface-2 border border-accent/30 rounded-2xl p-4 flex flex-col gap-2 col-span-2">
+          <div className="flex items-center gap-2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>
+            </svg>
+            <p className="text-sm font-semibold">Host an Open Match</p>
+            <span className="ml-auto text-[10px] font-bold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">New</span>
+          </div>
+          <p className="text-xs text-text-secondary">Fill empty slots — post a match teams can buy into.</p>
+        </Link>
         <Link href="/venue/availability" className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
             <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>

@@ -8,3 +8,4 @@ out/
 .env.production.local
 .DS_Store
 npm-debug.log*
+tsconfig.tsbuildinfo

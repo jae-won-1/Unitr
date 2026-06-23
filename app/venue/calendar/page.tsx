@@ -278,6 +278,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  const [mode, setMode] = useState<"manual" | "open_match">("manual");
   const [form, setForm] = useState({
     pitch_id: defaults?.pitchId ?? pitches[0]?.id ?? "",
     date: defaults?.date ?? toInputISO(new Date()),
@@ -286,12 +287,22 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     booker_name: "",
     notes: "",
   });
+  const [omForm, setOmForm] = useState({
+    title: "",
+    match_type: "match",
+    format: "5-a-side",
+    skill_level: "Mixed",
+    price_per_team: "",
+    max_teams: "2",
+    description: "",
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const setOm = (k: string, v: string) => setOmForm((f) => ({ ...f, [k]: v }));
 
-  const handleSave = async () => {
+  const handleSaveManual = async () => {
     if (!user) return;
     if (!form.booker_name.trim()) { setError("Booker / team name is required."); return; }
     if (form.start_time >= form.end_time) { setError("End time must be after start time."); return; }
@@ -319,21 +330,103 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     }).select().single();
 
     setSaving(false);
-    if (dbErr) { setError("Failed to save. Please try again."); return; }
+    if (dbErr) { setError(`Failed to save: ${dbErr.message}`); return; }
     onSave(data as Booking);
   };
 
+  const handleSaveOpenMatch = async () => {
+    if (!user) return;
+    if (!omForm.title.trim()) { setError("Give the match a title."); return; }
+    if (form.start_time >= form.end_time) { setError("End time must be after start time."); return; }
+    const maxTeams = Number(omForm.max_teams);
+    if (!maxTeams || maxTeams < 2) { setError("Allow at least 2 teams."); return; }
+    setSaving(true);
+    setError(null);
+
+    const matchDate = toInputISO(fromInputISO(form.date));
+    const pitch = pitches.find((p) => p.id === form.pitch_id);
+    const pricePence = Math.round(Number(omForm.price_per_team || "0") * 100);
+
+    // 1) Reserve the slot on the calendar
+    const { data: booking, error: bookErr } = await supabase.from("pitch_bookings").insert({
+      pitch_id: form.pitch_id,
+      booked_by: user.id,
+      match_date: matchDate,
+      start_time: form.start_time,
+      end_time: form.end_time,
+      booker_name: `Open match: ${omForm.title.trim()}`,
+      booking_type: "open_match",
+      total_price_pence: pricePence * maxTeams,
+      player_count: 0,
+      per_player_pence: 0,
+      unitr_fee_pence: 0,
+      status: "confirmed",
+      payment_status: "after_match",
+    }).select().single();
+
+    if (bookErr) { setSaving(false); setError(`Couldn't reserve the slot: ${bookErr.message}`); return; }
+
+    // 2) Create the open match listing
+    const { error: omErr } = await supabase.from("open_matches").insert({
+      pitch_id: form.pitch_id,
+      venue_owner_id: user.id,
+      pitch_name: pitch?.name ?? "",
+      venue_address: null,
+      match_date: matchDate,
+      start_time: form.start_time,
+      end_time: form.end_time,
+      title: omForm.title.trim(),
+      match_type: omForm.match_type,
+      format: omForm.format,
+      skill_level: omForm.skill_level,
+      price_per_team_pence: pricePence,
+      max_teams: maxTeams,
+      description: omForm.description.trim() || null,
+      status: "open",
+      booking_id: booking.id,
+    });
+
+    if (omErr) {
+      await supabase.from("pitch_bookings").delete().eq("id", booking.id);
+      setSaving(false);
+      setError(
+        omErr.code === "42P01"
+          ? "The open_matches table doesn't exist yet — run supabase_open_matches.sql in Supabase first."
+          : `Couldn't create the match: ${omErr.message}`
+      );
+      return;
+    }
+
+    setSaving(false);
+    onSave(booking as Booking);
+  };
+
+  const handleSave = () => mode === "manual" ? handleSaveManual() : handleSaveOpenMatch();
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
-        <div className="px-5 pb-6 space-y-4">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-border" /></div>
+        <div className="px-5 pt-2 pb-8 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
-            <p className="font-bold">Add Booking</p>
+            <p className="font-bold">{mode === "manual" ? "Add Booking" : "Create Open Match"}</p>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
+
+          {/* Mode toggle */}
+          <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-0.5">
+            {([{ k: "manual", l: "Manual Booking" }, { k: "open_match", l: "Open Match" }] as const).map((m) => (
+              <button key={m.k} onClick={() => { setMode(m.k); setError(null); }}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${mode === m.k ? "bg-accent text-black" : "text-text-secondary"}`}>
+                {m.l}
+              </button>
+            ))}
+          </div>
+          {mode === "open_match" && (
+            <p className="text-xs text-text-secondary -mt-1">Block this slot and let teams buy in — it appears in the players&apos; Play feed.</p>
+          )}
 
           {pitches.length > 1 && (
             <div className="flex flex-col gap-1.5">
@@ -345,12 +438,47 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium">Booker / Team Name</label>
-            <input value={form.booker_name} onChange={(e) => set("booker_name", e.target.value)}
-              placeholder="e.g. Hackney United" autoFocus
-              className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-          </div>
+          {mode === "manual" ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium">Booker / Team Name</label>
+              <input value={form.booker_name} onChange={(e) => set("booker_name", e.target.value)}
+                placeholder="e.g. Hackney United" autoFocus
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+            </div>
+          ) : (
+            <>
+              <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-0.5">
+                {(["match", "tournament"] as const).map((t) => (
+                  <button key={t} onClick={() => setOm("match_type", t)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${omForm.match_type === t ? "bg-accent text-black" : "text-text-secondary"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium">Title</label>
+                <input value={omForm.title} onChange={(e) => setOm("title", e.target.value)}
+                  placeholder="e.g. Friday Night Friendly" autoFocus
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Format</label>
+                  <select value={omForm.format} onChange={(e) => setOm("format", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                    {["5-a-side", "7-a-side", "11-a-side"].map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Level</label>
+                  <select value={omForm.skill_level} onChange={(e) => setOm("skill_level", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                    {["Mixed", "Casual", "Competitive"].map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium">Date</label>
@@ -371,18 +499,48 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
-            <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
-              placeholder="e.g. Maintenance, private hire, league game…"
-              className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-          </div>
+          {mode === "manual" ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
+              <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
+                placeholder="e.g. Maintenance, private hire, league game…"
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Price per team (£)</label>
+                  <input type="number" inputMode="decimal" value={omForm.price_per_team} onChange={(e) => setOm("price_per_team", e.target.value)}
+                    placeholder="e.g. 40"
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium">Teams that can join</label>
+                  <input type="number" inputMode="numeric" min={2} value={omForm.max_teams} onChange={(e) => setOm("max_teams", e.target.value)}
+                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium">Description <span className="text-text-secondary font-normal">(optional)</span></label>
+                <input value={omForm.description} onChange={(e) => setOm("description", e.target.value)}
+                  placeholder="Anything teams should know…"
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+              </div>
+              {omForm.price_per_team && omForm.max_teams && (
+                <div className="bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-text-secondary">Potential revenue if full</p>
+                  <p className="text-sm font-bold text-accent">£{(Number(omForm.price_per_team || 0) * Number(omForm.max_teams || 0)).toFixed(2)}</p>
+                </div>
+              )}
+            </>
+          )}
 
           {error && <p className="text-xs text-red-400">{error}</p>}
 
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
-            {saving ? "Saving…" : "Add to Calendar"}
+            {saving ? "Saving…" : mode === "manual" ? "Add to Calendar" : "Post Open Match"}
           </button>
         </div>
       </div>

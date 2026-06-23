@@ -1,9 +1,179 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { stripePromise } from "@/lib/stripe-client";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+
+const stripeAppearance = {
+  theme: "night" as const,
+  variables: {
+    colorPrimary: "#00E676",
+    colorBackground: "#1a1a1a",
+    colorText: "#ffffff",
+    colorDanger: "#f87171",
+    borderRadius: "12px",
+    fontFamily: "system-ui, sans-serif",
+  },
+};
+
+// ── Card-on-file: SetupIntent form (saves a card for off-session settlement) ──
+function CardSetupForm({ customerId, onSaved, onCancel }: {
+  customerId: string | null;
+  onSaved: (card: { brand: string | null; last4: string | null }) => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!stripe || !elements || !user) return;
+    setSaving(true);
+    setErr(null);
+
+    const { error, setupIntent } = await stripe.confirmSetup({ elements, redirect: "if_required" });
+    if (error) { setErr(error.message ?? "Could not save card."); setSaving(false); return; }
+
+    const pm = setupIntent?.payment_method;
+    const pmId = typeof pm === "string" ? pm : pm?.id;
+    if (!pmId) { setErr("No card was returned. Try again."); setSaving(false); return; }
+
+    let brand: string | null = null, last4: string | null = null;
+    try {
+      const res = await fetch("/api/payment-method", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: pmId }),
+      });
+      const d = await res.json();
+      brand = d.brand ?? null; last4 = d.last4 ?? null;
+    } catch { /* brand/last4 are cosmetic — saving the card still succeeds */ }
+
+    await supabase.from("profiles").update({
+      stripe_customer_id: customerId,
+      stripe_payment_method_id: pmId,
+      card_brand: brand,
+      card_last4: last4,
+    }).eq("id", user.id);
+
+    setSaving(false);
+    onSaved({ brand, last4 });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-surface-2 border border-border rounded-2xl p-4">
+        <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
+      </div>
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
+        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
+        <p className="text-[11px] text-blue-200 leading-relaxed">
+          Use card <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any 3-digit CVC
+        </p>
+      </div>
+      {err && <p className="text-xs text-red-400">{err}</p>}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
+        <button onClick={handleSave} disabled={!stripe || saving}
+          className="flex-1 py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+          {saving ? "Saving…" : "Save Card"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Card-on-file section (lives on the profile) ───────────────────────────────
+function PaymentMethodSection() {
+  const { user } = useAuth();
+  const [card, setCard] = useState<{ brand: string | null; last4: string | null } | null | undefined>(undefined);
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [setupSecret, setSetupSecret] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles")
+      .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
+      .eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        setCustomerId(data?.stripe_customer_id ?? null);
+        setCard(data?.stripe_payment_method_id ? { brand: data.card_brand, last4: data.card_last4 } : null);
+      });
+  }, [user]);
+
+  const startSetup = async () => {
+    if (!user) return;
+    setStarting(true); setErr(null);
+    try {
+      const res = await fetch("/api/create-setup-intent", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId, email: user.email }),
+      });
+      const d = await res.json();
+      if (d.clientSecret) { setSetupSecret(d.clientSecret); setCustomerId(d.customerId); }
+      else setErr(d.error ?? "Could not start card setup. Check Stripe keys in .env.local");
+    } catch { setErr("Could not connect to payment service."); }
+    setStarting(false);
+  };
+
+  const removeCard = async () => {
+    if (!user) return;
+    await supabase.from("profiles")
+      .update({ stripe_payment_method_id: null, card_brand: null, card_last4: null })
+      .eq("id", user.id);
+    setCard(null);
+  };
+
+  if (card === undefined) return null;
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Method</h3>
+      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+        <p className="text-xs text-text-secondary leading-relaxed">
+          Save a card so your share of match fees is charged automatically when your squad
+          is confirmed — no need to pay manually after every game.
+        </p>
+
+        {card && !setupSecret && (
+          <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+            <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold capitalize">{card.brand ?? "Card"} •••• {card.last4 ?? "????"}</p>
+              <p className="text-[11px] text-accent">Saved · ready for auto-settlement</p>
+            </div>
+            <button onClick={removeCard} className="text-xs text-red-400 font-medium flex-shrink-0">Remove</button>
+          </div>
+        )}
+
+        {setupSecret ? (
+          <Elements stripe={stripePromise} options={{ clientSecret: setupSecret, appearance: stripeAppearance }}>
+            <CardSetupForm
+              customerId={customerId}
+              onCancel={() => setSetupSecret(null)}
+              onSaved={(c) => { setCard(c); setSetupSecret(null); }}
+            />
+          </Elements>
+        ) : (
+          <button onClick={startSetup} disabled={starting}
+            className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm text-accent font-semibold disabled:opacity-50">
+            {starting ? "Starting…" : card ? "Update card" : "Add a card"}
+          </button>
+        )}
+
+        {err && <p className="text-xs text-red-400">{err}</p>}
+      </div>
+    </section>
+  );
+}
 
 type Profile = {
   full_name: string;
@@ -81,6 +251,8 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       <button className="w-full py-3 rounded-xl border border-accent text-accent font-semibold text-sm">
         Edit Profile
       </button>
+
+      <PaymentMethodSection />
 
       {/* Friends modal */}
       {modal === "friends" && (

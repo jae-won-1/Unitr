@@ -170,12 +170,21 @@ function NewUserMyTeam() {
 
 type ConfirmedFixture = {
   postId: string;
+  matchRowId: string | null;
   opponent: string;
   date: string;
   time: string;
   pitch: string;
   paymentStatus: "paid" | "unpaid";
 };
+
+// match_posts/challenges only carry the post id — Manage Match needs the matches.id row instead.
+async function attachMatchRowIds<T extends { postId: string }>(fixtures: T[]): Promise<(T & { matchRowId: string | null })[]> {
+  if (fixtures.length === 0) return [];
+  const { data: rows } = await supabase.from("matches").select("id, post_id").in("post_id", fixtures.map((f) => f.postId));
+  const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
+  return fixtures.map((f) => ({ ...f, matchRowId: byPostId.get(f.postId) ?? null }));
+}
 
 // ── Player My Team ────────────────────────────────────────────
 function PlayerMyTeam() {
@@ -266,7 +275,7 @@ function PlayerMyTeam() {
         })
       );
 
-      const allFixtures = [...posterFixtures, ...challengerFixtures];
+      const allFixtures = await attachMatchRowIds([...posterFixtures, ...challengerFixtures]);
       const { data: payments } = await supabase.from("player_payments")
         .select("booking_id").eq("player_id", user!.id).eq("status", "paid")
         .in("booking_id", allFixtures.map((f) => f.postId));
@@ -469,7 +478,7 @@ function PlayerMyTeam() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <a href={`/my-team/match/${f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
+                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
                   {f.paymentStatus === "unpaid" && (
                     <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
                   )}
@@ -615,10 +624,10 @@ function FindMatchButton() {
       const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
       if (!team?.id) return;
       const [{ data: credits }, { data: req }] = await Promise.all([
-        supabase.from("team_credits").select("balance").eq("team_id", team.id).maybeSingle(),
+        supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle(),
         supabase.from("availability_requests").select("id, date_options").eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
-      setTeamCredits(credits?.balance ?? 0);
+      setTeamCredits(((credits?.balance_pence ?? 0) - (credits?.reserved_pence ?? 0)) / 100);
       setHasAvailabilityRequest(!!req);
 
       if (req?.id && req?.date_options?.length > 0) {
@@ -889,7 +898,7 @@ function CaptainMyTeam() {
         })
       );
 
-      const allFixtures = [...posterFixtures, ...challengerFixtures];
+      const allFixtures = await attachMatchRowIds([...posterFixtures, ...challengerFixtures]);
       const { data: payments } = await supabase.from("player_payments")
         .select("booking_id").eq("player_id", user!.id).eq("status", "paid")
         .in("booking_id", allFixtures.map((f) => f.postId));
@@ -1141,7 +1150,7 @@ function CaptainMyTeam() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <a href={`/my-team/match/${f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">Manage Match</a>
+                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">Manage Match</a>
                   {f.paymentStatus === "unpaid" && (
                     <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
                   )}
@@ -1206,7 +1215,7 @@ function CaptainMyTeam() {
 
 // ── Next Fixture Banner ───────────────────────────────────────
 function NextFixtureBanner({ userId, role }: { userId: string; role: "captain" | "player" }) {
-  const [fixture, setFixture] = useState<{ postId: string; opponent: string; date: string; time: string; pitch: string } | null | undefined>(undefined);
+  const [fixture, setFixture] = useState<{ postId: string; matchRowId: string | null; opponent: string; date: string; time: string; pitch: string } | null | undefined>(undefined);
 
   useEffect(() => {
     async function load() {
@@ -1256,7 +1265,8 @@ function NextFixtureBanner({ userId, role }: { userId: string; role: "captain" |
 
       if (candidates.length === 0) { setFixture(null); return; }
       candidates.sort((a, b) => a.date.localeCompare(b.date));
-      setFixture(candidates[0]);
+      const [withMatchRowId] = await attachMatchRowIds([candidates[0]]);
+      setFixture(withMatchRowId);
     }
     load();
   }, [userId, role]);
@@ -1264,7 +1274,7 @@ function NextFixtureBanner({ userId, role }: { userId: string; role: "captain" |
   if (!fixture) return null;
 
   return (
-    <a href={`/my-team/match/${fixture.postId}`} className="block bg-accent/5 border border-accent/20 rounded-2xl p-4 mb-2">
+    <a href={`/my-team/match/${fixture.matchRowId ?? fixture.postId}`} className="block bg-accent/5 border border-accent/20 rounded-2xl p-4 mb-2">
       <p className="text-[10px] font-semibold text-accent uppercase tracking-wider mb-2">Next Fixture</p>
       <p className="font-bold text-base mb-2">vs {fixture.opponent}</p>
       <div className="flex flex-col gap-1 text-xs text-text-secondary">
@@ -1302,11 +1312,13 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
     const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
-      const newBalance = currentCredits + amount;
-      await Promise.all([
-        supabase.from("team_credits").upsert({ team_id: teamId, balance: newBalance }, { onConflict: "team_id" }),
-        supabase.from("team_credit_transactions").insert({ team_id: teamId, player_id: userId, amount }),
-      ]);
+      // Atomic increment (+ deposit ledger row) — avoids clobbering concurrent changes.
+      const { data: newBalancePence } = await supabase.rpc("add_credit", {
+        p_team_id: teamId,
+        p_amount_pence: Math.round(amount * 100),
+        p_player_id: userId,
+      });
+      const newBalance = typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount;
       onSuccess(newBalance);
     } else {
       setPayError("Payment did not complete. Please try again.");
@@ -1341,7 +1353,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
 type CreditTransaction = {
   id: string;
   player_id: string;
-  amount: number;
+  amount_pence: number;
   created_at: string;
   player_name: string;
 };
@@ -1350,6 +1362,7 @@ type CreditTransaction = {
 function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "player" }) {
   const [teamId, setTeamId] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [reserved, setReserved] = useState(0);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -1382,23 +1395,27 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   useEffect(() => {
     if (!teamId) return;
 
-    // Load initial balance
-    supabase.from("team_credits").select("balance").eq("team_id", teamId).maybeSingle()
-      .then(({ data }) => setCredits(data?.balance ?? 0));
+    // Load initial balance + reserved earmark
+    supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", teamId).maybeSingle()
+      .then(({ data }) => {
+        setCredits((data?.balance_pence ?? 0) / 100);
+        setReserved((data?.reserved_pence ?? 0) / 100);
+      });
 
-    // Load transaction history (join profiles for name)
+    // Load deposit history (join profiles for name)
     async function loadTransactions() {
       const { data } = await supabase
         .from("team_credit_transactions")
-        .select("id, player_id, amount, created_at, profiles(full_name)")
+        .select("id, player_id, amount_pence, created_at, profiles(full_name)")
         .eq("team_id", teamId)
+        .eq("type", "deposit")
         .order("created_at", { ascending: false })
         .limit(20);
       setTransactions(
         (data ?? []).map((t) => ({
           id: t.id,
           player_id: t.player_id,
-          amount: t.amount,
+          amount_pence: t.amount_pence,
           created_at: t.created_at,
           player_name: (t.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
         }))
@@ -1408,24 +1425,28 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
     const suffix = Math.random().toString(36).slice(2);
 
-    // Realtime: balance updates
+    // Realtime: balance + reserved updates
     const balanceChannel = supabase
       .channel(`team_credits_${teamId}_${suffix}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "team_credits", filter: `team_id=eq.${teamId}` },
-        (payload) => { const row = payload.new as { balance: number } | null; if (row) setCredits(row.balance); })
+        (payload) => {
+          const row = payload.new as { balance_pence: number; reserved_pence: number } | null;
+          if (row) { setCredits(row.balance_pence / 100); setReserved((row.reserved_pence ?? 0) / 100); }
+        })
       .subscribe();
 
-    // Realtime: new transactions
+    // Realtime: new deposits
     const txChannel = supabase
       .channel(`team_credit_tx_${teamId}_${suffix}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "team_credit_transactions", filter: `team_id=eq.${teamId}` },
         async (payload) => {
-          const row = payload.new as { id: string; player_id: string; amount: number; created_at: string };
+          const row = payload.new as { id: string; player_id: string; amount_pence: number; created_at: string; type: string };
+          if (row.type !== "deposit") return;
           const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", row.player_id).maybeSingle();
           setTransactions((prev) => [{
             id: row.id,
             player_id: row.player_id,
-            amount: row.amount,
+            amount_pence: row.amount_pence,
             created_at: row.created_at,
             player_name: (profile as { full_name: string } | null)?.full_name ?? "Unknown",
           }, ...prev].slice(0, 20));
@@ -1519,6 +1540,11 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
           + Top Up
         </button>
       </div>
+      {reserved > 0 && (
+        <p className="text-[11px] text-text-secondary mt-1">
+          £{reserved.toFixed(2)} reserved for a pending match · £{(credits - reserved).toFixed(2)} available
+        </p>
+      )}
 
       {/* Transaction log modal — captain only */}
       {showLog && (
@@ -1561,7 +1587,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                             <p className="text-sm font-medium">{tx.player_id === userId ? "You" : tx.player_name}</p>
                             <p className="text-xs text-text-secondary">Topped up · {timeAgo}</p>
                           </div>
-                          <span className="text-sm font-bold text-accent">+£{Number(tx.amount).toFixed(2)}</span>
+                          <span className="text-sm font-bold text-accent">+£{(tx.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
                     })
@@ -1701,14 +1727,26 @@ export default function MyTeamPage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold mb-0.5">
-          {role === "new_user" ? "Browse Teams" : "My Team"}
-        </h1>
-        <p className="text-text-secondary text-sm">
-          {role === "new_user" ? "Find teams to become your next family"
-          : role === "player" ? "Your squad and performance"
-          : "Manage your squad and organise matches"}
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold mb-0.5">
+              {role === "new_user" ? "Browse Teams" : "My Team"}
+            </h1>
+            <p className="text-text-secondary text-sm">
+              {role === "new_user" ? "Find teams to become your next family"
+              : role === "player" ? "Your squad and performance"
+              : "Manage your squad and organise matches"}
+            </p>
+          </div>
+          {(role === "captain" || role === "player") && (
+            <a href="/messages" aria-label="Messages"
+              className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </a>
+          )}
+        </div>
         {(role === "captain" || role === "player") && user && (
           <TeamCreditsBar userId={user.id} role={role as "captain" | "player"} />
         )}

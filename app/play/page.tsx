@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-type MatchTab = "matches" | "my-posts" | "tournaments" | "ringer";
+type MatchTab = "matches" | "open" | "my-posts" | "tournaments" | "ringer";
 
 type PitchOption = {
   id: string;
@@ -56,6 +56,7 @@ type MatchPost = {
   description: string;
   availabilityMatch: boolean;
   status: string;
+  payment_mode: string;
 };
 
 type Challenge = {
@@ -158,6 +159,39 @@ function ChallengePanel({
 
     const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
 
+    // Both modes secure the pitch with team credit at confirm (the squad is still
+    // fluid — see PAYMENT_PLAN §10). Verify credit before we create anything so we
+    // never leave a half-built match on failure.
+    const feePence = Math.round((pitch?.price ?? 0) * 100);
+    const halfPence = Math.floor(feePence / 2);
+
+    // Challenger must cover their half.
+    const { data: chalCr } = await supabase
+      .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
+    const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
+    if (chalAvail < halfPence) {
+      setSaving(false);
+      setSlotTakenError(
+        `Your team needs £${(halfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
+      );
+      return;
+    }
+
+    // Individual mode placed no hold at post, so the poster must have the full fee
+    // available now to front it. (Credit mode already earmarked it via the hold.)
+    if (post.payment_mode !== "credit") {
+      const { data: postCr } = await supabase
+        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
+      const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
+      if (postAvail < feePence) {
+        setSaving(false);
+        setSlotTakenError(
+          `The posting team no longer has enough credit to secure this pitch (£${(feePence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
+        );
+        return;
+      }
+    }
+
     // Record the challenge (first-come-first-served → immediately accepted)
     await supabase.from("challenges").insert({
       post_id: post.id,
@@ -191,12 +225,13 @@ function ChallengePanel({
     }
 
     // Create a pitch_bookings row so the venue portal calendar shows this booking
+    let pitchBookingId: string | null = null;
     if (pitch?.id) {
       const perPlayerPence = Math.round((pitch.price * 100) / 22);
       const startTime = pitchTime || "12:00";
       const [h, m] = startTime.split(":").map(Number);
       const endTime = `${String(Math.min((h || 12) + 1, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
-      const { error: bookingErr } = await supabase.from("pitch_bookings").insert({
+      const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
         pitch_id: pitch.id,
         post_id: post.id,
         booked_by: user.id,
@@ -210,8 +245,9 @@ function ChallengePanel({
         per_player_pence: perPlayerPence,
         unitr_fee_pence: Math.round(perPlayerPence * 0.05),
         status: "confirmed",
-      });
+      }).select("id").single();
       if (bookingErr) console.error("pitch_bookings insert failed:", bookingErr.message, bookingErr.details);
+      else pitchBookingId = bookingRow?.id ?? null;
     }
 
     // Lock the post
@@ -249,6 +285,34 @@ function ChallengePanel({
           await supabase.from("match_confirmations").insert(
             allPlayers.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
           );
+        }
+
+        // ── Secure the pitch with team credit (both modes — PAYMENT_PLAN §10) ──
+        // Phase 2: capture poster's fee, settle challenger's half to the poster.
+        // No per-player replenishment is created here — the squad is still fluid;
+        // settlement is deferred to roster-lock (see the match page "Settle" step).
+        {
+          const { error: settleErr } = await supabase.rpc("capture_and_settle", {
+            p_match_id: matchRecord.id,
+            p_posting_team: post.team_id,
+            p_challenging_team: team.id,
+            p_fee_pence: feePence,
+          });
+          if (settleErr) console.error("capture_and_settle failed:", settleErr.message);
+
+          // Release the poster's batch earmark, if any (credit mode placed one at
+          // post time). Clear it so it can't be released twice.
+          const { data: holdOwner } = await supabase
+            .from("match_posts").select("id, hold_pence")
+            .eq("team_id", post.team_id).gt("hold_pence", 0).limit(1).maybeSingle();
+          if (holdOwner?.hold_pence) {
+            await supabase.rpc("release_hold", {
+              p_team_id: post.team_id,
+              p_amount_pence: holdOwner.hold_pence,
+              p_post_id: holdOwner.id,
+            });
+            await supabase.from("match_posts").update({ hold_pence: 0 }).eq("id", holdOwner.id);
+          }
         }
       }
     }
@@ -621,6 +685,306 @@ function RingerCard({ game }: { game: typeof ringerGames[0] }) {
   );
 }
 
+// ── Open Matches (venue-hosted games teams buy into) ──────────
+type OpenMatch = {
+  id: string;
+  pitch_name: string;
+  venue_address: string | null;
+  match_date: string;
+  start_time: string;
+  end_time: string;
+  title: string;
+  match_type: string;
+  format: string | null;
+  skill_level: string;
+  price_per_team_pence: number;
+  max_teams: number;
+  status: string;
+  joinedTeams: { team_id: string; team_name: string }[];
+};
+
+function fmtOpenHeader(iso: string, time: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return `${iso} | ${time}`;
+  const d = new Date(iso + "T12:00:00");
+  return `${d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" })} | ${time}`;
+}
+
+function matchDuration(start: string, end: string): string {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins <= 0) return "";
+  return mins % 60 === 0 ? `${mins / 60}hr` : `${mins}min`;
+}
+
+function teamInitials(name: string): string {
+  return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
+// ── Join Open Match Panel ─────────────────────────────────────
+function JoinOpenMatchPanel({ match, userId, alreadyJoined, onClose, onJoined }: {
+  match: OpenMatch;
+  userId?: string;
+  alreadyJoined: boolean;
+  onClose: () => void;
+  onJoined: (matchId: string, team: { team_id: string; team_name: string }) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const price = (match.price_per_team_pence / 100).toFixed(2);
+
+  const handleJoin = async () => {
+    if (!userId) { setError("Sign in to join."); return; }
+    setSaving(true);
+    setError(null);
+
+    // Resolve the user's team (captain's own, else approved membership)
+    let team: { id: string; name: string } | null = null;
+    const { data: cap } = await supabase.from("teams").select("id, name").eq("captain_id", userId).maybeSingle();
+    if (cap) team = cap as { id: string; name: string };
+    if (!team) {
+      const { data: mem } = await supabase.from("team_members").select("team_id")
+        .eq("player_id", userId).eq("status", "approved").maybeSingle();
+      if (mem?.team_id) {
+        const { data: t } = await supabase.from("teams").select("id, name").eq("id", mem.team_id).maybeSingle();
+        team = t as { id: string; name: string } | null;
+      }
+    }
+    if (!team) { setSaving(false); setError("You need to be in a team to join an open match."); return; }
+
+    // Capacity re-check (race condition guard)
+    const { count } = await supabase.from("open_match_teams")
+      .select("id", { count: "exact", head: true }).eq("open_match_id", match.id);
+    if ((count ?? 0) >= match.max_teams) { setSaving(false); setError("This match just filled up."); return; }
+
+    const { error: joinErr } = await supabase.from("open_match_teams").insert({
+      open_match_id: match.id,
+      team_id: team.id,
+      team_name: team.name,
+      joined_by: userId,
+      payment_status: "paid",
+    });
+    if (joinErr) {
+      setSaving(false);
+      setError(joinErr.code === "23505" ? "Your team has already joined this match." : "Couldn't join. Please try again.");
+      return;
+    }
+    if ((count ?? 0) + 1 >= match.max_teams) {
+      await supabase.from("open_matches").update({ status: "full" }).eq("id", match.id);
+    }
+    setSaving(false);
+    setDone(true);
+    onJoined(match.id, { team_id: team.id, team_name: team.name });
+  };
+
+  if (done) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <p className="text-lg font-bold mb-1">You&apos;re in!</p>
+          <p className="text-sm text-text-secondary mb-1">Your team joined <span className="text-text-primary font-semibold">{match.title}</span></p>
+          <p className="text-xs text-text-secondary mb-4">{fmtOpenHeader(match.match_date, match.start_time)} · {match.pitch_name}</p>
+          <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left">
+            <p className="text-xs text-text-secondary">£{price} per team will be split across your players via Stripe. The venue has confirmed the slot.</p>
+          </div>
+          <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pb-3"><div className="w-10 h-1 rounded-full bg-border" /></div>
+        <p className="font-bold mb-0.5">Join {match.title}</p>
+        <p className="text-xs text-text-secondary mb-4">{fmtOpenHeader(match.match_date, match.start_time)} · {match.pitch_name}</p>
+
+        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 space-y-1.5 text-xs">
+          <div className="flex justify-between"><span className="text-text-secondary">Format</span><span className="font-semibold">{match.format ?? "—"} · {match.skill_level}</span></div>
+          <div className="flex justify-between"><span className="text-text-secondary">Duration</span><span className="font-semibold">{match.start_time}–{match.end_time} ({matchDuration(match.start_time, match.end_time)})</span></div>
+          <div className="flex justify-between"><span className="text-text-secondary">Spots left</span><span className="font-semibold">{Math.max(0, match.max_teams - match.joinedTeams.length)} of {match.max_teams}</span></div>
+          <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Price per team</span><span className="font-bold text-accent">£{price}</span></div>
+        </div>
+
+        <p className="text-[11px] text-text-secondary mb-4">£{price} is split across your players via Stripe. Charged automatically once the match fills.</p>
+
+        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+        {alreadyJoined ? (
+          <div className="w-full py-3 rounded-xl bg-surface-2 border border-border text-center text-sm font-semibold text-text-secondary">Your team has already joined</div>
+        ) : (
+          <button onClick={handleJoin} disabled={saving}
+            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
+            {saving
+              ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Joining…</>
+              : `Join for £${price}`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Open Match Card (Play feed) ───────────────────────────────
+function OpenMatchCard({ match, userId, myTeamId, onJoined }: {
+  match: OpenMatch;
+  userId?: string;
+  myTeamId?: string | null;
+  onJoined: (matchId: string, team: { team_id: string; team_name: string }) => void;
+}) {
+  const [showPanel, setShowPanel] = useState(false);
+  const spotsLeft = Math.max(0, match.max_teams - match.joinedTeams.length);
+  const isFull = spotsLeft === 0;
+  const alreadyJoined = !!myTeamId && match.joinedTeams.some((t) => t.team_id === myTeamId);
+
+  return (
+    <>
+      <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+        <div className="px-4 pt-4 pb-3">
+          {/* Date / time header */}
+          <p className="text-sm font-bold mb-2">{fmtOpenHeader(match.match_date, match.start_time)}</p>
+          <div className="flex items-center gap-2 text-xs text-text-secondary mb-4">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span className="capitalize">{match.skill_level}</span>
+            {match.format && <><span className="w-1 h-1 rounded-full bg-border" /><span>{match.format}</span></>}
+            <span className="w-1 h-1 rounded-full bg-border" /><span className="capitalize">{match.match_type}</span>
+          </div>
+
+          {/* Team slots */}
+          <div className="flex items-start gap-3 flex-wrap">
+            {Array.from({ length: match.max_teams }).map((_, i) => {
+              const team = match.joinedTeams[i];
+              if (team) {
+                return (
+                  <div key={i} className="flex flex-col items-center gap-1.5 w-16">
+                    <div className="w-12 h-12 rounded-full bg-accent/15 border border-accent/40 flex items-center justify-center">
+                      <span className="text-xs font-bold text-accent">{teamInitials(team.team_name)}</span>
+                    </div>
+                    <span className="text-[10px] text-text-secondary text-center truncate w-full">{team.team_name}</span>
+                  </div>
+                );
+              }
+              return (
+                <button key={i} disabled={isFull || alreadyJoined} onClick={() => setShowPanel(true)}
+                  className="flex flex-col items-center gap-1.5 w-16 disabled:opacity-50">
+                  <div className="w-12 h-12 rounded-full border border-dashed border-accent/50 flex items-center justify-center">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                  </div>
+                  <span className="text-[10px] text-accent text-center">Available</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer: venue + price + duration */}
+        <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <p className="text-sm font-semibold truncate">{match.pitch_name}</p>
+            </div>
+            {match.venue_address && <p className="text-xs text-text-secondary truncate mt-0.5">{match.venue_address}</p>}
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-base font-bold text-accent">£{(match.price_per_team_pence / 100).toFixed(2)}</p>
+            <p className="text-[10px] text-text-secondary">{matchDuration(match.start_time, match.end_time)} · per team</p>
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="px-4 pb-4">
+          {alreadyJoined ? (
+            <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-bold text-accent">Your team joined ✓</div>
+          ) : isFull ? (
+            <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Match full</div>
+          ) : (
+            <button onClick={() => setShowPanel(true)} className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+              Join — {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left
+            </button>
+          )}
+        </div>
+      </div>
+
+      {showPanel && (
+        <JoinOpenMatchPanel
+          match={match}
+          userId={userId}
+          alreadyJoined={alreadyJoined}
+          onClose={() => setShowPanel(false)}
+          onJoined={(id, team) => { onJoined(id, team); setShowPanel(false); }}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Open Matches Tab ──────────────────────────────────────────
+function OpenMatchesTab({ userId }: { userId?: string }) {
+  const [matches, setMatches] = useState<OpenMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) { setMyTeamId(null); return; }
+    async function loadTeam() {
+      const { data: cap } = await supabase.from("teams").select("id").eq("captain_id", userId!).maybeSingle();
+      if (cap?.id) { setMyTeamId(cap.id); return; }
+      const { data: mem } = await supabase.from("team_members").select("team_id")
+        .eq("player_id", userId!).eq("status", "approved").maybeSingle();
+      setMyTeamId(mem?.team_id ?? null);
+    }
+    loadTeam();
+  }, [userId]);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("open_matches")
+      .select("*").eq("status", "open")
+      .order("match_date", { ascending: true });
+    const withTeams = await Promise.all((data ?? []).map(async (m) => {
+      const { data: teams } = await supabase.from("open_match_teams")
+        .select("team_id, team_name").eq("open_match_id", m.id);
+      return { ...(m as OpenMatch), joinedTeams: (teams ?? []) as { team_id: string; team_name: string }[] };
+    }));
+    setMatches(withTeams);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleJoined = (matchId: string, team: { team_id: string; team_name: string }) => {
+    setMatches((prev) => prev.map((m) => m.id === matchId
+      ? { ...m, joinedTeams: [...m.joinedTeams, team] }
+      : m));
+  };
+
+  if (loading) return <p className="text-sm text-text-secondary text-center py-8">Loading open matches…</p>;
+  if (matches.length === 0) return (
+    <div className="bg-surface-2 border border-border rounded-2xl px-4 py-10 text-center">
+      <p className="text-sm font-semibold mb-1">No open matches right now</p>
+      <p className="text-xs text-text-secondary">Venues post games here for any team to join. Check back soon.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-accent/10 border border-accent/30 rounded-xl p-3">
+        <p className="text-xs text-text-secondary leading-relaxed">
+          <span className="font-semibold text-accent">Hosted by venues.</span> No need to organise an opponent — buy your team into a slot and play.
+        </p>
+      </div>
+      {matches.map((m) => (
+        <OpenMatchCard key={m.id} match={m} userId={userId} myTeamId={myTeamId} onJoined={handleJoined} />
+      ))}
+    </div>
+  );
+}
+
 // ── Hooks ─────────────────────────────────────────────────────
 function usePosts(excludeCaptainId: string | null, userId?: string) {
   const [posts, setPosts] = useState<MatchPost[]>([]);
@@ -682,6 +1046,7 @@ function usePosts(excludeCaptainId: string | null, userId?: string) {
         description: row.description ?? "",
         availabilityMatch: availabilityDates.includes(toISODate(row.match_date)),
         status: row.status,
+        payment_mode: row.payment_mode ?? "credit",
       }));
 
       // Availability-matching posts float to the top
@@ -724,6 +1089,7 @@ function useMyPosts(captainId?: string) {
           description: row.description ?? "",
           availabilityMatch: false,
           status: row.status,
+          payment_mode: row.payment_mode ?? "credit",
         })));
         setLoading(false);
       });
@@ -755,7 +1121,7 @@ function PlayerPlay() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {([{ key: "matches", label: "Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in" }] as { key: MatchTab; label: string }[]).map((t) => (
+        {([{ key: "matches", label: "Matches" }, { key: "open", label: "Open Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in" }] as { key: MatchTab; label: string }[]).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
             {t.label}
@@ -774,6 +1140,8 @@ function PlayerPlay() {
           )}
         </div>
       )}
+
+      {tab === "open" && <OpenMatchesTab userId={user?.id} />}
 
       {tab === "tournaments" && tournaments.map((t) => (
         <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
@@ -808,6 +1176,7 @@ function CaptainPlay() {
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {([
           { key: "matches", label: "Matches" },
+          { key: "open", label: "Open Matches" },
           { key: "my-posts", label: "My Posts" },
           { key: "tournaments", label: "Tournaments" },
           { key: "ringer", label: "Fill in" },
@@ -843,6 +1212,8 @@ function CaptainPlay() {
           )}
         </div>
       )}
+
+      {tab === "open" && <OpenMatchesTab userId={user?.id} />}
 
       {tab === "my-posts" && (
         <div className="space-y-4">

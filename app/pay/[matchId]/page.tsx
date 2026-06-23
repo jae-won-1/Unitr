@@ -13,17 +13,22 @@ type MatchInfo = {
   pitchName: string;
   pitchPrice: number;
   playerCount: number;
+  mode: "credit" | "individual";
+  // Exact amounts for THIS player, in pence.
+  sharePence: number;   // pitch share (credit mode → refills team credit)
+  feePence: number;     // 5% Unitr fee
+  totalPence: number;   // charged to card
+  paymentId: string | null;   // pre-created player_payments row (credit mode)
+  bookingId: string | null;   // pitch_bookings row
 };
 
 // ── Stripe checkout form (inner — must live inside <Elements>) ────────────────
 function CheckoutForm({
   matchInfo,
-  clientSecret,
   matchId,
   onSuccess,
 }: {
   matchInfo: MatchInfo;
-  clientSecret: string;
   matchId: string;
   onSuccess: () => void;
 }) {
@@ -33,9 +38,9 @@ function CheckoutForm({
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
-  const perPlayer = (matchInfo.pitchPrice / matchInfo.playerCount);
-  const unitrFee = perPlayer * 0.05;
-  const total = perPlayer + unitrFee;
+  const share = matchInfo.sharePence / 100;
+  const unitrFee = matchInfo.feePence / 100;
+  const total = matchInfo.totalPence / 100;
 
   const handlePay = async () => {
     if (!stripe || !elements) return;
@@ -54,13 +59,22 @@ function CheckoutForm({
     }
 
     if (paymentIntent?.status === "succeeded") {
-      // Record payment in player_payments
-      if (user) {
+      if (matchInfo.mode === "credit" && matchInfo.paymentId) {
+        // Mark the pre-created replenishment paid, then credit the team.
+        await supabase.from("player_payments")
+          .update({ status: "paid", stripe_payment_intent_id: paymentIntent.id, paid_at: new Date().toISOString() })
+          .eq("id", matchInfo.paymentId);
+        await supabase.rpc("apply_replenishment", { p_payment_id: matchInfo.paymentId });
+      } else if (user) {
+        // Individual mode: record a direct split payment (no credit involved).
         await supabase.from("player_payments").upsert({
-          booking_id: matchId,
+          booking_id: matchInfo.bookingId ?? matchId,
           player_id: user.id,
-          amount_pence: Math.round(total * 100),
+          amount_pence: matchInfo.sharePence,
+          unitr_fee_pence: matchInfo.feePence,
+          total_pence: matchInfo.totalPence,
           status: "paid",
+          purpose: "individual",
           stripe_payment_intent_id: paymentIntent.id,
         }, { onConflict: "booking_id,player_id" });
       }
@@ -70,6 +84,8 @@ function CheckoutForm({
       setPaying(false);
     }
   };
+
+  const isCredit = matchInfo.mode === "credit";
 
   return (
     <div className="space-y-4">
@@ -81,8 +97,10 @@ function CheckoutForm({
           <span className="font-semibold">£{matchInfo.pitchPrice.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-text-secondary">Split across {matchInfo.playerCount} players</span>
-          <span className="font-semibold">£{perPlayer.toFixed(2)}/player</span>
+          <span className="text-text-secondary">
+            {isCredit ? "Your share (refills team credit)" : `Split across ${matchInfo.playerCount} players`}
+          </span>
+          <span className="font-semibold">£{share.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-text-secondary">Unitr platform fee (5%)</span>
@@ -93,6 +111,16 @@ function CheckoutForm({
           <span className="text-sm font-bold text-accent">£{total.toFixed(2)}</span>
         </div>
       </div>
+
+      {isCredit && (
+        <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
+          <p className="text-[11px] text-accent font-semibold mb-0.5">Replenishing team credit</p>
+          <p className="text-[11px] text-text-secondary leading-relaxed">
+            Your team secured the pitch using its credit balance. Your share goes back
+            into the team pot so it stays topped up for the next match.
+          </p>
+        </div>
+      )}
 
       {/* Stripe Elements card form */}
       <div className="bg-surface-2 border border-border rounded-2xl p-4">
@@ -136,7 +164,7 @@ function CheckoutForm({
 
 // ── Payment success screen ────────────────────────────────────────────────────
 function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
-  const total = (matchInfo.pitchPrice / matchInfo.playerCount * 1.05);
+  const total = matchInfo.totalPence / 100;
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
       <div className="w-20 h-20 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
@@ -144,7 +172,7 @@ function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
-      <p className="text-xl font-bold mb-2">Payment Confirmed!</p>
+      <p className="text-xl font-bold mb-2">{matchInfo.mode === "credit" ? "Credit Replenished!" : "Payment Confirmed!"}</p>
       <p className="text-sm text-text-secondary mb-1">vs {matchInfo.opponent}</p>
       <p className="text-xs text-text-secondary mb-1">{matchInfo.date} · {matchInfo.time}</p>
       <p className="text-xs text-text-secondary mb-5">{matchInfo.pitchName}</p>
@@ -174,13 +202,14 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       // Fetch match post
       const { data: post } = await supabase
         .from("match_posts")
-        .select("team_name, match_date, match_time, pitch_options, captain_id")
+        .select("team_name, match_date, match_time, pitch_options, captain_id, payment_mode")
         .eq("id", params.matchId)
         .maybeSingle();
 
       if (!post) { setMatchInfo(null); return; }
 
       const isPoster = post.captain_id === user!.id;
+      const mode: "credit" | "individual" = post.payment_mode === "individual" ? "individual" : "credit";
 
       // Get accepted challenge for opponent name + confirmed pitch
       const { data: challenge } = await supabase
@@ -197,7 +226,12 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         ? (challenge?.challenger_team_name ?? "Unknown")
         : post.team_name;
 
-      // Count players from match_confirmations (includes captains + approved members)
+      // Find the booking row for this match
+      const { data: booking } = await supabase
+        .from("pitch_bookings").select("id").eq("post_id", params.matchId).maybeSingle();
+      const bookingId = booking?.id ?? null;
+
+      // Count players (both teams) — used for the individual split display
       let playerCount = 22;
       const { data: matchRecord } = await supabase
         .from("matches").select("id").eq("post_id", params.matchId).maybeSingle();
@@ -209,25 +243,56 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         if (count && count > 0) playerCount = count;
       }
 
+      // Resolve THIS player's amounts.
+      let sharePence: number, feePence: number, totalPence: number, paymentId: string | null = null;
+
+      if (mode === "credit") {
+        // The replenishment row was pre-created when the match was confirmed.
+        if (!bookingId) { setLoadError("Booking not found for this match yet."); return; }
+        const { data: pp } = await supabase
+          .from("player_payments")
+          .select("id, amount_pence, unitr_fee_pence, total_pence, status, applied")
+          .eq("booking_id", bookingId)
+          .eq("player_id", user!.id)
+          .eq("purpose", "replenish")
+          .maybeSingle();
+
+        if (!pp) { setLoadError("No replenishment is due from you for this match."); return; }
+        if (pp.status === "paid" || pp.applied) {
+          // Already settled — show the success state.
+          setMatchInfo({
+            opponent, date: post.match_date, time: post.match_time, pitchName, pitchPrice, playerCount,
+            mode, sharePence: pp.amount_pence, feePence: pp.unitr_fee_pence, totalPence: pp.total_pence,
+            paymentId: pp.id, bookingId,
+          });
+          setPaid(true);
+          return;
+        }
+        sharePence = pp.amount_pence;
+        feePence = pp.unitr_fee_pence;
+        totalPence = pp.total_pence;
+        paymentId = pp.id;
+      } else {
+        // Individual mode: split the pitch fee across all players.
+        sharePence = Math.round((pitchPrice * 100) / playerCount);
+        feePence = Math.round(sharePence * 0.05);
+        totalPence = sharePence + feePence;
+      }
+
       const info: MatchInfo = {
-        opponent,
-        date: post.match_date,
-        time: post.match_time,
-        pitchName,
-        pitchPrice,
-        playerCount,
+        opponent, date: post.match_date, time: post.match_time, pitchName, pitchPrice, playerCount,
+        mode, sharePence, feePence, totalPence, paymentId, bookingId,
       };
       setMatchInfo(info);
 
-      // Create payment intent
+      // Create payment intent for the exact total
       try {
         const res = await fetch("/api/create-payment-intent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            pitchPricePerHour: pitchPrice,
-            playerCount,
-            bookingId: params.matchId,
+            amountPence: totalPence,
+            bookingId: bookingId ?? params.matchId,
             playerId: user!.id,
           }),
         });
@@ -245,7 +310,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   }, [user, params.matchId]);
 
   // Loading
-  if (matchInfo === undefined || (matchInfo !== null && !clientSecret && !loadError)) {
+  if (matchInfo === undefined || (matchInfo !== null && !paid && !clientSecret && !loadError)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -263,7 +328,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
     );
   }
 
-  // Stripe init error
+  // Stripe init / load error
   if (loadError) {
     return (
       <div className="flex flex-col min-h-screen pt-12 pb-20 px-4">
@@ -309,7 +374,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
           </svg>
         </a>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Pay Your Share</h1>
+          <h1 className="text-xl font-bold">{matchInfo.mode === "credit" ? "Replenish Team Credit" : "Pay Your Share"}</h1>
           <p className="text-xs text-text-secondary">vs {matchInfo.opponent} · {matchInfo.date}</p>
         </div>
         <span className="text-[10px] font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-2 py-1 rounded-full">
@@ -351,7 +416,6 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         >
           <CheckoutForm
             matchInfo={matchInfo}
-            clientSecret={clientSecret}
             matchId={params.matchId}
             onSuccess={() => setPaid(true)}
           />
