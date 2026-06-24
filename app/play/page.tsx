@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import BookPitchPanel from "@/components/BookPitchPanel";
 
-type MatchTab = "matches" | "open" | "my-posts" | "tournaments" | "ringer";
+type MatchTab = "matches" | "tournaments" | "ringer";
 
 type PitchOption = {
   id: string;
@@ -685,302 +686,57 @@ function RingerCard({ game }: { game: typeof ringerGames[0] }) {
   );
 }
 
-// ── Open Matches (venue-hosted games teams buy into) ──────────
-type OpenMatch = {
-  id: string;
-  pitch_name: string;
-  venue_address: string | null;
-  match_date: string;
-  start_time: string;
-  end_time: string;
-  title: string;
-  match_type: string;
-  format: string | null;
-  skill_level: string;
-  price_per_team_pence: number;
-  max_teams: number;
-  status: string;
-  joinedTeams: { team_id: string; team_name: string }[];
-};
-
-function fmtOpenHeader(iso: string, time: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return `${iso} | ${time}`;
-  const d = new Date(iso + "T12:00:00");
-  return `${d.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" })} | ${time}`;
-}
-
-function matchDuration(start: string, end: string): string {
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  const mins = (eh * 60 + em) - (sh * 60 + sm);
-  if (mins <= 0) return "";
-  return mins % 60 === 0 ? `${mins / 60}hr` : `${mins}min`;
-}
-
-function teamInitials(name: string): string {
-  return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-}
-
-// ── Join Open Match Panel ─────────────────────────────────────
-function JoinOpenMatchPanel({ match, userId, alreadyJoined, onClose, onJoined }: {
-  match: OpenMatch;
-  userId?: string;
-  alreadyJoined: boolean;
-  onClose: () => void;
-  onJoined: (matchId: string, team: { team_id: string; team_name: string }) => void;
-}) {
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const price = (match.price_per_team_pence / 100).toFixed(2);
-
-  const handleJoin = async () => {
-    if (!userId) { setError("Sign in to join."); return; }
-    setSaving(true);
-    setError(null);
-
-    // Resolve the user's team (captain's own, else approved membership)
-    let team: { id: string; name: string } | null = null;
-    const { data: cap } = await supabase.from("teams").select("id, name").eq("captain_id", userId).maybeSingle();
-    if (cap) team = cap as { id: string; name: string };
-    if (!team) {
-      const { data: mem } = await supabase.from("team_members").select("team_id")
-        .eq("player_id", userId).eq("status", "approved").maybeSingle();
-      if (mem?.team_id) {
-        const { data: t } = await supabase.from("teams").select("id, name").eq("id", mem.team_id).maybeSingle();
-        team = t as { id: string; name: string } | null;
-      }
-    }
-    if (!team) { setSaving(false); setError("You need to be in a team to join an open match."); return; }
-
-    // Capacity re-check (race condition guard)
-    const { count } = await supabase.from("open_match_teams")
-      .select("id", { count: "exact", head: true }).eq("open_match_id", match.id);
-    if ((count ?? 0) >= match.max_teams) { setSaving(false); setError("This match just filled up."); return; }
-
-    const { error: joinErr } = await supabase.from("open_match_teams").insert({
-      open_match_id: match.id,
-      team_id: team.id,
-      team_name: team.name,
-      joined_by: userId,
-      payment_status: "paid",
-    });
-    if (joinErr) {
-      setSaving(false);
-      setError(joinErr.code === "23505" ? "Your team has already joined this match." : "Couldn't join. Please try again.");
-      return;
-    }
-    if ((count ?? 0) + 1 >= match.max_teams) {
-      await supabase.from("open_matches").update({ status: "full" }).eq("id", match.id);
-    }
-    setSaving(false);
-    setDone(true);
-    onJoined(match.id, { team_id: team.id, team_name: team.name });
-  };
-
-  if (done) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
-        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
-          <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <p className="text-lg font-bold mb-1">You&apos;re in!</p>
-          <p className="text-sm text-text-secondary mb-1">Your team joined <span className="text-text-primary font-semibold">{match.title}</span></p>
-          <p className="text-xs text-text-secondary mb-4">{fmtOpenHeader(match.match_date, match.start_time)} · {match.pitch_name}</p>
-          <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left">
-            <p className="text-xs text-text-secondary">£{price} per team will be split across your players via Stripe. The venue has confirmed the slot.</p>
-          </div>
-          <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
-        </div>
-      </div>
-    );
-  }
+// ── Tournament Card ────────────────────────────────────────────
+function TournamentCard({ tournament: t }: { tournament: typeof tournaments[0] }) {
+  const m = t.teams.match(/(\d+)\s*\/\s*(\d+)/);
+  const joined = m ? Number(m[1]) : 0;
+  const maxTeams = m ? Number(m[2]) : 0;
+  const spotsLeft = Math.max(0, maxTeams - joined);
+  const isFull = maxTeams > 0 && spotsLeft === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pb-3"><div className="w-10 h-1 rounded-full bg-border" /></div>
-        <p className="font-bold mb-0.5">Join {match.title}</p>
-        <p className="text-xs text-text-secondary mb-4">{fmtOpenHeader(match.match_date, match.start_time)} · {match.pitch_name}</p>
-
-        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-text-secondary">Format</span><span className="font-semibold">{match.format ?? "—"} · {match.skill_level}</span></div>
-          <div className="flex justify-between"><span className="text-text-secondary">Duration</span><span className="font-semibold">{match.start_time}–{match.end_time} ({matchDuration(match.start_time, match.end_time)})</span></div>
-          <div className="flex justify-between"><span className="text-text-secondary">Spots left</span><span className="font-semibold">{Math.max(0, match.max_teams - match.joinedTeams.length)} of {match.max_teams}</span></div>
-          <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Price per team</span><span className="font-bold text-accent">£{price}</span></div>
+    <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+      <div className="px-4 pt-4 pb-3">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <p className="text-sm font-bold">{t.name}</p>
+            <p className="text-xs text-text-secondary">by {t.organiser}</p>
+          </div>
+          <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg flex-shrink-0">{t.prize}</span>
         </div>
+        <div className="flex items-center gap-2 text-xs text-text-secondary mb-3 flex-wrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span>{t.date}</span>
+          <span className="w-1 h-1 rounded-full bg-border" /><span>{t.format}</span>
+        </div>
+        <p className="text-xs text-text-secondary">{t.description}</p>
+      </div>
 
-        <p className="text-[11px] text-text-secondary mb-4">£{price} is split across your players via Stripe. Charged automatically once the match fills.</p>
+      {/* Footer: venue + teams entered */}
+      <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <p className="text-sm font-semibold truncate">{t.location}</p>
+          </div>
+          {t.distance && <p className="text-xs text-text-secondary truncate mt-0.5">{t.distance}</p>}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-base font-bold text-accent">{joined}/{maxTeams}</p>
+          <p className="text-[10px] text-text-secondary">teams entered</p>
+        </div>
+      </div>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
-
-        {alreadyJoined ? (
-          <div className="w-full py-3 rounded-xl bg-surface-2 border border-border text-center text-sm font-semibold text-text-secondary">Your team has already joined</div>
+      {/* CTA */}
+      <div className="px-4 pb-4">
+        {isFull ? (
+          <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
         ) : (
-          <button onClick={handleJoin} disabled={saving}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
-            {saving
-              ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Joining…</>
-              : `Join for £${price}`}
+          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+            Enter Tournament{spotsLeft > 0 ? ` — ${spotsLeft} spot${spotsLeft !== 1 ? "s" : ""} left` : ""}
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── Open Match Card (Play feed) ───────────────────────────────
-function OpenMatchCard({ match, userId, myTeamId, onJoined }: {
-  match: OpenMatch;
-  userId?: string;
-  myTeamId?: string | null;
-  onJoined: (matchId: string, team: { team_id: string; team_name: string }) => void;
-}) {
-  const [showPanel, setShowPanel] = useState(false);
-  const spotsLeft = Math.max(0, match.max_teams - match.joinedTeams.length);
-  const isFull = spotsLeft === 0;
-  const alreadyJoined = !!myTeamId && match.joinedTeams.some((t) => t.team_id === myTeamId);
-
-  return (
-    <>
-      <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
-        <div className="px-4 pt-4 pb-3">
-          {/* Date / time header */}
-          <p className="text-sm font-bold mb-2">{fmtOpenHeader(match.match_date, match.start_time)}</p>
-          <div className="flex items-center gap-2 text-xs text-text-secondary mb-4">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            <span className="capitalize">{match.skill_level}</span>
-            {match.format && <><span className="w-1 h-1 rounded-full bg-border" /><span>{match.format}</span></>}
-            <span className="w-1 h-1 rounded-full bg-border" /><span className="capitalize">{match.match_type}</span>
-          </div>
-
-          {/* Team slots */}
-          <div className="flex items-start gap-3 flex-wrap">
-            {Array.from({ length: match.max_teams }).map((_, i) => {
-              const team = match.joinedTeams[i];
-              if (team) {
-                return (
-                  <div key={i} className="flex flex-col items-center gap-1.5 w-16">
-                    <div className="w-12 h-12 rounded-full bg-accent/15 border border-accent/40 flex items-center justify-center">
-                      <span className="text-xs font-bold text-accent">{teamInitials(team.team_name)}</span>
-                    </div>
-                    <span className="text-[10px] text-text-secondary text-center truncate w-full">{team.team_name}</span>
-                  </div>
-                );
-              }
-              return (
-                <button key={i} disabled={isFull || alreadyJoined} onClick={() => setShowPanel(true)}
-                  className="flex flex-col items-center gap-1.5 w-16 disabled:opacity-50">
-                  <div className="w-12 h-12 rounded-full border border-dashed border-accent/50 flex items-center justify-center">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                  </div>
-                  <span className="text-[10px] text-accent text-center">Available</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Footer: venue + price + duration */}
-        <div className="border-t border-border px-4 py-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <p className="text-sm font-semibold truncate">{match.pitch_name}</p>
-            </div>
-            {match.venue_address && <p className="text-xs text-text-secondary truncate mt-0.5">{match.venue_address}</p>}
-          </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-base font-bold text-accent">£{(match.price_per_team_pence / 100).toFixed(2)}</p>
-            <p className="text-[10px] text-text-secondary">{matchDuration(match.start_time, match.end_time)} · per team</p>
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div className="px-4 pb-4">
-          {alreadyJoined ? (
-            <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-bold text-accent">Your team joined ✓</div>
-          ) : isFull ? (
-            <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Match full</div>
-          ) : (
-            <button onClick={() => setShowPanel(true)} className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-              Join — {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left
-            </button>
-          )}
-        </div>
-      </div>
-
-      {showPanel && (
-        <JoinOpenMatchPanel
-          match={match}
-          userId={userId}
-          alreadyJoined={alreadyJoined}
-          onClose={() => setShowPanel(false)}
-          onJoined={(id, team) => { onJoined(id, team); setShowPanel(false); }}
-        />
-      )}
-    </>
-  );
-}
-
-// ── Open Matches Tab ──────────────────────────────────────────
-function OpenMatchesTab({ userId }: { userId?: string }) {
-  const [matches, setMatches] = useState<OpenMatch[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [myTeamId, setMyTeamId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!userId) { setMyTeamId(null); return; }
-    async function loadTeam() {
-      const { data: cap } = await supabase.from("teams").select("id").eq("captain_id", userId!).maybeSingle();
-      if (cap?.id) { setMyTeamId(cap.id); return; }
-      const { data: mem } = await supabase.from("team_members").select("team_id")
-        .eq("player_id", userId!).eq("status", "approved").maybeSingle();
-      setMyTeamId(mem?.team_id ?? null);
-    }
-    loadTeam();
-  }, [userId]);
-
-  const load = useCallback(async () => {
-    const { data } = await supabase.from("open_matches")
-      .select("*").eq("status", "open")
-      .order("match_date", { ascending: true });
-    const withTeams = await Promise.all((data ?? []).map(async (m) => {
-      const { data: teams } = await supabase.from("open_match_teams")
-        .select("team_id, team_name").eq("open_match_id", m.id);
-      return { ...(m as OpenMatch), joinedTeams: (teams ?? []) as { team_id: string; team_name: string }[] };
-    }));
-    setMatches(withTeams);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleJoined = (matchId: string, team: { team_id: string; team_name: string }) => {
-    setMatches((prev) => prev.map((m) => m.id === matchId
-      ? { ...m, joinedTeams: [...m.joinedTeams, team] }
-      : m));
-  };
-
-  if (loading) return <p className="text-sm text-text-secondary text-center py-8">Loading open matches…</p>;
-  if (matches.length === 0) return (
-    <div className="bg-surface-2 border border-border rounded-2xl px-4 py-10 text-center">
-      <p className="text-sm font-semibold mb-1">No open matches right now</p>
-      <p className="text-xs text-text-secondary">Venues post games here for any team to join. Check back soon.</p>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-accent/10 border border-accent/30 rounded-xl p-3">
-        <p className="text-xs text-text-secondary leading-relaxed">
-          <span className="font-semibold text-accent">Hosted by venues.</span> No need to organise an opponent — buy your team into a slot and play.
-        </p>
-      </div>
-      {matches.map((m) => (
-        <OpenMatchCard key={m.id} match={m} userId={userId} myTeamId={myTeamId} onJoined={handleJoined} />
-      ))}
     </div>
   );
 }
@@ -1121,7 +877,7 @@ function PlayerPlay() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {([{ key: "matches", label: "Matches" }, { key: "open", label: "Open Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in" }] as { key: MatchTab; label: string }[]).map((t) => (
+        {([{ key: "matches", label: "Matches" }, { key: "tournaments", label: "Tournaments" }, { key: "ringer", label: "Fill in" }] as { key: MatchTab; label: string }[]).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
             {t.label}
@@ -1141,22 +897,7 @@ function PlayerPlay() {
         </div>
       )}
 
-      {tab === "open" && <OpenMatchesTab userId={user?.id} />}
-
-      {tab === "tournaments" && tournaments.map((t) => (
-        <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div><p className="font-semibold">{t.name}</p><p className="text-xs text-text-secondary">by {t.organiser}</p></div>
-            <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg">{t.prize}</span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">{t.description}</p>
-          <div className="flex items-center gap-3 text-xs text-text-secondary mb-4 flex-wrap">
-            <span>{t.location} · {t.distance}</span><span>{t.date}</span><span>{t.teams} entered</span>
-            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{t.format}</span>
-          </div>
-          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Enter Tournament</button>
-        </div>
-      ))}
+      {tab === "tournaments" && tournaments.map((t) => <TournamentCard key={t.id} tournament={t} />)}
 
       {tab === "ringer" && ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
     </div>
@@ -1169,42 +910,39 @@ function CaptainPlay() {
   const { posts: myPosts, loading: myPostsLoading } = useMyPosts(user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
 
-  const myPostsCount = myPosts.filter((p) => p.status === "open").length;
+  const myPost = myPosts[0] ?? null;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {([
           { key: "matches", label: "Matches" },
-          { key: "open", label: "Open Matches" },
-          { key: "my-posts", label: "My Posts" },
           { key: "tournaments", label: "Tournaments" },
           { key: "ringer", label: "Fill in" },
         ] as { key: MatchTab; label: string }[]).map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors relative ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
             {t.label}
-            {t.key === "my-posts" && myPostsCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-accent text-black text-[9px] font-bold flex items-center justify-center">
-                {myPostsCount}
-              </span>
-            )}
           </button>
         ))}
       </div>
 
       {tab === "matches" && (
         <div className="space-y-4">
+          {myPostsLoading ? null : myPost ? (
+            <MyPostCard post={myPost} onRemoved={removePost} />
+          ) : (
+            <a href="/play/create" onClick={() => localStorage.setItem("unitr_payment_mode", "credit")}
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-black text-sm font-bold">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Create New Post
+            </a>
+          )}
+
           {loading ? (
             <p className="text-sm text-text-secondary text-center py-8">Loading matches…</p>
           ) : posts.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-sm text-text-secondary mb-3">No open matches from other teams right now.</p>
-              <a href="/my-team?findMatch=1" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                Post your own match instead
-              </a>
-            </div>
+            <p className="text-sm text-text-secondary text-center py-8">No open matches from other teams right now.</p>
           ) : (
             posts.map((p) => (
               <MatchCard key={p.id} post={p} showChallenge={true} onMatched={removePost} />
@@ -1213,40 +951,7 @@ function CaptainPlay() {
         </div>
       )}
 
-      {tab === "open" && <OpenMatchesTab userId={user?.id} />}
-
-      {tab === "my-posts" && (
-        <div className="space-y-4">
-          <a href="/my-team?findMatch=1"
-            className="flex items-center gap-2 w-fit px-4 py-2 rounded-lg border border-border bg-surface-2 text-sm font-medium">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Create New Post
-          </a>
-
-          {myPostsLoading ? (
-            <p className="text-sm text-text-secondary text-center py-8">Loading your posts…</p>
-          ) : myPosts.length === 0 ? (
-            <p className="text-sm text-text-secondary text-center py-8">No posts yet. Create one above.</p>
-          ) : (
-            myPosts.map((p) => <MyPostCard key={p.id} post={p} onRemoved={removePost} />)
-          )}
-        </div>
-      )}
-
-      {tab === "tournaments" && tournaments.map((t) => (
-        <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div><p className="font-semibold">{t.name}</p><p className="text-xs text-text-secondary">by {t.organiser}</p></div>
-            <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg">{t.prize}</span>
-          </div>
-          <p className="text-xs text-text-secondary mb-3">{t.description}</p>
-          <div className="flex items-center gap-3 text-xs text-text-secondary mb-4 flex-wrap">
-            <span>{t.location} · {t.distance}</span><span>{t.date}</span><span>{t.teams} entered</span>
-            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{t.format}</span>
-          </div>
-          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Enter Tournament</button>
-        </div>
-      ))}
+      {tab === "tournaments" && tournaments.map((t) => <TournamentCard key={t.id} tournament={t} />)}
 
       {tab === "ringer" && (
         <div className="space-y-4">
@@ -1263,8 +968,11 @@ function CaptainPlay() {
 }
 
 // ── Page ─────────────────────────────────────────────────────
+type PlayView = "find" | "book";
+
 export default function PlayPage() {
   const { role, roleLoading } = useRole();
+  const [view, setView] = useState<PlayView>("find");
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
@@ -1272,14 +980,33 @@ export default function PlayPage() {
       <header className="mb-5">
         <h1 className="text-2xl font-bold mb-1">Play</h1>
         <p className="text-text-secondary text-sm">
-          {role === "new_user" ? "Find a game to join in your area"
+          {view === "book" ? "Book a pitch directly — no opponent needed"
+          : role === "new_user" ? "Find a game to join in your area"
           : role === "player" ? "Find teams to challenge or events to join"
           : "Manage matches and find opponents for your team"}
         </p>
       </header>
-      {role === "new_user" && <NewUserPlay />}
-      {role === "player" && <PlayerPlay />}
-      {role === "captain" && <CaptainPlay />}
+
+      <div className="flex bg-surface-2 border border-border rounded-xl p-1 mb-5">
+        {([{ key: "find", label: "Find Match" }, { key: "book", label: "Book" }] as { key: PlayView; label: string }[]).map((v) => (
+          <button key={v.key} onClick={() => setView(v.key)}
+            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${view === v.key ? "bg-accent text-black" : "text-text-secondary"}`}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "find" ? (
+        <>
+          {role === "new_user" && <NewUserPlay />}
+          {role === "player" && <PlayerPlay />}
+          {role === "captain" && <CaptainPlay />}
+        </>
+      ) : (
+        <div className="-mx-4">
+          <BookPitchPanel />
+        </div>
+      )}
     </div>
   );
 }

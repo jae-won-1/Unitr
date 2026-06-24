@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Player = {
@@ -52,9 +53,10 @@ function MessageIcon() {
   );
 }
 
-export default function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("all");
+function SearchContent() {
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [tab, setTab] = useState<Tab>((searchParams.get("tab") as Tab) ?? "all");
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
@@ -246,5 +248,13 @@ export default function SearchPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>}>
+      <SearchContent />
+    </Suspense>
   );
 }

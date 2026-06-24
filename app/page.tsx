@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import HomeSearchBar from "@/components/HomeSearchBar";
 
 type ConfirmedFixture = {
   id: string;
@@ -552,17 +553,10 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12">
-      <header className="flex items-center justify-between mb-6">
+      <header className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold tracking-tight">Unitr<span className="text-accent">.</span></h1>
-        {user && (
-          <a href="/messages" aria-label="Messages"
-            className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          </a>
-        )}
       </header>
+      <HomeSearchBar />
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}
       {role === "captain" && <CaptainHome userId={user?.id} />}

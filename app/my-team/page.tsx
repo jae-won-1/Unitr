@@ -320,6 +320,11 @@ function PlayerMyTeam() {
               <span className="text-lg font-bold text-red-400">0L</span>
             </div>
           </div>
+          <a href="/my-team/history" aria-label="Match History" className="flex-shrink-0 p-1">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+          </a>
           <button onClick={() => setBookmarked((b) => !b)} className="flex-shrink-0 p-1">
             <svg width="22" height="22" viewBox="0 0 24 24"
               fill={bookmarked ? "#00E676" : "none"}
@@ -594,223 +599,17 @@ function PlayerMyTeam() {
 }
 
 // ── Find Match Button ─────────────────────────────────────────
-const MIN_PITCH_COST = 20;
-
+// All matches are paid via team credit now, so this just sends the captain
+// straight to match posting — no payment-mode picker needed.
 function FindMatchButton() {
-  const { user } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<"credit" | "individual" | null>(null);
-  const [teamCredits, setTeamCredits] = useState<number | null>(null);
-  const [hasAvailability, setHasAvailability] = useState(false);
-  const [hasAvailabilityRequest, setHasAvailabilityRequest] = useState(false);
-  const [maxVoteCount, setMaxVoteCount] = useState<number | null>(null);
-  const [voteWarning, setVoteWarning] = useState<"too_few" | "seven_aside" | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.location.search.includes("findMatch=1")) {
-      setOpen(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const saved = localStorage.getItem("unitr_confirmed_dates");
-    setHasAvailability(!!saved && JSON.parse(saved).length > 0);
-  }, [open]);
-
-  useEffect(() => {
-    if (!user || !open) return;
-    async function load() {
-      const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
-      if (!team?.id) return;
-      const [{ data: credits }, { data: req }] = await Promise.all([
-        supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle(),
-        supabase.from("availability_requests").select("id, date_options").eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      ]);
-      setTeamCredits(((credits?.balance_pence ?? 0) - (credits?.reserved_pence ?? 0)) / 100);
-      setHasAvailabilityRequest(!!req);
-
-      if (req?.id && req?.date_options?.length > 0) {
-        const { data: responses } = await supabase
-          .from("availability_responses")
-          .select("available_date_ids")
-          .eq("request_id", req.id);
-        if (responses) {
-          const max = Math.max(
-            ...req.date_options.map((opt: { id: string }) =>
-              responses.filter((r: { available_date_ids: string[] }) => r.available_date_ids.includes(opt.id)).length
-            )
-          );
-          setMaxVoteCount(max);
-        }
-      }
-    }
-    load();
-  }, [user, open]);
-
-  const insufficientCredits = teamCredits !== null && teamCredits < MIN_PITCH_COST;
-  const href = "/play/create";
-
-  function handleConfirm(e: React.MouseEvent) {
-    if (!selected) { e.preventDefault(); return; }
-    if (selected === "individual") {
-      e.preventDefault();
-      const count = maxVoteCount ?? 0;
-      // TODO: re-enable min-player checks before launch
-      // if (count < 7) { setVoteWarning("too_few"); return; }
-      // if (count <= 10) { setVoteWarning("seven_aside"); return; }
-      void count;
-      localStorage.setItem("unitr_payment_mode", "individual");
-      setOpen(false);
-      window.location.href = href;
-      return;
-    }
-    localStorage.setItem("unitr_payment_mode", selected);
-    setOpen(false);
-  }
-
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center"
-      >
-        Post Match
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={() => { setOpen(false); setVoteWarning(null); }}>
-          <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
-
-            {voteWarning === "too_few" ? (
-              <>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                  </div>
-                  <p className="text-lg font-bold leading-tight">More players needed</p>
-                </div>
-                <p className="text-sm text-text-secondary mb-6">
-                  Only <span className="text-text-primary font-semibold">{maxVoteCount ?? 0} player{(maxVoteCount ?? 0) !== 1 ? "s" : ""}</span> agreed on the most popular time slot. At least 7 players need to be available before you can post a match.
-                </p>
-                <div className="flex gap-3">
-                  <button onClick={() => setVoteWarning(null)} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary">Back</button>
-                  <a href="/my-team/availability" onClick={() => { setVoteWarning(null); setOpen(false); }} className="flex-1 py-3 rounded-xl bg-surface-2 border border-border text-sm font-semibold text-text-primary text-center">Collect Availability</a>
-                </div>
-              </>
-            ) : voteWarning === "seven_aside" ? (
-              <>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2.5" strokeLinecap="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                    </svg>
-                  </div>
-                  <p className="text-lg font-bold leading-tight">7-a-side pitches only</p>
-                </div>
-                <p className="text-sm text-text-secondary mb-6">
-                  <span className="text-text-primary font-semibold">{maxVoteCount} players</span> are available for the most popular time slot. Only 7-a-side pitches will be shown during pitch selection.
-                </p>
-                <div className="flex gap-3">
-                  <button onClick={() => setVoteWarning(null)} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-primary">Back</button>
-                  <a
-                    href="/play/create"
-                    onClick={() => { localStorage.setItem("unitr_payment_mode", "individual"); setVoteWarning(null); setOpen(false); }}
-                    className="flex-1 py-3 rounded-xl bg-accent text-black text-sm font-bold text-center"
-                  >Continue</a>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-start justify-between mb-6">
-                  <p className="text-xl font-bold leading-tight">How would you like to book the pitch?</p>
-                  <button onClick={() => setOpen(false)} className="ml-3 flex-shrink-0 mt-0.5">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-3 mb-5">
-                  <button
-                    disabled={insufficientCredits}
-                    onClick={() => !insufficientCredits && setSelected("credit")}
-                    className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${insufficientCredits ? "opacity-50 cursor-not-allowed bg-surface-2 border-border" : selected === "credit" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <div className="flex items-center gap-2">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "credit" && !insufficientCredits ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
-                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-                        </svg>
-                        <p className={`text-sm font-bold ${selected === "credit" && !insufficientCredits ? "text-accent" : "text-text-primary"}`}>Pay with Team Credit</p>
-                      </div>
-                      {teamCredits !== null && (
-                        <span className={`text-xs font-semibold ${insufficientCredits ? "text-red-400" : "text-accent"}`}>
-                          £{teamCredits.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-text-secondary">Use your team&apos;s credit balance to cover the pitch fee upfront.</p>
-                    {insufficientCredits && (
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[9px] font-bold text-red-400">i</span>
-                        </div>
-                        <p className="text-[11px] text-red-400">Insufficient team credits to book this pitch</p>
-                      </div>
-                    )}
-                  </button>
-
-                  {(() => {
-                    const canSelect = hasAvailability || hasAvailabilityRequest;
-                    return (
-                      <button
-                        onClick={() => canSelect && setSelected("individual")}
-                        disabled={!canSelect}
-                        className={`flex flex-col gap-1 border rounded-2xl px-5 py-4 text-left transition-colors ${!canSelect ? "cursor-not-allowed bg-surface-2 border-border" : selected === "individual" ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
-                        <div className={!canSelect ? "opacity-50" : ""}>
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={selected === "individual" && canSelect ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round">
-                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-                            </svg>
-                            <p className={`text-sm font-bold ${selected === "individual" && canSelect ? "text-accent" : "text-text-primary"}`}>Individual Payments</p>
-                          </div>
-                          <p className="text-xs text-text-secondary">Split the pitch fee between each player once availability is collected.</p>
-                          {!canSelect && (
-                            <div className="flex items-center gap-1.5 mt-1.5">
-                              <div className="w-4 h-4 rounded-full border border-yellow-400 flex items-center justify-center flex-shrink-0">
-                                <span className="text-[9px] font-bold text-yellow-400">i</span>
-                              </div>
-                              <p className="text-[11px] text-yellow-400">Collect team availability first</p>
-                            </div>
-                          )}
-                        </div>
-                        {!canSelect && (
-                          <a href="/my-team/availability"
-                            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-                            className="flex items-center justify-center gap-2 w-full mt-2 py-2 rounded-xl border border-accent/30 bg-accent/10 text-accent text-xs font-semibold">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                            Collect Availability Now
-                          </a>
-                        )}
-                      </button>
-                    );
-                  })()}
-                </div>
-
-                <a href={selected ? href : undefined}
-                  onClick={handleConfirm}
-                  className={`block w-full py-3.5 rounded-xl text-sm font-bold text-center transition-colors ${selected ? "bg-accent text-black" : "bg-surface-2 text-text-secondary cursor-not-allowed"}`}>
-                  Confirm
-                </a>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </>
+    <a
+      href="/play/create"
+      onClick={() => localStorage.setItem("unitr_payment_mode", "credit")}
+      className="block w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center"
+    >
+      Post Match
+    </a>
   );
 }
 
@@ -951,6 +750,11 @@ function CaptainMyTeam() {
               <span className="text-lg font-bold text-red-400">0L</span>
             </div>
           </div>
+          <a href="/my-team/history" aria-label="Match History" className="flex-shrink-0 p-1">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+            </svg>
+          </a>
         </div>
         {availabilityRequest && (
           <div className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4 mb-1">
@@ -1115,6 +919,55 @@ function CaptainMyTeam() {
         </div>
       </section>
 
+      {/* Captain actions */}
+      <section>
+        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Manage</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "Tactics Board", icon: "🗂️", href: "/my-team/tactics" },
+            { label: "Transfer Window", icon: "🔄", href: "/my-team/transfer" },
+            { label: "Players", icon: "👥", href: "/my-team/players" },
+            { label: "Settings", icon: "⚙️", href: "#" },
+          ].map((a) => (
+            <a key={a.label} href={a.href} className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
+              <span className="text-2xl">{a.icon}</span>
+              <p className="text-sm font-semibold">{a.label}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      {/* Join requests */}
+      {requests.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Join Requests</h3>
+            <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{requests.length}</span>
+          </div>
+          <div className="space-y-2">
+            {requests.map((req) => (
+              <div key={req.id} className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-bold text-accent">
+                    {req.profiles?.full_name?.split(" ").map((w) => w[0]).join("").slice(0,2) ?? "?"}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{req.profiles?.full_name ?? "Unknown player"}</p>
+                  <p className="text-xs text-text-secondary">{req.profiles?.position ?? "—"}</p>
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "rejected")}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">Decline</button>
+                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "approved")}
+                    className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40">Approve</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Confirmed fixtures */}
       <section>
         <div className="flex items-center justify-between mb-3">
@@ -1159,55 +1012,6 @@ function CaptainMyTeam() {
             ))}
           </div>
         )}
-      </section>
-
-      {/* Join requests */}
-      {requests.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Join Requests</h3>
-            <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{requests.length}</span>
-          </div>
-          <div className="space-y-2">
-            {requests.map((req) => (
-              <div key={req.id} className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-xs font-bold text-accent">
-                    {req.profiles?.full_name?.split(" ").map((w) => w[0]).join("").slice(0,2) ?? "?"}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">{req.profiles?.full_name ?? "Unknown player"}</p>
-                  <p className="text-xs text-text-secondary">{req.profiles?.position ?? "—"}</p>
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "rejected")}
-                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">Decline</button>
-                  <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "approved")}
-                    className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40">Approve</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Captain actions */}
-      <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Manage</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Tactics Board", icon: "🗂️", href: "/my-team/tactics" },
-            { label: "Transfer Window", icon: "🔄", href: "/my-team/transfer" },
-            { label: "Players", icon: "👥", href: "/my-team/players" },
-            { label: "Settings", icon: "⚙️", href: "#" },
-          ].map((a) => (
-            <a key={a.label} href={a.href} className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
-              <span className="text-2xl">{a.icon}</span>
-              <p className="text-sm font-semibold">{a.label}</p>
-            </a>
-          ))}
-        </div>
       </section>
     </div>
   );
@@ -1727,26 +1531,14 @@ export default function MyTeamPage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">
       <header className="mb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold mb-0.5">
-              {role === "new_user" ? "Browse Teams" : "My Team"}
-            </h1>
-            <p className="text-text-secondary text-sm">
-              {role === "new_user" ? "Find teams to become your next family"
-              : role === "player" ? "Your squad and performance"
-              : "Manage your squad and organise matches"}
-            </p>
-          </div>
-          {(role === "captain" || role === "player") && (
-            <a href="/messages" aria-label="Messages"
-              className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </a>
-          )}
-        </div>
+        <h1 className="text-2xl font-bold mb-0.5">
+          {role === "new_user" ? "Browse Teams" : "My Team"}
+        </h1>
+        <p className="text-text-secondary text-sm">
+          {role === "new_user" ? "Find teams to become your next family"
+          : role === "player" ? "Your squad and performance"
+          : "Manage your squad and organise matches"}
+        </p>
         {(role === "captain" || role === "player") && user && (
           <TeamCreditsBar userId={user.id} role={role as "captain" | "player"} />
         )}

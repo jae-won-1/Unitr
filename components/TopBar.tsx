@@ -160,6 +160,16 @@ export default function TopBar() {
         )}
       </div>
 
+      {/* ── Messages ── */}
+      {user && (
+        <a href="/messages" aria-label="Messages"
+          className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        </a>
+      )}
+
       {/* ── Profile avatar ── */}
       {user ? (
         <div className="relative" ref={profileRef}>

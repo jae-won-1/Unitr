@@ -32,25 +32,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    label: "Search",
-    href: "/search",
-    icon: (active) => (
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke={active ? "#00E676" : "#9E9E9E"}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="11" cy="11" r="8"/>
-        <path d="m21 21-4.35-4.35"/>
-      </svg>
-    ),
-  },
-  {
     label: "Play",
     href: "/play",
     icon: (active) => (
@@ -88,44 +69,6 @@ const navItems: NavItem[] = [
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-  },
-  {
-    label: "Book",
-    href: "/book",
-    icon: (active) => (
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill={active ? "#00E676" : "none"}
-        stroke={active ? "#00E676" : "#9E9E9E"}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="3" y="4" width="18" height="18" rx="2" fill="none" />
-        <path d="M16 2v4M8 2v4M3 10h18" />
-      </svg>
-    ),
-  },
-  {
-    label: "Profile",
-    href: "/profile",
-    icon: (active) => (
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke={active ? "#00E676" : "#9E9E9E"}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
       </svg>
     ),
   },
