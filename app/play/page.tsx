@@ -5,6 +5,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import BookPitchPanel from "@/components/BookPitchPanel";
+import MyBookingsPanel from "@/components/MyBookingsPanel";
 
 type MatchTab = "matches" | "tournaments" | "ringer";
 
@@ -58,6 +59,8 @@ type MatchPost = {
   availabilityMatch: boolean;
   status: string;
   payment_mode: string;
+  pitchSecured: boolean;
+  securedBookingId: string | null;
 };
 
 type Challenge = {
@@ -159,37 +162,41 @@ function ChallengePanel({
     if (!team) { setSaving(false); return; }
 
     const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
+    const isSecured = post.payment_mode === "secured";
 
-    // Both modes secure the pitch with team credit at confirm (the squad is still
-    // fluid — see PAYMENT_PLAN §10). Verify credit before we create anything so we
-    // never leave a half-built match on failure.
+    // Both credit/individual modes secure the pitch with team credit at confirm
+    // (the squad is still fluid — see PAYMENT_PLAN §10). A "secured" post already
+    // has its pitch paid for via a direct booking, so it skips credit entirely —
+    // joining is immediate and players settle their share post-match as usual.
     const feePence = Math.round((pitch?.price ?? 0) * 100);
     const halfPence = Math.floor(feePence / 2);
 
-    // Challenger must cover their half.
-    const { data: chalCr } = await supabase
-      .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
-    const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
-    if (chalAvail < halfPence) {
-      setSaving(false);
-      setSlotTakenError(
-        `Your team needs £${(halfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
-      );
-      return;
-    }
-
-    // Individual mode placed no hold at post, so the poster must have the full fee
-    // available now to front it. (Credit mode already earmarked it via the hold.)
-    if (post.payment_mode !== "credit") {
-      const { data: postCr } = await supabase
-        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
-      const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
-      if (postAvail < feePence) {
+    if (!isSecured) {
+      // Challenger must cover their half.
+      const { data: chalCr } = await supabase
+        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
+      const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
+      if (chalAvail < halfPence) {
         setSaving(false);
         setSlotTakenError(
-          `The posting team no longer has enough credit to secure this pitch (£${(feePence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
+          `Your team needs £${(halfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
         );
         return;
+      }
+
+      // Individual mode placed no hold at post, so the poster must have the full fee
+      // available now to front it. (Credit mode already earmarked it via the hold.)
+      if (post.payment_mode !== "credit") {
+        const { data: postCr } = await supabase
+          .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
+        const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
+        if (postAvail < feePence) {
+          setSaving(false);
+          setSlotTakenError(
+            `The posting team no longer has enough credit to secure this pitch (£${(feePence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
+          );
+          return;
+        }
       }
     }
 
@@ -205,8 +212,9 @@ function ChallengePanel({
 
     const pitchTime = pitch?.time ?? post.match_time;
 
-    // Final double-booking check: pitch slot may have been taken since panel opened
-    if (pitch?.id) {
+    // Final double-booking check: pitch slot may have been taken since panel opened.
+    // Secured posts already own their slot via the existing booking — nothing to race.
+    if (!isSecured && pitch?.id) {
       const { data: slotConflict } = await supabase
         .from("pitch_bookings")
         .select("id")
@@ -225,9 +233,20 @@ function ChallengePanel({
       }
     }
 
-    // Create a pitch_bookings row so the venue portal calendar shows this booking
+    // Create a pitch_bookings row so the venue portal calendar shows this booking.
+    // Secured posts already have a booking row (the original direct /book reservation)
+    // — just update its player count/split rather than creating a duplicate.
     let pitchBookingId: string | null = null;
-    if (pitch?.id) {
+    if (isSecured && post.securedBookingId) {
+      const perPlayerPence = Math.round(feePence / 22);
+      await supabase.from("pitch_bookings").update({
+        booker_name: `${post.team} vs ${team.name}`,
+        player_count: 22,
+        per_player_pence: perPlayerPence,
+        unitr_fee_pence: Math.round(perPlayerPence * 0.05),
+      }).eq("id", post.securedBookingId);
+      pitchBookingId = post.securedBookingId;
+    } else if (pitch?.id) {
       const perPlayerPence = Math.round((pitch.price * 100) / 22);
       const startTime = pitchTime || "12:00";
       const [h, m] = startTime.split(":").map(Number);
@@ -288,11 +307,12 @@ function ChallengePanel({
           );
         }
 
-        // ── Secure the pitch with team credit (both modes — PAYMENT_PLAN §10) ──
+        // ── Secure the pitch with team credit (credit/individual modes — PAYMENT_PLAN §10) ──
         // Phase 2: capture poster's fee, settle challenger's half to the poster.
         // No per-player replenishment is created here — the squad is still fluid;
         // settlement is deferred to roster-lock (see the match page "Settle" step).
-        {
+        // Secured posts already paid for the pitch directly — nothing to capture.
+        if (!isSecured) {
           const { error: settleErr } = await supabase.rpc("capture_and_settle", {
             p_match_id: matchRecord.id,
             p_posting_team: post.team_id,
@@ -515,11 +535,19 @@ function MatchCard({
               <p className="text-xs text-text-secondary mt-0.5">{post.location || "Location TBC"}</p>
             </div>
           </div>
-          {post.availabilityMatch && (
-            <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
-              Matches availability
-            </span>
-          )}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            {post.pitchSecured && (
+              <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                Pitch Secured
+              </span>
+            )}
+            {post.availabilityMatch && (
+              <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">
+                Matches availability
+              </span>
+            )}
+          </div>
         </div>
 
         <Stars rating={0} />
@@ -549,7 +577,7 @@ function MatchCard({
         {showChallenge && (
           <button onClick={() => setShowPanel(true)}
             className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-            Challenge Team
+            {post.pitchSecured ? "Join — Pitch Secured" : "Challenge Team"}
           </button>
         )}
       </div>
@@ -594,11 +622,19 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
             <p className="text-xs text-text-secondary mt-0.5">{post.location || "Location TBC"}</p>
           </div>
         </div>
-        {post.status === "matched" ? (
-          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Matched</span>
-        ) : (
-          <span className="text-[10px] font-semibold bg-surface border border-border text-text-secondary px-2 py-0.5 rounded-full flex-shrink-0">Open</span>
-        )}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {post.status === "matched" ? (
+            <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Matched</span>
+          ) : (
+            <span className="text-[10px] font-semibold bg-surface border border-border text-text-secondary px-2 py-0.5 rounded-full">Open</span>
+          )}
+          {post.pitchSecured && (
+            <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              Pitch Secured
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-1 text-xs text-text-secondary mb-3">
@@ -803,10 +839,16 @@ function usePosts(excludeCaptainId: string | null, userId?: string) {
         availabilityMatch: availabilityDates.includes(toISODate(row.match_date)),
         status: row.status,
         payment_mode: row.payment_mode ?? "credit",
+        pitchSecured: Boolean(row.pitch_secured),
+        securedBookingId: row.secured_booking_id ?? null,
       }));
 
-      // Availability-matching posts float to the top
-      mapped.sort((a, b) => (b.availabilityMatch ? 1 : 0) - (a.availabilityMatch ? 1 : 0));
+      // Secured-pitch posts float to the top (pitch already locked in, joinable
+      // right away), then availability-matching posts.
+      mapped.sort((a, b) =>
+        (b.pitchSecured ? 1 : 0) - (a.pitchSecured ? 1 : 0) ||
+        (b.availabilityMatch ? 1 : 0) - (a.availabilityMatch ? 1 : 0)
+      );
 
       setPosts(mapped);
       setLoading(false);
@@ -846,6 +888,8 @@ function useMyPosts(captainId?: string) {
           availabilityMatch: false,
           status: row.status,
           payment_mode: row.payment_mode ?? "credit",
+          pitchSecured: Boolean(row.pitch_secured),
+          securedBookingId: row.secured_booking_id ?? null,
         })));
         setLoading(false);
       });
@@ -968,7 +1012,7 @@ function CaptainPlay() {
 }
 
 // ── Page ─────────────────────────────────────────────────────
-type PlayView = "find" | "book";
+type PlayView = "find" | "book" | "mybookings";
 
 export default function PlayPage() {
   const { role, roleLoading } = useRole();
@@ -981,6 +1025,7 @@ export default function PlayPage() {
         <h1 className="text-2xl font-bold mb-1">Play</h1>
         <p className="text-text-secondary text-sm">
           {view === "book" ? "Book a pitch directly — no opponent needed"
+          : view === "mybookings" ? "Manage pitches you've booked directly"
           : role === "new_user" ? "Find a game to join in your area"
           : role === "player" ? "Find teams to challenge or events to join"
           : "Manage matches and find opponents for your team"}
@@ -988,7 +1033,7 @@ export default function PlayPage() {
       </header>
 
       <div className="flex bg-surface-2 border border-border rounded-xl p-1 mb-5">
-        {([{ key: "find", label: "Find Match" }, { key: "book", label: "Book" }] as { key: PlayView; label: string }[]).map((v) => (
+        {([{ key: "find", label: "Find Match" }, { key: "book", label: "Book" }, { key: "mybookings", label: "My Bookings" }] as { key: PlayView; label: string }[]).map((v) => (
           <button key={v.key} onClick={() => setView(v.key)}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${view === v.key ? "bg-accent text-black" : "text-text-secondary"}`}>
             {v.label}
@@ -1002,10 +1047,12 @@ export default function PlayPage() {
           {role === "player" && <PlayerPlay />}
           {role === "captain" && <CaptainPlay />}
         </>
-      ) : (
+      ) : view === "book" ? (
         <div className="-mx-4">
           <BookPitchPanel />
         </div>
+      ) : (
+        <MyBookingsPanel />
       )}
     </div>
   );
