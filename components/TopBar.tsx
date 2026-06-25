@@ -7,21 +7,6 @@ import { supabase } from "@/lib/supabase";
 
 const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-password"];
 
-type Notification = {
-  id: string;
-  title: string;
-  body: string;
-  href: string;
-  time: string;
-  read: boolean;
-};
-
-const DUMMY_NOTIFICATIONS: Notification[] = [
-  { id: "n3", title: "Match confirmed", body: "Your match vs Dalston Athletic is confirmed.", href: "/my-team", time: "2h ago", read: false },
-  { id: "n4", title: "New team member", body: "Jordan Ellis has been approved to your squad.", href: "/my-team", time: "5h ago", read: true },
-  { id: "n5", title: "Payment received", body: "£12.50 pitch payment collected.", href: "/my-team", time: "1d ago", read: true },
-];
-
 export default function TopBar() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
@@ -31,10 +16,9 @@ export default function TopBar() {
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Pinned notification counts (dummy — replace with real Supabase queries)
-  const [friendRequests, setFriendRequests] = useState(2);
-  const [pendingPosts, setPendingPosts] = useState(1);
-  const [notifications, setNotifications] = useState<Notification[]>(DUMMY_NOTIFICATIONS);
+  // Pinned notification counts — real Supabase queries
+  const [joinRequests, setJoinRequests] = useState(0);
+  const [openPosts, setOpenPosts] = useState(0);
 
   useEffect(() => {
     if (!user) { setInitials("?"); return; }
@@ -45,6 +29,24 @@ export default function TopBar() {
           setInitials(parts.map((w: string) => w[0]).join("").slice(0, 2).toUpperCase());
         }
       });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) { setJoinRequests(0); setOpenPosts(0); return; }
+
+    supabase.from("teams").select("id").eq("captain_id", user.id).maybeSingle()
+      .then(async ({ data: team }) => {
+        if (!team) { setJoinRequests(0); return; }
+        const { count } = await supabase.from("team_members")
+          .select("id", { count: "exact", head: true })
+          .eq("team_id", team.id).eq("status", "pending");
+        setJoinRequests(count ?? 0);
+      });
+
+    supabase.from("match_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("captain_id", user.id).eq("status", "open")
+      .then(({ count }) => setOpenPosts(count ?? 0));
   }, [user]);
 
   useEffect(() => {
@@ -59,13 +61,7 @@ export default function TopBar() {
   if (pathname.startsWith("/venue")) return null;
   if (HIDDEN_PATHS.some((p) => pathname.startsWith(p))) return null;
 
-  const unreadCount = notifications.filter((n) => !n.read).length + (friendRequests > 0 ? 1 : 0) + (pendingPosts > 0 ? 1 : 0);
-
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    setFriendRequests(0);
-    setPendingPosts(0);
-  };
+  const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0);
 
   return (
     <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
@@ -90,10 +86,9 @@ export default function TopBar() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="text-sm font-bold">Notifications</p>
-              <button onClick={markAllRead} className="text-[11px] text-accent font-medium">Mark all read</button>
             </div>
 
-            {/* Pinned: Friend Requests */}
+            {/* Pinned: Join Requests (captain only — 0 if no pending requests) */}
             <a href="/my-team/transfer" onClick={() => setNotifOpen(false)}
               className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
               <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -104,20 +99,20 @@ export default function TopBar() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold">Friend Requests</p>
-                  {friendRequests > 0 && (
-                    <span className="text-[10px] font-bold bg-accent text-black px-1.5 py-0.5 rounded-full">{friendRequests}</span>
+                  <p className="text-xs font-bold">Join Requests</p>
+                  {joinRequests > 0 && (
+                    <span className="text-[10px] font-bold bg-accent text-black px-1.5 py-0.5 rounded-full">{joinRequests}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-0.5">
-                  {friendRequests > 0 ? `${friendRequests} pending friend request${friendRequests > 1 ? "s" : ""}` : "No pending requests"}
+                  {joinRequests > 0 ? `${joinRequests} pending join request${joinRequests > 1 ? "s" : ""}` : "No pending requests"}
                 </p>
               </div>
             </a>
 
-            {/* Pinned: Pending Match Posts */}
+            {/* Pinned: Open Match Posts */}
             <a href="/play" onClick={() => setNotifOpen(false)}
-              className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
+              className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors">
               <div className="w-8 h-8 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10"/>
@@ -128,34 +123,15 @@ export default function TopBar() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold">Pending Match Post</p>
-                  {pendingPosts > 0 && (
-                    <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">{pendingPosts}</span>
+                  {openPosts > 0 && (
+                    <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">{openPosts}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-0.5">
-                  {pendingPosts > 0 ? `${pendingPosts} match post awaiting opponent` : "No pending posts"}
+                  {openPosts > 0 ? `${openPosts} match post awaiting opponent` : "No pending posts"}
                 </p>
               </div>
             </a>
-
-            {/* Other notifications */}
-            <div className="max-h-64 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <p className="text-xs text-text-secondary text-center py-6">No other notifications</p>
-              ) : (
-                notifications.map((n) => (
-                  <a key={n.id} href={n.href} onClick={() => { setNotifOpen(false); setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x)); }}
-                    className={`flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border last:border-b-0 ${!n.read ? "bg-accent/5" : ""}`}>
-                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.read ? "bg-accent" : "bg-transparent"}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold">{n.title}</p>
-                      <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">{n.body}</p>
-                    </div>
-                    <span className="text-[10px] text-text-secondary flex-shrink-0">{n.time}</span>
-                  </a>
-                ))
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -201,9 +177,29 @@ export default function TopBar() {
           )}
         </div>
       ) : (
-        <a href="/profile" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </a>
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); }}
+            className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </button>
+
+          {profileOpen && (
+            <div className="absolute right-0 top-11 w-44 bg-surface border border-border rounded-2xl shadow-lg overflow-hidden z-50">
+              <a href="/login" onClick={() => setProfileOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm text-text-primary hover:bg-surface-2 transition-colors">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Sign In
+              </a>
+              <a href="/register" onClick={() => setProfileOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm text-text-primary hover:bg-surface-2 transition-colors border-t border-border">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
+                Create Account
+              </a>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

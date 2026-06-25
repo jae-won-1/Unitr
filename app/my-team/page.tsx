@@ -1546,7 +1546,20 @@ export default function MyTeamPage() {
       {(role === "captain" || role === "player") && user && (
         <NextFixtureBanner userId={user.id} role={role as "captain" | "player"} />
       )}
-      {role === "new_user" && <NewUserMyTeam />}
+      {role === "new_user" && !user && (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <p className="text-sm font-semibold">No profile yet</p>
+          <p className="text-xs text-text-secondary text-center max-w-[220px]">Create an account to build your player profile and track your stats.</p>
+          <div className="flex gap-3">
+            <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
+            <a href="/login" className="px-6 py-3 rounded-xl border border-border text-text-primary font-bold text-sm">Sign In</a>
+          </div>
+        </div>
+      )}
+      {role === "new_user" && user && <NewUserMyTeam />}
       {role === "player" && <PlayerMyTeam />}
       {role === "captain" && <CaptainMyTeam />}
     </div>

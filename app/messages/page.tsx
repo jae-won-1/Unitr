@@ -1,41 +1,3 @@
-const conversations = [
-  {
-    name: "FC Unitr Wolves",
-    last: "Ryan: Don't forget training Thursday!",
-    time: "2m",
-    unread: 3,
-    group: true,
-  },
-  {
-    name: "Liam Foster",
-    last: "Good game yesterday mate 🔥",
-    time: "1h",
-    unread: 1,
-    group: false,
-  },
-  {
-    name: "Hackney 5-a-side",
-    last: "Organiser: Pitch confirmed ✅",
-    time: "3h",
-    unread: 0,
-    group: true,
-  },
-  {
-    name: "Marcus Webb",
-    last: "Can you cover GK on Sunday?",
-    time: "Yesterday",
-    unread: 0,
-    group: false,
-  },
-  {
-    name: "Victoria Park League",
-    last: "Fixtures for next month posted",
-    time: "2d",
-    unread: 0,
-    group: true,
-  },
-];
-
 export default function MessagesPage() {
   return (
     <div className="flex flex-col min-h-screen pt-12">
@@ -63,34 +25,12 @@ export default function MessagesPage() {
         </div>
       </header>
 
-      <div className="flex-1">
-        {conversations.map((conv) => (
-          <button
-            key={conv.name}
-            className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border hover:bg-surface-2 transition-colors text-left"
-          >
-            {/* Avatar */}
-            <div className="w-11 h-11 rounded-full bg-surface-2 border border-border flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-semibold text-text-secondary">
-                {conv.name.slice(0, 2).toUpperCase()}
-              </span>
-            </div>
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <p className="text-sm font-semibold truncate">{conv.name}</p>
-                <span className="text-xs text-text-secondary flex-shrink-0 ml-2">{conv.time}</span>
-              </div>
-              <p className="text-xs text-text-secondary truncate">{conv.last}</p>
-            </div>
-            {/* Unread badge */}
-            {conv.unread > 0 && (
-              <div className="w-5 h-5 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                <span className="text-[10px] font-bold text-black">{conv.unread}</span>
-              </div>
-            )}
-          </button>
-        ))}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-3">
+        <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <p className="text-sm font-semibold">No conversations yet</p>
+        <p className="text-xs text-text-secondary max-w-[220px]">Team chats, match chats, and direct messages will show up here.</p>
       </div>
 
       {/* FAB */}
