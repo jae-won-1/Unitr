@@ -5,7 +5,11 @@
       "Bash(npx tsc *)",
       "Bash(npx eslint *)",
       "Bash(cp \"C:\\\\Users\\\\jkang\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-jkang-OneDrive-Documents-GitHub-Unitr\\\\0083a31d-44ab-41ae-87bd-e584825450d1\\\\scratchpad\\\\cdp-test.js\" \"c:/Users/jkang/OneDrive/Documents/GitHub/Unitr/.cdp-test.js\")",
-      "Bash(node .cdp-test.js)"
+      "Bash(node .cdp-test.js)",
+      "Read(//c/dev/Unitr/**)",
+      "Bash(npm run *)",
+      "Bash(netstat -ano)",
+      "Bash(kill -9 17148 36636 10656)"
     ]
   }
 }
