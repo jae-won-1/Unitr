@@ -599,13 +599,14 @@ function PlayerMyTeam() {
 }
 
 // ── Find Match Button ─────────────────────────────────────────
-// All matches are paid via team credit now, so this just sends the captain
-// straight to match posting — no payment-mode picker needed.
+// Posting goes through the ranked-pitch (split) flow: the captain posts up to
+// 3 preferred pitches and the opponent picks one. Teams who'd rather lock a
+// pitch in first do that from the Book tab and turn the booking into a post.
 function FindMatchButton() {
   return (
     <a
       href="/play/create"
-      onClick={() => localStorage.setItem("unitr_payment_mode", "credit")}
+      onClick={() => localStorage.setItem("unitr_payment_mode", "individual")}
       className="block w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold text-center"
     >
       Post Match

@@ -976,7 +976,7 @@ function CaptainPlay() {
           {myPostsLoading ? null : myPost ? (
             <MyPostCard post={myPost} onRemoved={removePost} />
           ) : (
-            <a href="/play/create" onClick={() => localStorage.setItem("unitr_payment_mode", "credit")}
+            <a href="/play/create" onClick={() => localStorage.setItem("unitr_payment_mode", "individual")}
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-black text-sm font-bold">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
               Create New Post
@@ -1017,6 +1017,13 @@ type PlayView = "find" | "book" | "mybookings";
 export default function PlayPage() {
   const { role, roleLoading } = useRole();
   const [view, setView] = useState<PlayView>("find");
+
+  // Allow deep-linking to a tab, e.g. /play?view=book from the Create Match page.
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("view");
+    if (v === "book" || v === "mybookings") setView(v);
+  }, []);
+
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (

@@ -60,6 +60,11 @@ function toISODate(raw: string): string {
   return raw;
 }
 
+// This page is the ranked-pitch (split) flow: the team posts up to 3 preferred
+// pitches WITHOUT booking, the opponent picks one when they challenge, the fee
+// is split between the two teams at confirmation, and players who played top up
+// their team credit afterwards. Teams that would rather lock a pitch in first do
+// that from the Book tab and turn the booking into a "secured" post instead.
 export default function CreateMatchPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -74,23 +79,16 @@ export default function CreateMatchPage() {
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
   const [selectedPollDates, setSelectedPollDates] = useState<string[]>([]);
-  const [paymentMode, setPaymentMode] = useState<string | null>(null);
-  const [teamCredits, setTeamCredits] = useState<number | null>(null);
 
   useEffect(() => {
-    const mode = localStorage.getItem("unitr_payment_mode");
-    setPaymentMode(mode);
+    // This page only does the split/ranked-pitch flow — pin the mode so the
+    // pitch-selection step (/pitches?mode=select) reads it consistently.
+    localStorage.setItem("unitr_payment_mode", "individual");
     const savedDates = localStorage.getItem("unitr_confirmed_dates");
     if (savedDates) setConfirmedDates(JSON.parse(savedDates));
     const savedOptions: PitchOption[] = JSON.parse(localStorage.getItem("unitr_pitch_options") ?? "[]");
     setPitchOptions(savedOptions);
   }, []);
-
-  useEffect(() => {
-    if (!team || paymentMode !== "credit") return;
-    supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle()
-      .then(({ data }) => setTeamCredits(((data?.balance_pence ?? 0) - (data?.reserved_pence ?? 0)) / 100));
-  }, [team, paymentMode]);
 
   useEffect(() => {
     if (!user) return;
@@ -145,7 +143,7 @@ export default function CreateMatchPage() {
     }
     localStorage.setItem("unitr_posting_slots", JSON.stringify(slots));
 
-    if (paymentMode === "individual" && availabilityRequest && selectedPollDates.length > 0) {
+    if (availabilityRequest && selectedPollDates.length > 0) {
       const counts = selectedPollDates.map((id) =>
         availabilityResponses.filter((r) => r.available_date_ids.includes(id)).length
       );
@@ -193,15 +191,6 @@ export default function CreateMatchPage() {
     setLoading(true);
     setError(null);
 
-    const mode = paymentMode === "individual" ? "individual" : "credit";
-
-    // Credit mode secures a real pitch up front from a limited team budget, so it
-    // posts exactly ONE game for the single best-availability date. Individual mode
-    // holds nothing, so it can post several dates to maximise the chance of a match.
-    if (mode === "credit" && datesToPost.length > 1) {
-      datesToPost = [datesToPost[0]];
-    }
-
     const base = {
       team_id: team.id,
       captain_id: user.id,
@@ -209,7 +198,7 @@ export default function CreateMatchPage() {
       team_location: team.location ?? "",
       description,
       status: "open",
-      payment_mode: mode,
+      payment_mode: "individual",
       hold_pence: 0,
     };
 
@@ -222,19 +211,6 @@ export default function CreateMatchPage() {
         ...p,
         time: slotTimes?.[d.date] ?? d.time,
       }));
-
-      // Credit mode: the admin has already chosen and secured ONE pitch, so the
-      // post carries that single pitch at a fixed time — no ranking, no alt-time.
-      if (mode === "credit") {
-        inserts.push({
-          ...base,
-          match_date: d.date,
-          match_time: d.time,
-          day_name: d.dayName,
-          pitch_options: withTimes.slice(0, 1),
-        });
-        continue;
-      }
 
       const originalTimePitches = withTimes.filter((p) => p.time === d.time);
       const altTimePitches = withTimes.filter((p) => p.time !== d.time);
@@ -259,38 +235,9 @@ export default function CreateMatchPage() {
       }
     }
 
-    // Credit mode: earmark the fee for the single secured pitch on the owner post.
-    const holdPence = mode === "credit"
-      ? Math.round((pitchOptions[0]?.price ?? 0) * 100)
-      : 0;
-    if (holdPence > 0 && inserts.length > 0) inserts[0].hold_pence = holdPence;
-
-    const { data: created, error: insertError } = await supabase
-      .from("match_posts").insert(inserts).select("id, hold_pence");
+    const { error: insertError } = await supabase.from("match_posts").insert(inserts);
 
     if (insertError) { setLoading(false); setError(insertError.message); return; }
-
-    // Place the credit hold on the owner post. If credit is short, roll back.
-    if (holdPence > 0 && created) {
-      const owner = created.find((p) => (p.hold_pence ?? 0) > 0);
-      if (owner) {
-        const { error: holdErr } = await supabase.rpc("hold_credit", {
-          p_team_id: team.id,
-          p_amount_pence: holdPence,
-          p_post_id: owner.id,
-        });
-        if (holdErr) {
-          await supabase.from("match_posts").delete().in("id", created.map((p) => p.id));
-          setLoading(false);
-          setError(
-            holdErr.message?.includes("INSUFFICIENT_CREDIT")
-              ? "Not enough available team credit to secure a pitch. Top up or switch to split payments."
-              : "Could not reserve team credit. Please try again."
-          );
-          return;
-        }
-      }
-    }
 
     setLoading(false);
     localStorage.removeItem("unitr_confirmed_dates");
@@ -299,9 +246,6 @@ export default function CreateMatchPage() {
     localStorage.removeItem("unitr_pitch_overrides");
     router.push("/play");
   };
-
-  // Credit mode secures a pitch up front, so it's locked to a single post/date.
-  const isCredit = paymentMode !== "individual";
 
   // The single original date/time the admin is posting for (used to flag which
   // pitches sit at the original time vs an alternative). Uses the first date.
@@ -318,7 +262,6 @@ export default function CreateMatchPage() {
   // Number of posts that will be created: one bundled post per date for the
   // original-time pitches, plus one standalone post per pitch given an alt time.
   const plannedPostCount = (() => {
-    if (isCredit) return 1;   // credit mode is always one secured post
     let dates: { date: string; time: string }[] = [];
     if (availabilityRequest) {
       dates = availabilityRequest.date_options
@@ -341,7 +284,7 @@ export default function CreateMatchPage() {
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
@@ -349,22 +292,34 @@ export default function CreateMatchPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-xl font-bold">Create Match Post</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Post a match for other teams to challenge</p>
+          <p className="text-xs text-text-secondary mt-0.5">Post up to 3 preferred pitches — the opponent picks one</p>
         </div>
-        {paymentMode === "credit" && (
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-text-secondary">Team Credit</span>
-            <span className="text-sm font-bold text-accent">
-              {teamCredits !== null ? `£${teamCredits.toFixed(2)}` : "—"}
-            </span>
-          </div>
-        )}
-        {paymentMode === "individual" && (
-          <span className="text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary px-2.5 py-1 rounded-full">Split Pay</span>
-        )}
+        <span className="text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary px-2.5 py-1 rounded-full flex-shrink-0">Split Pay</span>
       </div>
 
       <div className="flex flex-col gap-5">
+
+        {/* Mode 1 redirect: secure a pitch first via the Book tab */}
+        <div className="bg-accent/5 border border-accent/20 rounded-2xl p-4">
+          <div className="flex items-start gap-2.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold mb-1">Want to lock in a pitch first?</p>
+              <p className="text-xs text-text-secondary leading-relaxed mb-2.5">
+                This post splits the pitch fee with your opponent and the chosen pitch isn&apos;t reserved until a match is confirmed.
+                To <span className="text-text-primary font-medium">guarantee a pitch up front</span>, book and pay for one in the
+                Book tab, then turn that booking into a post — opponents can join instantly.
+              </p>
+              <a href="/play?view=book"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent">
+                Secure a pitch in the Book tab
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </a>
+            </div>
+          </div>
+        </div>
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
@@ -392,9 +347,7 @@ export default function CreateMatchPage() {
             /* ── Select from poll ── */
             <div className="flex flex-col gap-2">
               <p className="text-xs text-text-secondary mb-1">
-                {isCredit
-                  ? "Pick one date/time for this match — credit secures a single pitch."
-                  : "Pick one or more dates/times — each becomes its own post to maximise your chance of a match."}
+                Pick one or more dates/times — each becomes its own post to maximise your chance of a match.
               </p>
               {availabilityRequest.date_options.map((opt) => {
                 const picked = selectedPollDates.includes(opt.id);
@@ -403,9 +356,7 @@ export default function CreateMatchPage() {
                 const pct = total > 0 ? Math.round((votes / total) * 100) : 0;
                 return (
                   <button key={opt.id} type="button" onClick={() => setSelectedPollDates((prev) =>
-                    isCredit
-                      ? (prev.includes(opt.id) ? [] : [opt.id])
-                      : (prev.includes(opt.id) ? prev.filter((x) => x !== opt.id) : [...prev, opt.id])
+                    prev.includes(opt.id) ? prev.filter((x) => x !== opt.id) : [...prev, opt.id]
                   )}
                     className={`w-full text-left border rounded-xl px-3 py-2.5 transition-colors ${picked ? "bg-accent/10 border-accent" : "bg-background border-border"}`}>
                     <div className="flex items-center justify-between mb-1.5">
@@ -426,16 +377,14 @@ export default function CreateMatchPage() {
               })}
               {selectedPollDates.length > 0 && (
                 <p className="text-xs text-text-secondary mt-1">
-                  {isCredit
-                    ? "Team credit secures one pitch for this single date. All your pitch options go into one post and the opponent picks one."
-                    : "This is your match's original time. Pitches you pick at this time share one post; any pitch you give an alternative time becomes its own post."}
+                  This is your match&apos;s original time. Pitches you pick at this time share one post; any pitch you give an alternative time becomes its own post.
                 </p>
               )}
             </div>
           ) : confirmedDates.length > 0 ? (
             /* ── Confirmed from localStorage ── */
             <div className="flex flex-col gap-2">
-              {(isCredit ? confirmedDates.slice(0, 1) : confirmedDates).map((d, i) => (
+              {confirmedDates.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2.5">
                   <div className="w-10 h-10 rounded-xl bg-accent text-black flex flex-col items-center justify-center flex-shrink-0">
                     <span className="text-[9px] font-bold uppercase">{d.month}</span>
@@ -445,24 +394,20 @@ export default function CreateMatchPage() {
                     <p className="text-sm font-semibold">{d.dayName}</p>
                     <p className="text-xs text-text-secondary">{d.date} · KO {d.time}</p>
                   </div>
-                  {!isCredit && <span className="text-[10px] text-text-secondary">Post {i + 1}</span>}
+                  <span className="text-[10px] text-text-secondary">Post {i + 1}</span>
                 </div>
               ))}
               <p className="text-xs text-text-secondary mt-1">
-                {isCredit
-                  ? "Team credit secures one pitch for a single match. Only your top date is posted — switch to split payments to post several dates."
-                  : "Each date becomes a separate post. The first team to challenge any of them locks in the match — the rest are removed automatically."}
+                Each date becomes a separate post. The first team to challenge any of them locks in the match — the rest are removed automatically.
               </p>
             </div>
           ) : (
             /* ── Manual entry ── */
             <div className="flex flex-col gap-3">
               <p className="text-xs text-text-secondary mb-1">
-                {isCredit
-                  ? "Pick the single best date for this match — team credit secures one pitch. Or collect squad votes first."
-                  : "Add date options manually, or go to availability first to collect squad votes."}
+                Add date options manually, or go to availability first to collect squad votes.
               </p>
-              {(isCredit ? manualDates.slice(0, 1) : manualDates).map((opt, i) => (
+              {manualDates.map((opt, i) => (
                 <div key={opt.id} className="flex flex-col gap-2">
                   <span className="text-xs font-semibold text-text-secondary">Date {i + 1}</span>
                   <div className="flex items-center gap-2">
@@ -487,7 +432,7 @@ export default function CreateMatchPage() {
                   </div>
                 </div>
               ))}
-              {!isCredit && manualDates.length < 5 && (
+              {manualDates.length < 5 && (
                 <button onClick={addManualDate} className="flex items-center gap-2 text-sm text-accent font-medium py-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                   Add another date
@@ -508,21 +453,18 @@ export default function CreateMatchPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
-            <p className="text-sm font-semibold">{isCredit ? "Secured Pitch" : "Pitch Options"}</p>
-            <span className="text-xs text-text-secondary ml-auto">{pitchOptions.length}/{isCredit ? 1 : 3}</span>
+            <p className="text-sm font-semibold">Pitch Options</p>
+            <span className="text-xs text-text-secondary ml-auto">{pitchOptions.length}/3</span>
           </div>
           <p className="text-xs text-text-secondary mb-3">
-            {isCredit
-              ? "Choose and secure one pitch with team credit. The pitch and time are locked in when you post — an opponent just has to join."
-              : "Add up to 3 pitches in order of preference. Pitches at your match's original time share one post the opponent picks from. A pitch at an alternative time goes out as its own separate post."}
+            Add up to 3 pitches in order of preference. Pitches at your match&apos;s original time share one post the opponent picks from. A pitch at an alternative time goes out as its own separate post.
           </p>
 
           {pitchOptions.length > 0 && (
             <div className="flex flex-col gap-2 mb-3">
               {pitchOptions.map((p, i) => {
                 const pitchTime = originalSlot ? (p.slotTimes?.[originalSlot.date] ?? originalSlot.time) : undefined;
-                // In credit mode everything is one post, so alt times never split out.
-                const isAlt = !isCredit && originalSlot ? pitchTime !== originalSlot.time : false;
+                const isAlt = originalSlot ? pitchTime !== originalSlot.time : false;
                 return (
                   <div key={p.id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
                     <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
@@ -534,9 +476,7 @@ export default function CreateMatchPage() {
                         {p.format} · £{p.price}/hr{pitchTime ? ` · ${pitchTime}` : ""}
                       </p>
                     </div>
-                    {isCredit ? (
-                      <span className="text-[9px] font-semibold text-accent bg-accent/10 border border-accent/30 px-1.5 py-0.5 rounded-full flex-shrink-0">Secured</span>
-                    ) : isAlt ? (
+                    {isAlt ? (
                       <span className="text-[9px] font-semibold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-1.5 py-0.5 rounded-full flex-shrink-0">Own post</span>
                     ) : (
                       <span className="text-[10px] text-text-secondary flex-shrink-0">{rankLabels[i]}</span>
@@ -548,11 +488,11 @@ export default function CreateMatchPage() {
             </div>
           )}
 
-          {pitchOptions.length < (isCredit ? 1 : 3) && (
+          {pitchOptions.length < 3 && (
             <button onClick={handleSelectPitch}
               className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-border text-sm text-text-secondary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-              {isCredit ? "Choose & Secure Pitch" : "Add Pitch Option"}
+              Add Pitch Option
             </button>
           )}
         </section>
