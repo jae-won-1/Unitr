@@ -164,39 +164,38 @@ function ChallengePanel({
     const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
     const isSecured = post.payment_mode === "secured";
 
-    // Both credit/individual modes secure the pitch with team credit at confirm
-    // (the squad is still fluid — see PAYMENT_PLAN §10). A "secured" post already
-    // has its pitch paid for via a direct booking, so it skips credit entirely —
+    // Both credit/individual modes split the pitch fee evenly between the two
+    // teams' credit at confirm time — each side is debited their own half
+    // directly, no fronting/reimbursement step. A "secured" post already has
+    // its pitch paid for via a direct booking, so it skips credit entirely —
     // joining is immediate and players settle their share post-match as usual.
     const feePence = Math.round((pitch?.price ?? 0) * 100);
-    const halfPence = Math.floor(feePence / 2);
+    const posterHalfPence = Math.ceil(feePence / 2); // poster absorbs the odd penny
+    const challengerHalfPence = feePence - posterHalfPence;
 
     if (!isSecured) {
-      // Challenger must cover their half.
+      // Challenger must be able to cover their half.
       const { data: chalCr } = await supabase
         .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
       const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
-      if (chalAvail < halfPence) {
+      if (chalAvail < challengerHalfPence) {
         setSaving(false);
         setSlotTakenError(
-          `Your team needs £${(halfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
+          `Your team needs £${(challengerHalfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
         );
         return;
       }
 
-      // Individual mode placed no hold at post, so the poster must have the full fee
-      // available now to front it. (Credit mode already earmarked it via the hold.)
-      if (post.payment_mode !== "credit") {
-        const { data: postCr } = await supabase
-          .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
-        const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
-        if (postAvail < feePence) {
-          setSaving(false);
-          setSlotTakenError(
-            `The posting team no longer has enough credit to secure this pitch (£${(feePence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
-          );
-          return;
-        }
+      // Poster must be able to cover their half too — no fronting the full fee.
+      const { data: postCr } = await supabase
+        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
+      const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
+      if (postAvail < posterHalfPence) {
+        setSaving(false);
+        setSlotTakenError(
+          `The posting team no longer has enough credit to cover their half of this pitch (£${(posterHalfPence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
+        );
+        return;
       }
     }
 
@@ -308,18 +307,19 @@ function ChallengePanel({
         }
 
         // ── Secure the pitch with team credit (credit/individual modes — PAYMENT_PLAN §10) ──
-        // Phase 2: capture poster's fee, settle challenger's half to the poster.
-        // No per-player replenishment is created here — the squad is still fluid;
-        // settlement is deferred to roster-lock (see the match page "Settle" step).
-        // Secured posts already paid for the pitch directly — nothing to capture.
+        // Phase 2: each team's credit is debited its own half directly — no
+        // fronting/reimbursement. No per-player replenishment is created here —
+        // the squad is still fluid; settlement is deferred to roster-lock (see
+        // the match page "Settle" step). Secured posts already paid for the
+        // pitch directly — nothing to capture.
         if (!isSecured) {
-          const { error: settleErr } = await supabase.rpc("capture_and_settle", {
+          const { error: settleErr } = await supabase.rpc("split_pitch_fee", {
             p_match_id: matchRecord.id,
             p_posting_team: post.team_id,
             p_challenging_team: team.id,
             p_fee_pence: feePence,
           });
-          if (settleErr) console.error("capture_and_settle failed:", settleErr.message);
+          if (settleErr) console.error("split_pitch_fee failed:", settleErr.message);
 
           // Release the poster's batch earmark, if any (credit mode placed one at
           // post time). Clear it so it can't be released twice.
@@ -597,16 +597,32 @@ function MatchCard({
 function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: string) => void }) {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [loadingChallenge, setLoadingChallenge] = useState(true);
+  const [matchRowId, setMatchRowId] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [takingDown, setTakingDown] = useState(false);
 
   useEffect(() => {
     if (post.status === "matched") {
       supabase.from("challenges").select("*").eq("post_id", post.id).eq("status", "accepted")
         .maybeSingle()
         .then(({ data }) => { setChallenge(data as Challenge | null); setLoadingChallenge(false); });
+      supabase.from("matches").select("id").eq("post_id", post.id).maybeSingle()
+        .then(({ data }) => setMatchRowId(data?.id ?? null));
     } else {
       setLoadingChallenge(false);
     }
   }, [post.id, post.status]);
+
+  const handleTakeDown = async () => {
+    setTakingDown(true);
+    await supabase.from("match_posts").update({ status: "cancelled" }).eq("id", post.id);
+    if (post.securedBookingId) {
+      await supabase.from("pitch_bookings").update({ post_id: null }).eq("id", post.securedBookingId);
+    }
+    setTakingDown(false);
+    setShowConfirm(false);
+    onRemoved(post.id);
+  };
 
   const initials = post.team.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
@@ -659,7 +675,7 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
 
       {/* Matched: show who challenged */}
       {post.status === "matched" && (
-        <div className="bg-accent/10 border border-accent/20 rounded-xl px-3 py-3">
+        <div className="bg-accent/10 border border-accent/20 rounded-xl px-3 py-3 mb-3">
           {loadingChallenge ? (
             <p className="text-xs text-text-secondary">Loading challenge info…</p>
           ) : challenge ? (
@@ -678,11 +694,57 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
         </div>
       )}
 
-      {/* Open: waiting state */}
+      {/* Open: waiting state + take-down/view options */}
       {post.status === "open" && (
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          Waiting for a challenge…
+        <>
+          <div className="flex items-center gap-2 text-xs text-text-secondary mb-3">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            Waiting for a challenge…
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setShowConfirm(true)}
+              className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold">
+              Take Down Post
+            </button>
+            <a href={`/play/edit/${post.id}`}
+              className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5">
+              View Your Post
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </>
+      )}
+
+      {/* Matched: view the confirmed match */}
+      {post.status === "matched" && (
+        <a href={matchRowId ? `/my-team/match/${matchRowId}` : "#"}
+          aria-disabled={!matchRowId}
+          className={`w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5 ${!matchRowId ? "opacity-50 pointer-events-none" : ""}`}>
+          View Your Post
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      )}
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
+          <div className="bg-surface-2 border border-border rounded-2xl p-6 w-full max-w-xs shadow-xl">
+            <h3 className="text-base font-bold mb-1">Take Down This Post?</h3>
+            <p className="text-sm text-text-secondary mb-5">
+              Your post will no longer be visible to other teams. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirm(false)} disabled={takingDown}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold disabled:opacity-40">
+                Cancel
+              </button>
+              <button onClick={handleTakeDown} disabled={takingDown}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                {takingDown ? (
+                  <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Removing…</>
+                ) : "Yes, Take Down"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -895,7 +957,8 @@ function useMyPosts(captainId?: string) {
       });
   }, [captainId]);
 
-  return { posts, loading };
+  const removePost = (id: string) => setPosts((prev) => prev.filter((p) => p.id !== id));
+  return { posts, loading, removePost };
 }
 
 // ── POV Views ─────────────────────────────────────────────────
@@ -951,7 +1014,7 @@ function PlayerPlay() {
 function CaptainPlay() {
   const { user } = useAuth();
   const { posts, loading, removePost } = usePosts(user?.id ?? null, user?.id);
-  const { posts: myPosts, loading: myPostsLoading } = useMyPosts(user?.id);
+  const { posts: myPosts, loading: myPostsLoading, removePost: removeMyPost } = useMyPosts(user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
 
   const myPost = myPosts[0] ?? null;
@@ -974,7 +1037,7 @@ function CaptainPlay() {
       {tab === "matches" && (
         <div className="space-y-4">
           {myPostsLoading ? null : myPost ? (
-            <MyPostCard post={myPost} onRemoved={removePost} />
+            <MyPostCard post={myPost} onRemoved={removeMyPost} />
           ) : (
             <a href="/play/create" onClick={() => localStorage.setItem("unitr_payment_mode", "individual")}
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-black text-sm font-bold">

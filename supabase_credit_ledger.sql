@@ -235,6 +235,60 @@ begin
 end $$;
 
 
+-- Phase 2 (split) — on match: debit each team its OWN half directly.
+-- p_fee_pence = full pitch fee P. Neither team fronts the other's share —
+-- the poster is debited ceil(P/2), the challenger floor(P/2), independently.
+-- Supersedes capture_and_settle's front-then-reimburse mechanism.
+create or replace function public.split_pitch_fee(
+  p_match_id uuid, p_posting_team uuid, p_challenging_team uuid, p_fee_pence integer
+) returns void language plpgsql security definer as $$
+declare
+  v_post_half integer := ceil(p_fee_pence / 2.0);   -- poster absorbs the odd penny
+  v_chal_half integer := p_fee_pence - v_post_half;
+  v_post_balance integer; v_post_reserved integer;
+  v_chal_balance integer; v_chal_reserved integer;
+  v_first uuid; v_second uuid;
+begin
+  -- Lock both rows in a stable order to avoid deadlocks.
+  v_first  := least(p_posting_team, p_challenging_team);
+  v_second := greatest(p_posting_team, p_challenging_team);
+  perform 1 from public.team_credits where team_id = v_first  for update;
+  perform 1 from public.team_credits where team_id = v_second for update;
+
+  select balance_pence, reserved_pence into v_post_balance, v_post_reserved
+    from public.team_credits where team_id = p_posting_team;
+  if v_post_balance is null then
+    raise exception 'No credit account for posting team %', p_posting_team;
+  end if;
+  if (v_post_balance - v_post_reserved) < v_post_half then
+    raise exception 'INSUFFICIENT_CREDIT: posting team available %, need %', (v_post_balance - v_post_reserved), v_post_half;
+  end if;
+
+  select balance_pence, reserved_pence into v_chal_balance, v_chal_reserved
+    from public.team_credits where team_id = p_challenging_team;
+  if v_chal_balance is null then
+    raise exception 'No credit account for challenging team %', p_challenging_team;
+  end if;
+  if (v_chal_balance - v_chal_reserved) < v_chal_half then
+    raise exception 'INSUFFICIENT_CREDIT: challenger available %, need %', (v_chal_balance - v_chal_reserved), v_chal_half;
+  end if;
+
+  -- Debit the poster's own half.
+  update public.team_credits set balance_pence = balance_pence - v_post_half, updated_at = now()
+    where team_id = p_posting_team;
+  insert into public.team_credit_transactions(team_id, type, amount_pence, match_id, related_team_id)
+    values (p_posting_team, 'booking_capture', -v_post_half, p_match_id, p_challenging_team);
+
+  -- Debit the challenger's own half.
+  update public.team_credits set balance_pence = balance_pence - v_chal_half, updated_at = now()
+    where team_id = p_challenging_team;
+  insert into public.team_credit_transactions(team_id, type, amount_pence, match_id, related_team_id)
+    values (p_challenging_team, 'booking_capture', -v_chal_half, p_match_id, p_posting_team);
+
+  -- Net: each team down its own half — no transfer between them.
+end $$;
+
+
 -- Phase 3 — a player's replenishment payment refills THEIR team's credit.
 -- Credits the pitch-share portion (amount_pence); the 5% fee goes to Unitr.
 -- Idempotent: only applies once per payment row.
