@@ -19,6 +19,7 @@ export default function TopBar() {
   // Pinned notification counts — real Supabase queries
   const [joinRequests, setJoinRequests] = useState(0);
   const [openPosts, setOpenPosts] = useState(0);
+  const [matchDues, setMatchDues] = useState(0);
 
   useEffect(() => {
     if (!user) { setInitials("?"); return; }
@@ -49,6 +50,42 @@ export default function TopBar() {
       .then(({ count }) => setOpenPosts(count ?? 0));
   }, [user]);
 
+  // Outstanding share dues: matches the user played (already done) where their
+  // share hasn't been settled yet → nudge them to the Team Credits → Dues tab.
+  useEffect(() => {
+    if (!user) { setMatchDues(0); return; }
+    async function loadDues() {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: confs } = await supabase.from("match_confirmations")
+        .select("match_id").eq("player_id", user!.id).eq("status", "confirmed");
+      const matchIds = Array.from(new Set((confs ?? []).map((c) => c.match_id)));
+      if (matchIds.length === 0) { setMatchDues(0); return; }
+
+      const { data: ms } = await supabase.from("matches")
+        .select("id, post_id").in("id", matchIds).lte("match_date", today);
+      if (!ms || ms.length === 0) { setMatchDues(0); return; }
+
+      const postIds = ms.map((m) => m.post_id).filter(Boolean);
+      const { data: bks } = await supabase.from("pitch_bookings").select("id, post_id").in("post_id", postIds);
+      const bookingByPost = new Map((bks ?? []).map((b) => [b.post_id, b.id as string]));
+      const bookingIds = (bks ?? []).map((b) => b.id);
+
+      const { data: pays } = bookingIds.length
+        ? await supabase.from("player_payments")
+            .select("booking_id").eq("player_id", user!.id).eq("purpose", "replenish").eq("status", "paid")
+            .in("booking_id", bookingIds)
+        : { data: [] as { booking_id: string }[] };
+      const paidBookings = new Set((pays ?? []).map((p) => p.booking_id));
+
+      const outstanding = ms.filter((m) => {
+        const bId = bookingByPost.get(m.post_id);
+        return bId && !paidBookings.has(bId);
+      }).length;
+      setMatchDues(outstanding);
+    }
+    loadDues();
+  }, [user]);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
@@ -61,7 +98,7 @@ export default function TopBar() {
   if (pathname.startsWith("/venue")) return null;
   if (HIDDEN_PATHS.some((p) => pathname.startsWith(p))) return null;
 
-  const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0);
+  const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0) + (matchDues > 0 ? 1 : 0);
 
   return (
     <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
@@ -88,6 +125,27 @@ export default function TopBar() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="text-sm font-bold">Notifications</p>
             </div>
+
+            {/* Pay your share: outstanding dues for matches already played */}
+            {matchDues > 0 && (
+              <a href="/my-team" onClick={() => setNotifOpen(false)}
+                className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
+                <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold">Pay Your Share</p>
+                    <span className="text-[10px] font-bold bg-accent text-black px-1.5 py-0.5 rounded-full">{matchDues}</span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary mt-0.5">
+                    {matchDues} played {matchDues > 1 ? "matches" : "match"} awaiting your share · settle in Team Credits → Dues
+                  </p>
+                </div>
+              </a>
+            )}
 
             {/* Pinned: Join Requests (captain only — 0 if no pending requests) */}
             <a href="/my-team/transfer" onClick={() => setNotifOpen(false)}

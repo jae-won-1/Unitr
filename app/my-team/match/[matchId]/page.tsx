@@ -95,6 +95,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const [settleResults, setSettleResults] = useState<Record<string, { ok: boolean; reason?: string }> | null>(null);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [rosterLocked, setRosterLocked] = useState(false);
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());  // players the captain removed from charging
 
   const matchMedia = tactics.media.filter((m) => m.matchId === params.matchId);
   const teamMedia = tactics.media.filter((m) => !m.matchId);
@@ -221,12 +222,13 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       return;
     }
 
-    // Actual participants on my team = those confirmed for the (possibly retimed) slot.
+    // Actual participants on my team = those confirmed for the (possibly retimed)
+    // slot, minus anyone the captain explicitly excluded from this charge.
     const participants = confirmations.filter(
-      (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
+      (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed" && !excluded.has(c.player_id)
     );
     if (participants.length === 0) {
-      setSettleError("No confirmed players on your squad to settle.");
+      setSettleError("No players selected to charge.");
       setSettling(false);
       return;
     }
@@ -376,11 +378,12 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const myParticipants = confirmations.filter(
     (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
   );
+  const chargedParticipants = myParticipants.filter((c) => !excluded.has(c.player_id));
   const feePence = Math.round(match.confirmedPitch.price * 100);
   const halfPence = Math.floor(feePence / 2);
   const isPoster = myTeamId === match.postingTeamId;
   const teamPoolPence = isPoster ? feePence - halfPence : halfPence;
-  const teamShare = myParticipants.length > 0 ? teamPoolPence / myParticipants.length / 100 : 0;
+  const teamShare = chargedParticipants.length > 0 ? teamPoolPence / chargedParticipants.length / 100 : 0;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
@@ -425,19 +428,25 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             ))}
           </div>
 
-          {/* Payment countdown */}
+          {/* Match share — settled after the match via Team Credits */}
           <div className="bg-surface-2 border border-border rounded-2xl p-4">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-semibold">Payment Deadline</p>
-              <span className={`text-sm font-bold tabular-nums ${countdown === "Expired" ? "text-red-400" : "text-accent"}`}>{countdown}</span>
+              <p className="text-sm font-semibold">Match Share</p>
+              <span className="text-sm font-bold text-accent">£{perPlayer}/player</span>
             </div>
             <p className="text-xs text-text-secondary mb-3">
-              {confirmedCount}/{confirmations.length} players confirmed · £{perPlayer}/player
+              {confirmedCount}/{confirmations.length} players confirmed
             </p>
-            <button onClick={() => setTab("payment")}
-              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-              Pay Your Share
-            </button>
+            {isCaptain ? (
+              <button onClick={() => setTab("payment")}
+                className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+                Settle Squad
+              </button>
+            ) : (
+              <p className="text-xs text-text-secondary">
+                After the match, your share is collected under <span className="text-accent font-semibold">Team Credits → Dues</span>. You&apos;ll get a reminder to settle it.
+              </p>
+            )}
           </div>
 
           {/* Attendance */}
@@ -597,14 +606,38 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                   <span className="font-semibold text-text-primary">£{(teamPoolPence / 100).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
-                  <span>Players who played</span>
-                  <span className="font-semibold text-text-primary">{myParticipants.length}</span>
+                  <span>Players being charged</span>
+                  <span className="font-semibold text-text-primary">{chargedParticipants.length} of {myParticipants.length}</span>
                 </div>
                 <div className="flex justify-between border-t border-border pt-1.5">
                   <span className="font-semibold text-text-primary">Each pays (+5% fee)</span>
                   <span className="font-bold text-accent">£{teamShare.toFixed(2)}</span>
                 </div>
               </div>
+
+              {/* Captain picks who's charged — defaults to everyone who played */}
+              {!rosterLocked && myParticipants.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-text-secondary">Tap to exclude a player from this charge (e.g. a guest or no-show who was still confirmed).</p>
+                  {myParticipants.map((c) => {
+                    const isIn = !excluded.has(c.player_id);
+                    return (
+                      <button key={c.player_id}
+                        onClick={() => setExcluded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(c.player_id)) next.delete(c.player_id); else next.add(c.player_id);
+                          return next;
+                        })}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-colors ${isIn ? "bg-background border-border" : "bg-surface border-border opacity-50"}`}>
+                        <span className="truncate">{c.player_id === user?.id ? `${c.full_name} (You)` : c.full_name}</span>
+                        <span className={`text-[10px] font-semibold flex-shrink-0 ${isIn ? "text-accent" : "text-text-secondary"}`}>
+                          {isIn ? "Charging" : "Excluded"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Per-player results after settling */}
               {settleResults && (
@@ -644,11 +677,18 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
               </p>
             </div>
           ) : (
-            /* ── Player: manual fallback (used if their auto-charge failed) ── */
-            <a href={`/pay/${match.postId}`}
-              className="block w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm text-center">
-              Pay your share manually
-            </a>
+            /* ── Player: shares are settled after the match in Team Credits → Dues ── */
+            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold">Your share</p>
+              <p className="text-xs text-text-secondary">
+                Once this match has been played, your share is added to your team&apos;s
+                Dues. Settle it any time from Team Credits — you&apos;ll get a reminder too.
+              </p>
+              <a href="/my-team"
+                className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center">
+                Go to Team Credits
+              </a>
+            </div>
           )}
         </div>
       )}

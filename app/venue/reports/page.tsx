@@ -32,25 +32,61 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+type VenuePitch = { id: string; name: string; stripe_account_id: string | null; payouts_enabled: boolean };
+type Transfer = { id: string; amount_pence: number; status: string; created_at: string; stripe_transfer_id: string | null };
+
 export default function VenueReportsPage() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasPitches, setHasPitches] = useState(true);
+  const [pitches, setPitches] = useState<VenuePitch[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     async function load() {
-      const { data: ps } = await supabase.from("pitches").select("id").eq("venue_owner_id", user!.id);
+      const { data: ps } = await supabase.from("pitches")
+        .select("id, name, stripe_account_id, payouts_enabled").eq("venue_owner_id", user!.id);
       if (!ps || ps.length === 0) { setHasPitches(false); setLoading(false); return; }
-      const { data: bks } = await supabase.from("pitch_bookings")
-        .select("match_date, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status")
-        .in("pitch_id", ps.map((p) => p.id));
+      setPitches(ps as VenuePitch[]);
+      const pitchIds = ps.map((p) => p.id);
+      const [{ data: bks }, { data: trs }] = await Promise.all([
+        supabase.from("pitch_bookings")
+          .select("match_date, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status")
+          .in("pitch_id", pitchIds),
+        supabase.from("venue_transfers")
+          .select("id, amount_pence, status, created_at, stripe_transfer_id")
+          .in("pitch_id", pitchIds).order("created_at", { ascending: false }).limit(25),
+      ]);
       setBookings((bks ?? []) as Booking[]);
+      setTransfers((trs ?? []) as Transfer[]);
       setLoading(false);
     }
     load();
   }, [user]);
+
+  // Connect (or resume onboarding for) the first pitch's payout account.
+  const handleConnectPayouts = async () => {
+    const pitch = pitches[0];
+    if (!pitch) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch("/api/connect/create-venue-account", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pitchId: pitch.id }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.onboardingUrl) { setConnectError(d.error ?? "Could not start onboarding."); setConnecting(false); return; }
+      window.location.href = d.onboardingUrl;
+    } catch {
+      setConnectError("Could not reach the payment service.");
+      setConnecting(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
@@ -64,7 +100,8 @@ export default function VenueReportsPage() {
   const active = bookings.filter((b) => b.status !== "cancelled");
   const confirmed = bookings.filter((b) => b.status === "confirmed");
   const revenue = confirmed.reduce((s, b) => s + priceOf(b), 0);
-  const paidRevenue = confirmed.filter((b) => b.payment_status === "paid").reduce((s, b) => s + priceOf(b), 0);
+  const connected = pitches.some((p) => !!p.stripe_account_id);
+  const payoutTotal = transfers.filter((t) => t.status === "paid").reduce((s, t) => s + t.amount_pence, 0) / 100;
   const cancelRate = bookings.length ? Math.round((bookings.filter((b) => b.status === "cancelled").length / bookings.length) * 100) : 0;
 
   // Revenue by month (current year, ISO dates only)
@@ -93,7 +130,57 @@ export default function VenueReportsPage() {
         <StatCard label="Total bookings" value={String(bookings.length)} sub="all time" />
         <StatCard label="Confirmed" value={String(confirmed.length)} sub={`${cancelRate}% cancel rate`} />
         <StatCard label="Revenue" value={`£${revenue.toFixed(0)}`} sub="confirmed" />
-        <StatCard label="Collected" value={`£${paidRevenue.toFixed(0)}`} sub="paid via Unitr" />
+        <StatCard label="Paid out" value={`£${payoutTotal.toFixed(0)}`} sub="received from Unitr" />
+      </div>
+
+      {/* ── Payouts (Stripe Connect) ── */}
+      <div className="bg-surface-2 border border-border rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold">Payouts</p>
+          {connected ? (
+            <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Connected</span>
+          ) : (
+            <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Not connected</span>
+          )}
+        </div>
+        <p className="text-xs text-text-secondary mb-3">
+          When a match is confirmed on a Unitr pitch, the pitch fee is transferred from Unitr to your
+          connected account. Test mode — no real money moves.
+        </p>
+
+        {!connected && (
+          <>
+            <button onClick={handleConnectPayouts} disabled={connecting}
+              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+              {connecting ? "Starting…" : "Connect payout account"}
+            </button>
+            {connectError && <p className="text-xs text-red-400 mt-2">{connectError}</p>}
+          </>
+        )}
+
+        {connected && (
+          transfers.length === 0 ? (
+            <p className="text-xs text-text-secondary">No transfers yet — confirm a match on your pitch to see one here.</p>
+          ) : (
+            <div className="space-y-2">
+              {transfers.map((t) => (
+                <div key={t.id} className="flex items-center justify-between bg-background border border-border rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">£{(t.amount_pence / 100).toFixed(2)}</p>
+                    <p className="text-[10px] text-text-secondary truncate">
+                      {new Date(t.created_at).toLocaleDateString()} · {t.stripe_transfer_id ?? "—"}
+                    </p>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    t.status === "paid" ? "bg-accent/10 text-accent border border-accent/30"
+                    : t.status === "failed" ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                    : "bg-surface border border-border text-text-secondary"
+                  }`}>{t.status}</span>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
 
       {/* Revenue by month */}

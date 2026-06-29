@@ -335,6 +335,25 @@ function ChallengePanel({
             await supabase.from("match_posts").update({ hold_pence: 0 }).eq("id", holdOwner.id);
           }
         }
+
+        // ── Cash side: pay the venue (Stripe Connect, test mode) ──
+        // The teams settle the fee between them in credit above; separately,
+        // Unitr transfers the full pitch fee out to the venue's connected
+        // account. Best-effort — a missing/unconnected venue account or empty
+        // test balance must not block match confirmation. Records a
+        // venue_transfers row either way so credit↔cash can be reconciled.
+        if (pitch?.id) {
+          fetch("/api/connect/venue-transfer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              pitchId: pitch.id,
+              bookingId: pitchBookingId,
+              matchId: matchRecord.id,
+              amountPence: feePence,
+            }),
+          }).catch(() => {});
+        }
       }
     }
 

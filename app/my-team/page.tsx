@@ -195,6 +195,7 @@ function PlayerMyTeam() {
   const [myTeam, setMyTeam] = useState<Team | null | undefined>(undefined);
   const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
   const [fixturesLoading, setFixturesLoading] = useState(true);
+  const [fixtureView, setFixtureView] = useState<"upcoming" | "past">("upcoming");
   const [bookmarked, setBookmarked] = useState(false);
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
@@ -302,6 +303,8 @@ function PlayerMyTeam() {
   }
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
+  const today = new Date().toISOString().split("T")[0];
+  const shownFixtures = fixtures.filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today));
 
   return (
     <div className="space-y-6">
@@ -448,19 +451,26 @@ function PlayerMyTeam() {
         </section>
       )}
 
-      {/* Upcoming fixtures */}
+      {/* Fixtures */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Upcoming Fixtures</h3>
-          {fixtures.length > 0 && <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{fixtures.length}</span>}
+          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Fixtures</h3>
+          <div className="flex bg-surface-2 border border-border rounded-lg p-0.5 gap-0.5">
+            {(["upcoming", "past"] as const).map((v) => (
+              <button key={v} onClick={() => setFixtureView(v)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${fixtureView === v ? "bg-accent text-black" : "text-text-secondary"}`}>
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
         {fixturesLoading ? (
           <div className="py-4 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
-        ) : fixtures.length === 0 ? (
-          <p className="text-sm text-text-secondary py-2">No confirmed fixtures yet.</p>
+        ) : shownFixtures.length === 0 ? (
+          <p className="text-sm text-text-secondary py-2">{fixtureView === "upcoming" ? "No upcoming fixtures yet." : "No past matches yet."}</p>
         ) : (
           <div className="space-y-3">
-            {fixtures.map((f) => (
+            {shownFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -475,18 +485,18 @@ function PlayerMyTeam() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                    {fixtureView === "past"
+                      ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
+                      : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
                     {f.paymentStatus === "paid"
                       ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
-                      : <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Unpaid</span>
-                    }
+                      : fixtureView === "past"
+                        ? <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Share due</span>
+                        : null}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
                   <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
-                  {f.paymentStatus === "unpaid" && (
-                    <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
-                  )}
                 </div>
               </div>
             ))}
@@ -622,6 +632,7 @@ function CaptainMyTeam() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
   const [fixturesLoading, setFixturesLoading] = useState(true);
+  const [fixtureView, setFixtureView] = useState<"upcoming" | "past">("upcoming");
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[]; created_at: string } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
   const [myResponse, setMyResponse] = useState<string[] | null>(null);
@@ -733,6 +744,8 @@ function CaptainMyTeam() {
   }
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
+  const today = new Date().toISOString().split("T")[0];
+  const shownFixtures = fixtures.filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today));
 
   return (
     <div className="space-y-5">
@@ -969,19 +982,26 @@ function CaptainMyTeam() {
         </section>
       )}
 
-      {/* Confirmed fixtures */}
+      {/* Fixtures */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Upcoming Fixtures</h3>
-          {fixtures.length > 0 && <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{fixtures.length}</span>}
+          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Fixtures</h3>
+          <div className="flex bg-surface-2 border border-border rounded-lg p-0.5 gap-0.5">
+            {(["upcoming", "past"] as const).map((v) => (
+              <button key={v} onClick={() => setFixtureView(v)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${fixtureView === v ? "bg-accent text-black" : "text-text-secondary"}`}>
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
         {fixturesLoading ? (
           <div className="py-4 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
-        ) : fixtures.length === 0 ? (
-          <p className="text-sm text-text-secondary py-2">No confirmed fixtures yet.</p>
+        ) : shownFixtures.length === 0 ? (
+          <p className="text-sm text-text-secondary py-2">{fixtureView === "upcoming" ? "No upcoming fixtures yet." : "No past matches yet."}</p>
         ) : (
           <div className="space-y-2">
-            {fixtures.map((f) => (
+            {shownFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -996,18 +1016,18 @@ function CaptainMyTeam() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                    {fixtureView === "past"
+                      ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
+                      : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
                     {f.paymentStatus === "paid"
                       ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
-                      : <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Unpaid</span>
-                    }
+                      : fixtureView === "past"
+                        ? <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Dues open</span>
+                        : null}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
                   <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">Manage Match</a>
-                  {f.paymentStatus === "unpaid" && (
-                    <a href={`/pay/${f.postId}`} className="flex-1 py-2 rounded-xl bg-yellow-500 text-black text-xs font-bold text-center">Pay Now</a>
-                  )}
                 </div>
               </div>
             ))}
@@ -1155,6 +1175,9 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
   );
 }
 
+type DuePlayer = { player_id: string; name: string; status: string; sharePence: number };
+type DueGroup = { matchId: string; bookingId: string | null; opponent: string; date: string; teamPoolPence: number; players: DuePlayer[] };
+
 type CreditTransaction = {
   id: string;
   player_id: string;
@@ -1171,8 +1194,10 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [logTab, setLogTab] = useState<"deposits" | "bookings">("deposits");
+  const [logTab, setLogTab] = useState<"deposits" | "bookings" | "dues">("deposits");
   const [bookingTx, setBookingTx] = useState<{ id: string; player_name: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
+  const [dues, setDues] = useState<DueGroup[]>([]);
+  const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customInput, setCustomInput] = useState("");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -1273,10 +1298,90 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setSuccess(false);
   };
 
-  const openLog = async () => {
-    setLogTab("deposits");
+  // Per-match dues: for every match this team played, the share each
+  // participant owes toward the team's half of the pitch, plus whether it's
+  // been paid (auto-charged at settlement, or a manual top-up here).
+  const loadDues = async (tid: string) => {
+    const { data: ms } = await supabase.from("matches")
+      .select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, match_date")
+      .or(`posting_team_id.eq.${tid},challenging_team_id.eq.${tid}`)
+      .order("match_date", { ascending: false }).limit(20);
+    if (!ms || ms.length === 0) { setDues([]); return; }
+
+    const matchIds = ms.map((m) => m.id);
+    const postIds = ms.map((m) => m.post_id).filter(Boolean);
+    const oppIds = [...new Set(ms.map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
+
+    const [{ data: teamsData }, { data: bks }, { data: confs }] = await Promise.all([
+      supabase.from("teams").select("id, name").in("id", oppIds),
+      supabase.from("pitch_bookings").select("id, post_id").in("post_id", postIds),
+      supabase.from("match_confirmations")
+        .select("match_id, player_id, status, profiles(full_name)")
+        .in("match_id", matchIds).eq("team_id", tid),
+    ]);
+    const teamName = new Map((teamsData ?? []).map((t) => [t.id, t.name as string]));
+    const bookingByPost = new Map((bks ?? []).map((b) => [b.post_id, b.id as string]));
+    const bookingIds = (bks ?? []).map((b) => b.id);
+
+    const { data: pays } = bookingIds.length
+      ? await supabase.from("player_payments")
+          .select("booking_id, player_id, status")
+          .in("booking_id", bookingIds).eq("team_id", tid).eq("purpose", "replenish")
+      : { data: [] as { booking_id: string; player_id: string; status: string }[] };
+    const payByKey = new Map((pays ?? []).map((p) => [`${p.booking_id}:${p.player_id}`, p.status]));
+
+    const groups: DueGroup[] = ms.map((m) => {
+      const oppId = m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id;
+      const bookingId = bookingByPost.get(m.post_id) ?? null;
+      const isPoster = m.posting_team_id === tid;
+      const feePence = Math.round(((m.confirmed_pitch as { price?: number } | null)?.price ?? 0) * 100);
+      const half = Math.floor(feePence / 2);
+      const teamPool = isPoster ? feePence - half : half;
+      const participants = (confs ?? []).filter((c) => c.match_id === m.id && c.status === "confirmed");
+      const sharePence = participants.length ? Math.round(teamPool / participants.length) : 0;
+      const players: DuePlayer[] = participants.map((c) => ({
+        player_id: c.player_id,
+        name: (c.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player",
+        status: (bookingId && payByKey.get(`${bookingId}:${c.player_id}`)) || "unpaid",
+        sharePence,
+      }));
+      return { matchId: m.id, bookingId, opponent: teamName.get(oppId) ?? "Opponent", date: m.match_date, teamPoolPence: teamPool, players };
+    }).filter((g) => g.players.length > 0);
+    setDues(groups);
+  };
+
+  // Issue an individual top-up: credit the player's share back to the team and
+  // mark their due paid (used when a player settles in cash / outside auto-charge).
+  const markDuePaid = async (group: DueGroup, player: DuePlayer) => {
+    if (!teamId || player.status === "paid") return;
+    const key = `${group.matchId}:${player.player_id}`;
+    setDuesBusy((prev) => new Set(prev).add(key));
+    await supabase.rpc("add_credit", { p_team_id: teamId, p_amount_pence: player.sharePence, p_player_id: player.player_id });
+    if (group.bookingId) {
+      await supabase.from("player_payments").upsert({
+        booking_id: group.bookingId,
+        player_id: player.player_id,
+        team_id: teamId,
+        amount_pence: player.sharePence,
+        unitr_fee_pence: 0,
+        total_pence: player.sharePence,
+        purpose: "replenish",
+        status: "paid",
+        applied: true,
+        paid_at: new Date().toISOString(),
+      }, { onConflict: "booking_id,player_id" });
+    }
+    setDues((prev) => prev.map((g) => g.matchId === group.matchId
+      ? { ...g, players: g.players.map((p) => p.player_id === player.player_id ? { ...p, status: "paid" } : p) }
+      : g));
+    setDuesBusy((prev) => { const next = new Set(prev); next.delete(key); return next; });
+  };
+
+  const openLog = async (startTab: "deposits" | "bookings" | "dues" = "deposits") => {
+    setLogTab(startTab);
     setShowLog(true);
     if (!teamId) return;
+    loadDues(teamId);
     // Load booking payments for this team's matches
     const { data: posts } = await supabase.from("match_posts")
       .select("id, match_date").eq("captain_id", userId).eq("status", "matched");
@@ -1321,25 +1426,15 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   return (
     <>
       <div className="flex items-center gap-2 mt-2">
-        {role === "captain" ? (
-          <button onClick={openLog}
-            className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5 hover:border-accent/40 transition-colors">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-            <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
-            <span className="text-xs text-text-secondary">team credits</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-            <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
-            <span className="text-xs text-text-secondary">team credits</span>
-          </div>
-        )}
+        <button onClick={() => openLog(role === "captain" ? "deposits" : "dues")}
+          className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5 hover:border-accent/40 transition-colors">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+          <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
+          <span className="text-xs text-text-secondary">team credits</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
         <button onClick={() => setShowTopUp(true)}
           className="text-xs font-semibold text-accent border border-accent/30 bg-accent/10 px-3 py-1.5 rounded-xl">
           + Top Up
@@ -1367,7 +1462,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
             {/* Tabs */}
             <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1 mb-4 flex-shrink-0">
-              {(["deposits", "bookings"] as const).map((t) => (
+              {(["deposits", "bookings", "dues"] as const).map((t) => (
                 <button key={t} onClick={() => setLogTab(t)}
                   className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${logTab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
                   {t}
@@ -1415,6 +1510,51 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                             <p className="text-xs text-text-secondary">vs {p.opponent} · {timeAgo}</p>
                           </div>
                           <span className="text-sm font-bold text-text-primary">£{(p.amount_pence / 100).toFixed(2)}</span>
+                        </div>
+                      );
+                    })
+              )}
+
+              {logTab === "dues" && (
+                dues.length === 0
+                  ? <p className="text-xs text-text-secondary text-center py-8">No match dues yet.</p>
+                  : dues.map((g) => {
+                      const paidCount = g.players.filter((p) => p.status === "paid").length;
+                      return (
+                        <div key={g.matchId} className="bg-surface-2 border border-border rounded-xl p-3 mb-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold truncate">vs {g.opponent}</p>
+                              <p className="text-[10px] text-text-secondary">{g.date} · team owes £{(g.teamPoolPence / 100).toFixed(2)}</p>
+                            </div>
+                            <span className="text-[10px] font-semibold text-text-secondary flex-shrink-0">{paidCount}/{g.players.length} paid</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {g.players.map((p) => {
+                              const key = `${g.matchId}:${p.player_id}`;
+                              const busy = duesBusy.has(key);
+                              const paid = p.status === "paid";
+                              const failed = p.status === "failed";
+                              return (
+                                <div key={p.player_id} className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2">
+                                  <p className="flex-1 min-w-0 text-xs font-medium truncate">
+                                    {p.player_id === userId ? "You" : p.name}
+                                  </p>
+                                  <span className="text-xs font-semibold text-text-secondary flex-shrink-0">£{(p.sharePence / 100).toFixed(2)}</span>
+                                  {paid ? (
+                                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full flex-shrink-0">Paid</span>
+                                  ) : (role === "captain" || p.player_id === userId) ? (
+                                    <button onClick={() => markDuePaid(g, p)} disabled={busy}
+                                      className="text-[10px] font-bold bg-accent text-black px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50">
+                                      {busy ? "…" : p.player_id === userId ? "Pay share" : failed ? "Mark paid" : "Top up"}
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Unpaid</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })
