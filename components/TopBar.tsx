@@ -20,6 +20,7 @@ export default function TopBar() {
   const [joinRequests, setJoinRequests] = useState(0);
   const [openPosts, setOpenPosts] = useState(0);
   const [matchDues, setMatchDues] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   useEffect(() => {
     if (!user) { setInitials("?"); return; }
@@ -84,6 +85,14 @@ export default function TopBar() {
       setMatchDues(outstanding);
     }
     loadDues();
+  }, [user]);
+
+  // Unread direct messages — includes captain-sent payment reminders.
+  useEffect(() => {
+    if (!user) { setUnreadMessages(0); return; }
+    supabase.from("messages")
+      .select("id", { count: "exact", head: true }).eq("receiver_id", user.id).eq("read", false)
+      .then(({ count }) => setUnreadMessages(count ?? 0));
   }, [user]);
 
   useEffect(() => {
@@ -199,10 +208,13 @@ export default function TopBar() {
       {/* ── Messages ── */}
       {user && (
         <a href="/messages" aria-label="Messages"
-          className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center">
+          className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center relative">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
+          {unreadMessages > 0 && (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent border-2 border-background" />
+          )}
         </a>
       )}
 

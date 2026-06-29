@@ -11,8 +11,19 @@ type HistoryFixture = {
   date: string;
   time: string;
   pitch: string;
-  paymentStatus: "paid" | "unpaid";
 };
+
+type MatchRow = {
+  id: string;
+  posting_team_id: string;
+  challenging_team_id: string;
+  confirmed_pitch: { price?: number } | null;
+  fees_settled: boolean;
+  result_submitted: boolean;
+};
+
+type RosterPlayer = { player_id: string; name: string };
+type CollectRow = { player_id: string; share_pence: number; received: boolean };
 
 function fmtDate(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -20,10 +31,198 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
+// ── Captain's per-match payment collection panel ──────────────────────────
+function PaymentCollectionPanel({
+  matchId, teamId, isPoster, pitchPricePence, opponent, date, settled, onSettledChange,
+}: {
+  matchId: string; teamId: string; isPoster: boolean; pitchPricePence: number;
+  opponent: string; date: string; settled: boolean;
+  onSettledChange: (matchId: string, settled: boolean) => void;
+}) {
+  const { user } = useAuth();
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [rows, setRows] = useState<CollectRow[]>([]);
+  const [sending, setSending] = useState(false);
+  const [busyPlayer, setBusyPlayer] = useState<string | null>(null);
+
+  const feePence = Math.round(pitchPricePence);
+  const half = Math.floor(feePence / 2);
+  const teamPool = isPoster ? feePence - half : half;
+  const totalWithFee = Math.round(teamPool * 1.05);
+
+  useEffect(() => {
+    async function load() {
+      // Note: teams.captain_id has no FK relationship registered with profiles
+      // in the Supabase schema cache, so it can't be embedded in a select —
+      // doing so makes the entire query fail (PGRST200). Fetch separately.
+      const [{ data: members }, { data: team }, { data: confs }, { data: statusRows }] = await Promise.all([
+        supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", teamId).eq("status", "approved"),
+        supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle(),
+        supabase.from("match_confirmations").select("player_id, status").eq("match_id", matchId).eq("team_id", teamId),
+        supabase.from("payment_collection_status").select("player_id, share_pence, received").eq("match_id", matchId).eq("team_id", teamId),
+      ]);
+      const { data: captainProfile } = team?.captain_id
+        ? await supabase.from("profiles").select("full_name").eq("id", team.captain_id).maybeSingle()
+        : { data: null };
+      const rosterList: RosterPlayer[] = [
+        ...(members ?? []).map((m) => ({ player_id: m.player_id as string, name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player" })),
+        ...(team?.captain_id ? [{ player_id: team.captain_id as string, name: captainProfile?.full_name ?? "Captain" }] : []),
+      ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
+      setRoster(rosterList);
+      setRows((statusRows ?? []) as CollectRow[]);
+      if (!statusRows || statusRows.length === 0) {
+        const confirmedIds = new Set((confs ?? []).filter((c) => c.status === "confirmed").map((c) => c.player_id));
+        setChecked(new Set(rosterList.filter((p) => confirmedIds.has(p.player_id)).map((p) => p.player_id)));
+      }
+      setLoading(false);
+    }
+    load();
+  }, [matchId, teamId]);
+
+  const requestSent = rows.length > 0;
+
+  const handleSend = async () => {
+    if (!user || checked.size === 0) return;
+    setSending(true);
+    const playerIds = Array.from(checked);
+    const n = playerIds.length;
+    const base = Math.floor(totalWithFee / n);
+    const remainder = totalWithFee - base * n;
+
+    const newRows: CollectRow[] = playerIds.map((id, i) => ({
+      player_id: id,
+      share_pence: base + (i < remainder ? 1 : 0),
+      received: false,
+    }));
+
+    await supabase.from("payment_collection_status").insert(
+      newRows.map((r) => ({ match_id: matchId, team_id: teamId, player_id: r.player_id, included: true, share_pence: r.share_pence, received: false }))
+    );
+
+    await supabase.from("messages").insert(
+      newRows.map((r) => ({
+        sender_id: user.id,
+        receiver_id: r.player_id,
+        type: "payment_reminder",
+        match_id: matchId,
+        body: `You owe £${(r.share_pence / 100).toFixed(2)} for the match vs ${opponent} (${fmtDate(date)}). Please pay your captain.`,
+      }))
+    );
+
+    setRows(newRows);
+    setSending(false);
+  };
+
+  const toggleReceived = async (playerId: string) => {
+    const row = rows.find((r) => r.player_id === playerId);
+    if (!row) return;
+    setBusyPlayer(playerId);
+    const next = !row.received;
+    const updatedRows = rows.map((r) => r.player_id === playerId ? { ...r, received: next } : r);
+    setRows(updatedRows);
+    await supabase.from("payment_collection_status")
+      .update({ received: next, updated_at: new Date().toISOString() })
+      .eq("match_id", matchId).eq("player_id", playerId);
+
+    const allReceived = updatedRows.every((r) => r.received);
+    if (allReceived !== settled) {
+      await supabase.from("matches").update({ fees_settled: allReceived }).eq("id", matchId);
+      onSettledChange(matchId, allReceived);
+    }
+    setBusyPlayer(null);
+  };
+
+  return (
+    <div className="mt-3 bg-background border border-border rounded-xl p-3">
+      <button type="button" onClick={() => setExpanded((e) => !e)} className="w-full flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Collect Payment</p>
+        </div>
+        {!requestSent ? (
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Collect Payment</span>
+        ) : settled ? (
+          <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
+        ) : (
+          <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">
+            {rows.filter((r) => r.received).length}/{rows.length} paid
+          </span>
+        )}
+      </button>
+
+      {expanded && (
+        loading ? (
+          <div className="py-3 text-center"><div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
+        ) : !requestSent ? (
+          <div className="mt-3">
+            <p className="text-[11px] text-text-secondary mb-2">
+              Full squad — tick who played. Total owed (booking + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
+              {checked.size > 0 && <> · £{(totalWithFee / checked.size / 100).toFixed(2)}/player</>}
+            </p>
+            <div className="space-y-1.5 mb-3">
+              {roster.map((p) => {
+                const isChecked = checked.has(p.player_id);
+                return (
+                  <button key={p.player_id} type="button"
+                    onClick={() => setChecked((prev) => { const next = new Set(prev); next.has(p.player_id) ? next.delete(p.player_id) : next.add(p.player_id); return next; })}
+                    className="w-full flex items-center gap-2 bg-surface-2 border border-border rounded-lg px-3 py-2 text-left">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isChecked ? "border-accent bg-accent" : "border-border"}`}>
+                      {isChecked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                    <p className="flex-1 text-xs font-medium truncate">{p.player_id === user?.id ? "You" : p.name}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={handleSend} disabled={checked.size === 0 || sending}
+              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+              {sending ? "Sending…" : `Send Payment Request (${checked.size})`}
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[11px] text-text-secondary mb-1">Full squad</p>
+            {roster.map((p) => {
+              const row = rows.find((r) => r.player_id === p.player_id);
+              const name = p.player_id === user?.id ? "You" : p.name;
+              return (
+                <div key={p.player_id} className="flex items-center gap-2 bg-surface-2 border border-border rounded-lg px-3 py-2">
+                  <p className="flex-1 min-w-0 text-xs font-medium truncate">{name}</p>
+                  {row ? (
+                    <>
+                      <span className="text-xs font-semibold text-text-secondary flex-shrink-0">£{(row.share_pence / 100).toFixed(2)}</span>
+                      <button onClick={() => toggleReceived(p.player_id)} disabled={busyPlayer === p.player_id}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50 ${row.received ? "bg-accent/10 text-accent border border-accent/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+                        {row.received ? "Paid ✓" : "Unpaid"}
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-text-secondary bg-surface border border-border px-2 py-0.5 rounded-full flex-shrink-0">Not charged</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function MatchHistoryPage() {
   const { user } = useAuth();
   const [fixtures, setFixtures] = useState<HistoryFixture[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCaptainViewer, setIsCaptainViewer] = useState(false);
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [matchRows, setMatchRows] = useState<Record<string, MatchRow>>({});
+  const [matchResults, setMatchResults] = useState<Record<string, { teamScore: number; opponentScore: number }>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -32,14 +231,18 @@ export default function MatchHistoryPage() {
       // id if they captain a team, otherwise their team's captain).
       let captainId: string | undefined = user!.id;
       const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
+      let tid: string | undefined = ownTeam?.id;
       if (!ownTeam) {
         const { data: membership } = await supabase.from("team_members")
           .select("team_id").eq("player_id", user!.id).eq("status", "approved").maybeSingle();
         if (!membership?.team_id) { setLoading(false); return; }
+        tid = membership.team_id;
         const { data: team } = await supabase.from("teams").select("captain_id").eq("id", membership.team_id).maybeSingle();
         captainId = team?.captain_id;
       }
-      if (!captainId) { setLoading(false); return; }
+      if (!captainId || !tid) { setLoading(false); return; }
+      setTeamId(tid);
+      setIsCaptainViewer(user!.id === captainId);
 
       // Matches where this team posted and was challenged
       const { data: myPosts } = await supabase.from("match_posts")
@@ -84,20 +287,22 @@ export default function MatchHistoryPage() {
       const past = all.filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.date) && f.date < today);
 
       const { data: rows } = past.length > 0
-        ? await supabase.from("matches").select("id, post_id").in("post_id", past.map((f) => f.postId))
+        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted").in("post_id", past.map((f) => f.postId))
         : { data: [] };
       const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
+      setMatchRows(Object.fromEntries((rows ?? []).map((r) => [r.id, r as MatchRow])));
 
-      const { data: payments } = past.length > 0
-        ? await supabase.from("player_payments").select("booking_id").eq("player_id", user!.id).eq("status", "paid").in("booking_id", past.map((f) => f.postId))
-        : { data: [] };
-      const paidIds = new Set((payments ?? []).map((p) => p.booking_id));
+      const submittedMatchIds = (rows ?? []).filter((r) => r.result_submitted).map((r) => r.id);
+      if (submittedMatchIds.length > 0 && tid) {
+        const { data: results } = await supabase.from("match_results")
+          .select("match_id, team_score, opponent_score").eq("team_id", tid).in("match_id", submittedMatchIds);
+        setMatchResults(Object.fromEntries((results ?? []).map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
+      }
 
       const withRows: HistoryFixture[] = past
         .map((f) => ({
           ...f,
           matchRowId: byPostId.get(f.postId) ?? null,
-          paymentStatus: (paidIds.has(f.postId) ? "paid" : "unpaid") as "paid" | "unpaid",
         }))
         .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -106,6 +311,10 @@ export default function MatchHistoryPage() {
     }
     load();
   }, [user]);
+
+  const handleSettledChange = (matchId: string, settled: boolean) => {
+    setMatchRows((prev) => ({ ...prev, [matchId]: { ...prev[matchId], fees_settled: settled } }));
+  };
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
@@ -131,35 +340,57 @@ export default function MatchHistoryPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {fixtures.map((f) => (
-            <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="font-semibold text-sm">vs {f.opponent}</p>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                    {fmtDate(f.date)} · {f.time}
+          {fixtures.map((f) => {
+            const m = f.matchRowId ? matchRows[f.matchRowId] : undefined;
+            return (
+              <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
+                <div className="flex items-start justify-between mb-2 gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      {fmtDate(f.date)} · {f.time}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {f.pitch}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    {f.pitch}
-                  </div>
+                  {f.matchRowId && m?.result_submitted && matchResults[f.matchRowId] && (() => {
+                    const r = matchResults[f.matchRowId];
+                    const outcome = r.teamScore > r.opponentScore ? "won" : r.teamScore < r.opponentScore ? "lost" : "drew";
+                    const colorClass = outcome === "won" ? "text-accent" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
+                    return (
+                      <p className={`text-3xl font-extrabold flex-shrink-0 ${colorClass}`}>{r.teamScore} – {r.opponentScore}</p>
+                    );
+                  })()}
                 </div>
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className="text-[10px] font-semibold bg-surface border border-border text-text-secondary px-2 py-0.5 rounded-full">Completed</span>
-                  {f.paymentStatus === "paid"
-                    ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
-                    : <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Unpaid</span>
-                  }
-                </div>
+
+                {f.matchRowId && isCaptainViewer && !m?.result_submitted ? (
+                  <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
+                    Submit Result
+                  </a>
+                ) : f.matchRowId && (
+                  <a href={`/my-team/match/${f.matchRowId}`} className="block w-full mt-3 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">
+                    View Details
+                  </a>
+                )}
+
+                {isCaptainViewer && f.matchRowId && teamId && m?.confirmed_pitch?.price && (
+                  <PaymentCollectionPanel
+                    matchId={f.matchRowId}
+                    teamId={teamId}
+                    isPoster={m.posting_team_id === teamId}
+                    pitchPricePence={Math.round((m.confirmed_pitch.price ?? 0) * 100)}
+                    opponent={f.opponent}
+                    date={f.date}
+                    settled={m.fees_settled}
+                    onSettledChange={handleSettledChange}
+                  />
+                )}
               </div>
-              {f.matchRowId && (
-                <a href={`/my-team/match/${f.matchRowId}`} className="block w-full mt-3 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">
-                  View Details
-                </a>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

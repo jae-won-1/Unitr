@@ -14,7 +14,7 @@ type Team = {
   captain_id: string;
 };
 
-type Member = { player_id: string; full_name: string; position: string | null };
+type Member = { player_id: string; full_name: string; position: string | null; isCaptain?: boolean };
 
 export default function TeamProfilePage({ params }: { params: { teamId: string } }) {
   const { user } = useAuth();
@@ -40,6 +40,23 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         );
       });
   }, [params.teamId]);
+
+  // The captain isn't a team_members row, so fetch them separately and merge
+  // into the squad list. (teams.captain_id has no FK relationship registered
+  // with profiles, so it can't be embedded in the teams select above.)
+  useEffect(() => {
+    if (!team?.captain_id) return;
+    supabase.from("profiles").select("full_name, position").eq("id", team.captain_id).maybeSingle()
+      .then(({ data }) => {
+        const captainEntry: Member = {
+          player_id: team.captain_id,
+          full_name: data?.full_name ?? "Captain",
+          position: data?.position ?? null,
+          isCaptain: true,
+        };
+        setMembers((prev) => [captainEntry, ...prev.filter((m) => m.player_id !== team.captain_id)]);
+      });
+  }, [team?.captain_id]);
 
   if (team === undefined) {
     return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
@@ -111,7 +128,12 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
                   <span className="text-xs font-semibold text-text-secondary">{p.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{p.full_name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium">{p.full_name}</p>
+                    {p.isCaptain && (
+                      <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-1.5 py-0.5 rounded-full">Captain</span>
+                    )}
+                  </div>
                   {p.position && <p className="text-xs text-text-secondary">{p.position}</p>}
                 </div>
               </div>
