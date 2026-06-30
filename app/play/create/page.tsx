@@ -72,6 +72,7 @@ export default function CreateMatchPage() {
   const [confirmedDates, setConfirmedDates] = useState<ConfirmedDate[]>([]);
   const [manualDates, setManualDates] = useState<ManualDate[]>([{ id: "1", date: "", time: "" }]);
   const [pitchOptions, setPitchOptions] = useState<PitchOption[]>([]);
+  const [draggingPitchId, setDraggingPitchId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -158,6 +159,20 @@ export default function CreateMatchPage() {
   const removePitchOption = (id: string) => {
     setPitchOptions((prev) => {
       const updated = prev.filter((p) => p.id !== id);
+      localStorage.setItem("unitr_pitch_options", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const reorderPitchOptions = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setPitchOptions((prev) => {
+      const fromIndex = prev.findIndex((p) => p.id === fromId);
+      const toIndex = prev.findIndex((p) => p.id === toId);
+      if (fromIndex === -1 || toIndex === -1) return prev;
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
       localStorage.setItem("unitr_pitch_options", JSON.stringify(updated));
       return updated;
     });
@@ -283,7 +298,7 @@ export default function CreateMatchPage() {
   })();
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -466,7 +481,19 @@ export default function CreateMatchPage() {
                 const pitchTime = originalSlot ? (p.slotTimes?.[originalSlot.date] ?? originalSlot.time) : undefined;
                 const isAlt = originalSlot ? pitchTime !== originalSlot.time : false;
                 return (
-                  <div key={p.id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+                  <div key={p.id}
+                    draggable={pitchOptions.length > 1}
+                    onDragStart={() => setDraggingPitchId(p.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragEnter={() => { if (draggingPitchId && draggingPitchId !== p.id) reorderPitchOptions(draggingPitchId, p.id); }}
+                    onDrop={(e) => e.preventDefault()}
+                    onDragEnd={() => setDraggingPitchId(null)}
+                    className={`flex items-center gap-2 bg-background border border-border rounded-xl px-3 py-2.5 transition-all duration-200 ${draggingPitchId === p.id ? "opacity-40 scale-[0.98]" : ""}`}>
+                    {pitchOptions.length > 1 && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-text-secondary flex-shrink-0 cursor-grab active:cursor-grabbing">
+                        <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+                      </svg>
+                    )}
                     <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
                       <span className="text-[10px] font-bold text-accent">{i + 1}</span>
                     </div>

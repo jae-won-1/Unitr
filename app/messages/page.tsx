@@ -73,7 +73,7 @@ export default function MessagesPage() {
     : conversations;
 
   return (
-    <div className="flex flex-col min-h-screen pt-12">
+    <div className="flex flex-col min-h-screen pt-16">
       <header className="px-4 mb-6">
         <h1 className="text-2xl font-bold mb-4">Messages</h1>
         <div className="relative">

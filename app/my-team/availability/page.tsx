@@ -518,7 +518,7 @@ export default function AvailabilityPage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <a href={role === "captain" ? "/my-team" : "/"}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

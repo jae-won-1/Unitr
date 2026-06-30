@@ -89,7 +89,7 @@ export default function RegisterPitchPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen pt-12 pb-28 px-4">
+    <div className="flex flex-col min-h-screen pt-16 pb-28 px-4">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <a href="/pitches">

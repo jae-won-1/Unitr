@@ -110,14 +110,21 @@ export default function TopBar() {
   const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0) + (matchDues > 0 ? 1 : 0);
 
   return (
-    <div className="fixed top-3 right-4 z-50 flex items-center gap-2">
+    <div className="fixed top-0 left-0 right-0 z-50 h-16 w-full bg-background flex items-center justify-between gap-2 px-4">
+
+      {/* ── Logo ── */}
+      <a href="/" className="text-xl font-bold tracking-tight flex-shrink-0">
+        Unitr<span className="text-accent">.</span>
+      </a>
+
+      <div className="flex items-center gap-2">
 
       {/* ── Notification bell ── */}
       {user && (
       <div className="relative" ref={notifRef}>
         <button
           onClick={() => { setNotifOpen((o) => !o); setProfileOpen(false); }}
-          className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center relative"
+          className="w-9 h-9 flex items-center justify-center relative"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -129,7 +136,7 @@ export default function TopBar() {
         </button>
 
         {notifOpen && (
-          <div className="absolute right-0 top-11 w-80 bg-surface border border-border rounded-2xl shadow-xl overflow-hidden z-50">
+          <div className="absolute right-0 top-14 w-80 bg-surface border border-border rounded-2xl shadow-xl overflow-hidden z-50">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="text-sm font-bold">Notifications</p>
@@ -208,7 +215,7 @@ export default function TopBar() {
       {/* ── Messages ── */}
       {user && (
         <a href="/messages" aria-label="Messages"
-          className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center relative">
+          className="w-9 h-9 flex items-center justify-center relative">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
@@ -223,13 +230,13 @@ export default function TopBar() {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); }}
-            className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center"
+            className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center"
           >
-            <span className="text-xs font-bold text-accent">{initials}</span>
+            <span className="text-base font-bold text-accent">{initials}</span>
           </button>
 
           {profileOpen && (
-            <div className="absolute right-0 top-11 w-44 bg-surface border border-border rounded-2xl shadow-lg overflow-hidden z-50">
+            <div className="absolute right-0 top-14 w-44 bg-surface border border-border rounded-2xl shadow-lg overflow-hidden z-50">
               <a href="/profile" onClick={() => setProfileOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 text-sm text-text-primary hover:bg-surface-2 transition-colors">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -253,6 +260,7 @@ export default function TopBar() {
           Sign In
         </a>
       )}
+      </div>
     </div>
   );
 }

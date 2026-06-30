@@ -375,10 +375,7 @@ export default function HomePage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12">
-      <header className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold tracking-tight">Unitr<span className="text-accent">.</span></h1>
-      </header>
+    <div className="flex flex-col min-h-screen px-4 pt-16">
       <HomeSearchBar />
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}

@@ -450,7 +450,7 @@ export default function ProfilePage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12">
+    <div className="flex flex-col min-h-screen px-4 pt-16">
       <header className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Profile</h1>
       </header>

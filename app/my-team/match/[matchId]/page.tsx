@@ -386,7 +386,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const teamShare = chargedParticipants.length > 0 ? teamPoolPence / chargedParticipants.length / 100 : 0;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <a href="/my-team">

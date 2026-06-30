@@ -64,7 +64,7 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
   };
 
   return (
-    <div className="flex flex-col min-h-screen pt-12 pb-4">
+    <div className="flex flex-col min-h-screen pt-16 pb-4">
       <div className="flex items-center gap-3 px-4 mb-4 flex-shrink-0">
         <a href="/messages">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>

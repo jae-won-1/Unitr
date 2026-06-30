@@ -123,8 +123,10 @@ function PaymentCollectionPanel({
     const next = !row.received;
     const updatedRows = rows.map((r) => r.player_id === playerId ? { ...r, received: next } : r);
     setRows(updatedRows);
+    // Keep credited_pence in step with a manual toggle, so the player's own
+    // "amount owed" total (derived from credited_pence) stays accurate.
     await supabase.from("payment_collection_status")
-      .update({ received: next, updated_at: new Date().toISOString() })
+      .update({ received: next, credited_pence: next ? row.share_pence : 0, updated_at: new Date().toISOString() })
       .eq("match_id", matchId).eq("player_id", playerId);
 
     const allReceived = updatedRows.every((r) => r.received);
@@ -317,7 +319,7 @@ export default function MatchHistoryPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <a href="/my-team">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -376,7 +378,7 @@ export default function MatchHistoryPage() {
                   </a>
                 )}
 
-                {isCaptainViewer && f.matchRowId && teamId && m?.confirmed_pitch?.price && (
+                {isCaptainViewer && f.matchRowId && teamId && m?.confirmed_pitch?.price && !m.fees_settled && (
                   <PaymentCollectionPanel
                     matchId={f.matchRowId}
                     teamId={teamId}

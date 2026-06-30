@@ -502,12 +502,7 @@ function PitchAvailabilityPanel({
             <button
               onClick={() => {
                 onReplaceSlot(selectedDate, selectedTime!);
-                // Advance to next posting date that hasn't been confirmed yet
-                const next = postingSlots.find(s => {
-                  const iso = normalizeSlotDate(s.matchDate);
-                  return iso !== selectedDate && slotOverrides[iso] === undefined;
-                });
-                if (next) setSelectedDate(normalizeSlotDate(next.matchDate));
+                onClose();
               }}
               className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">
               {slotOverrides[selectedDate] !== undefined
@@ -748,7 +743,7 @@ function PitchesContent() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen pt-12 pb-40">
+    <div className="flex flex-col min-h-screen pt-16 pb-40">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 mb-4">
         <a href={selectMode ? "/play/create" : "/"}>

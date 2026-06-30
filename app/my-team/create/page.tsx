@@ -55,7 +55,7 @@ export default function CreateTeamPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <header className="flex items-center gap-3 mb-8">
         <a href="/my-team" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

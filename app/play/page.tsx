@@ -63,14 +63,6 @@ type MatchPost = {
   securedBookingId: string | null;
 };
 
-type Challenge = {
-  id: string;
-  challenger_team_name: string;
-  selected_pitch: PitchOption;
-  status: string;
-  created_at: string;
-};
-
 const tournaments = [
   { id: "t-1", name: "East London Cup", organiser: "Unitr Official", location: "Victoria Park Arena", distance: "3.1 miles", date: "Mar 15, 2026", teams: "8/16 teams", prize: "£500", format: "11-a-side", description: "Annual knockout cup open to all competitive teams in East London." },
   { id: "t-2", name: "Shoreditch 5s", organiser: "Powerleague", location: "Powerleague Shoreditch", distance: "4.0 miles", date: "Apr 5, 2026", teams: "12/24 teams", prize: "£200", format: "5-a-side", description: "Fast-paced 5-a-side tournament with group stages and knockout rounds." },
@@ -614,23 +606,8 @@ function MatchCard({
 
 // ── My Post Card (captain's own posts) ────────────────────────
 function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: string) => void }) {
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
-  const [loadingChallenge, setLoadingChallenge] = useState(true);
-  const [matchRowId, setMatchRowId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [takingDown, setTakingDown] = useState(false);
-
-  useEffect(() => {
-    if (post.status === "matched") {
-      supabase.from("challenges").select("*").eq("post_id", post.id).eq("status", "accepted")
-        .maybeSingle()
-        .then(({ data }) => { setChallenge(data as Challenge | null); setLoadingChallenge(false); });
-      supabase.from("matches").select("id").eq("post_id", post.id).maybeSingle()
-        .then(({ data }) => setMatchRowId(data?.id ?? null));
-    } else {
-      setLoadingChallenge(false);
-    }
-  }, [post.id, post.status]);
 
   const handleTakeDown = async () => {
     setTakingDown(true);
@@ -646,7 +623,14 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
   const initials = post.team.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className={`border rounded-2xl p-4 ${post.status === "matched" ? "bg-accent/5 border-accent/30" : "bg-surface-2 border-border"}`}>
+    <div className="border border-indigo-500/40 bg-indigo-500/5 rounded-2xl p-4">
+      <div className="flex items-center gap-1.5 mb-3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-indigo-400">
+          <path d="M12 2a5 5 0 0 0-5 5c0 3.5 5 11 5 11s5-7.5 5-11a5 5 0 0 0-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/>
+        </svg>
+        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Your Post</span>
+      </div>
+
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
@@ -657,19 +641,12 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
             <p className="text-xs text-text-secondary mt-0.5">{post.location || "Location TBC"}</p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          {post.status === "matched" ? (
-            <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Matched</span>
-          ) : (
-            <span className="text-[10px] font-semibold bg-surface border border-border text-text-secondary px-2 py-0.5 rounded-full">Open</span>
-          )}
-          {post.pitchSecured && (
-            <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-              Pitch Secured
-            </span>
-          )}
-        </div>
+        {post.pitchSecured && (
+          <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            Pitch Secured
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-1 text-xs text-text-secondary mb-3">
@@ -692,57 +669,22 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
         </div>
       )}
 
-      {/* Matched: show who challenged */}
-      {post.status === "matched" && (
-        <div className="bg-accent/10 border border-accent/20 rounded-xl px-3 py-3 mb-3">
-          {loadingChallenge ? (
-            <p className="text-xs text-text-secondary">Loading challenge info…</p>
-          ) : challenge ? (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-accent">Challenged by {challenge.challenger_team_name}</p>
-                <p className="text-xs text-text-secondary mt-0.5">Pitch: {challenge.selected_pitch?.name ?? "TBC"}</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-text-secondary">Match confirmed — challenge details loading.</p>
-          )}
-        </div>
-      )}
-
-      {/* Open: waiting state + take-down/view options */}
-      {post.status === "open" && (
-        <>
-          <div className="flex items-center gap-2 text-xs text-text-secondary mb-3">
-            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            Waiting for a challenge…
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowConfirm(true)}
-              className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold">
-              Take Down Post
-            </button>
-            <a href={`/play/edit/${post.id}`}
-              className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5">
-              View Your Post
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </a>
-          </div>
-        </>
-      )}
-
-      {/* Matched: view the confirmed match */}
-      {post.status === "matched" && (
-        <a href={matchRowId ? `/my-team/match/${matchRowId}` : "#"}
-          aria-disabled={!matchRowId}
-          className={`w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5 ${!matchRowId ? "opacity-50 pointer-events-none" : ""}`}>
+      <div className="flex items-center gap-2 text-xs text-text-secondary mb-3">
+        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+        Waiting for a challenge…
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => setShowConfirm(true)}
+          className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold flex items-center justify-center gap-1.5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          Take Down Post
+        </button>
+        <a href={`/play/edit/${post.id}`}
+          className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5">
           View Your Post
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
-      )}
+      </div>
 
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
@@ -952,7 +894,7 @@ function useMyPosts(captainId?: string) {
       .from("match_posts")
       .select("*")
       .eq("captain_id", captainId)
-      .in("status", ["open", "matched"])
+      .eq("status", "open")
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         setPosts((data ?? []).map((row) => ({
@@ -1059,8 +1001,8 @@ function CaptainPlay() {
             <MyPostCard post={myPost} onRemoved={removeMyPost} />
           ) : (
             <a href="/play/create" onClick={() => localStorage.setItem("unitr_payment_mode", "individual")}
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-black text-sm font-bold">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
               Create New Post
             </a>
           )}
@@ -1109,7 +1051,7 @@ export default function PlayPage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-24">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <header className="mb-5">
         <h1 className="text-2xl font-bold mb-1">Play</h1>
         <p className="text-text-secondary text-sm">

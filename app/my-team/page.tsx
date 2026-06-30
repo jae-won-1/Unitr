@@ -8,6 +8,24 @@ import { supabase } from "@/lib/supabase";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
 
+// Highlights "@Full Name" mentions in announcement text for display.
+// Validity (matching a real squad member) is enforced at creation time via
+// the mention autocomplete, so this just renders any @-prefixed name pattern.
+function highlightMentions(text: string) {
+  const re = /@([A-Z][a-zA-Z]*(?:\s[A-Z][a-zA-Z]*)*)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, m.index)}</span>);
+    parts.push(<span key={key++} className="text-blue-400 font-semibold">{m[0]}</span>);
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+  return parts;
+}
+
 type Team = {
   id: string;
   name: string;
@@ -928,12 +946,13 @@ function CaptainMyTeam() {
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Manage</h3>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Tactics Board", icon: "🗂️", href: "/my-team/tactics" },
+            { label: "Team Management", icon: "👥", href: "/my-team/players" },
+            { label: "Post Announcement", icon: "📋", href: "/my-team/announcement/create" },
             { label: "Transfer Window", icon: "🔄", href: "/my-team/transfer" },
-            { label: "Players", icon: "👥", href: "/my-team/players" },
-            { label: "Settings", icon: "⚙️", href: "#" },
+            { label: "Team Settings", icon: "⚙️", href: "#" },
           ].map((a) => (
-            <a key={a.label} href={a.href} className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
+            <a key={a.label} href={a.href}
+              className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
               <span className="text-2xl">{a.icon}</span>
               <p className="text-sm font-semibold">{a.label}</p>
             </a>
@@ -1110,6 +1129,55 @@ function NextFixtureBanner({ userId, role }: { userId: string; role: "captain" |
   );
 }
 
+// ── Team Announcement Banner ────────────────────────────────────
+function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "captain" | "player" }) {
+  const [announcement, setAnnouncement] = useState<{ title: string | null; body: string; created_at: string; authorName: string } | null | undefined>(undefined);
+
+  useEffect(() => {
+    async function load() {
+      let teamId: string | undefined;
+      if (role === "captain") {
+        const { data } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
+        teamId = data?.id;
+      } else {
+        const { data: mem } = await supabase.from("team_members").select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
+        teamId = mem?.team_id;
+      }
+      if (!teamId) { setAnnouncement(null); return; }
+
+      const { data: latest } = await supabase.from("team_announcements")
+        .select("title, body, created_at, captain_id").eq("team_id", teamId)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+      if (!latest) { setAnnouncement(null); return; }
+
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      if (new Date(latest.created_at).getTime() < weekAgo) { setAnnouncement(null); return; }
+
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", latest.captain_id).maybeSingle();
+      setAnnouncement({ title: latest.title, body: latest.body, created_at: latest.created_at, authorName: profile?.full_name ?? "Captain" });
+    }
+    load();
+  }, [userId, role]);
+
+  if (!announcement) return null;
+
+  const diffMins = Math.floor((Date.now() - new Date(announcement.created_at).getTime()) / 60000);
+  const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
+
+  return (
+    <div className="bg-white rounded-2xl p-4 mb-2">
+      {announcement.title && <p className="text-sm font-bold text-black mb-1">{announcement.title}</p>}
+      <p className="text-sm text-black whitespace-pre-wrap mb-1">{highlightMentions(announcement.body)}</p>
+      <p className="text-[11px] text-black/60 mb-3">— {announcement.authorName} · {timeAgo}</p>
+      <a href="/my-team/announcements" className="flex items-center gap-1 text-xs text-black font-medium underline">
+        View previous announcements
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  );
+}
+
 // ── Credits checkout form (inside Stripe Elements) ────────────
 function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number;
@@ -1134,6 +1202,35 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
         p_player_id: userId,
       });
       const newBalance = typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount;
+
+      // Apply this top-up toward the player's own outstanding match-fee dues,
+      // oldest GAME first (by match_date, not row metadata), partially or
+      // fully paying down each row in turn.
+      let remaining = Math.round(amount * 100);
+      const { data: dueRowsRaw } = await supabase.from("payment_collection_status")
+        .select("id, match_id, share_pence, credited_pence").eq("player_id", userId).eq("included", true);
+      const dueMatchIds = [...new Set((dueRowsRaw ?? []).map((r) => r.match_id))];
+      const { data: dueMatches } = dueMatchIds.length > 0
+        ? await supabase.from("matches").select("id, match_date").in("id", dueMatchIds)
+        : { data: [] };
+      const matchDateById = new Map((dueMatches ?? []).map((m) => [m.id, m.match_date as string]));
+      const dueRows = [...(dueRowsRaw ?? [])].sort((a, b) =>
+        (matchDateById.get(a.match_id) ?? "").localeCompare(matchDateById.get(b.match_id) ?? "")
+      );
+      for (const row of dueRows) {
+        if (remaining <= 0) break;
+        const need = row.share_pence - (row.credited_pence ?? 0);
+        if (need <= 0) continue;
+        const applied = Math.min(remaining, need);
+        const newCredited = (row.credited_pence ?? 0) + applied;
+        await supabase.from("payment_collection_status").update({
+          credited_pence: newCredited,
+          received: newCredited >= row.share_pence,
+          updated_at: new Date().toISOString(),
+        }).eq("id", row.id);
+        remaining -= applied;
+      }
+
       onSuccess(newBalance);
     } else {
       setPayError("Payment did not complete. Please try again.");
@@ -1196,6 +1293,8 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [collectLoading, setCollectLoading] = useState(true);
   const [remindingPlayer, setRemindingPlayer] = useState<string | null>(null);
   const [remindedPlayers, setRemindedPlayers] = useState<Set<string>>(new Set());
+  const [historyAlertCount, setHistoryAlertCount] = useState(0);
+  const [myOwedPence, setMyOwedPence] = useState(0);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customInput, setCustomInput] = useState("");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -1224,6 +1323,44 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   useEffect(() => {
     if (role === "captain" && teamId) loadOutstanding(teamId);
   }, [role, teamId]);
+
+  // Count past matches still needing attention — no result submitted yet,
+  // and/or no "Collect Payment" request sent — for the Match History badge.
+  useEffect(() => {
+    if (role !== "captain" || !teamId) { setHistoryAlertCount(0); return; }
+    async function loadHistoryAlerts() {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: ms } = await supabase.from("matches")
+        .select("id, result_submitted")
+        .or(`posting_team_id.eq.${teamId},challenging_team_id.eq.${teamId}`)
+        .lt("match_date", today);
+      if (!ms || ms.length === 0) { setHistoryAlertCount(0); return; }
+
+      const matchIds = ms.map((m) => m.id);
+      const { data: collectionRows } = await supabase.from("payment_collection_status")
+        .select("match_id").eq("team_id", teamId).in("match_id", matchIds);
+      const requestSentIds = new Set((collectionRows ?? []).map((r) => r.match_id as string));
+
+      const count = ms.filter((m) => !m.result_submitted || !requestSentIds.has(m.id)).length;
+      setHistoryAlertCount(count);
+    }
+    loadHistoryAlerts();
+  }, [role, teamId]);
+
+  // This player's own outstanding share across every match they've been
+  // charged for (set up via the captain's "Collect Payment" flow) — drives
+  // the red Top Up button + warning strip below. credited_pence tracks
+  // partial pay-down from top-ups, so a top-up smaller than the full amount
+  // still reduces what's shown as owed.
+  const loadMyOwed = async () => {
+    const { data } = await supabase.from("payment_collection_status")
+      .select("share_pence, credited_pence").eq("player_id", userId).eq("included", true);
+    setMyOwedPence((data ?? []).reduce((sum, r) => sum + Math.max(0, r.share_pence - (r.credited_pence ?? 0)), 0));
+  };
+
+  useEffect(() => {
+    loadMyOwed();
+  }, [userId]);
 
   // Effect 2: load balance + transactions, subscribe to both
   useEffect(() => {
@@ -1391,7 +1528,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     // in the select makes the entire query fail (PGRST200). Fetch names separately.
     const { data: rows } = await supabase
       .from("payment_collection_status")
-      .select("match_id, player_id, share_pence")
+      .select("match_id, player_id, share_pence, credited_pence")
       .eq("team_id", tid).eq("included", true).eq("received", false);
 
     if (!rows || rows.length === 0) { setOutstanding([]); setCollectLoading(false); return; }
@@ -1410,21 +1547,23 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
     const byPlayer = new Map<string, OutstandingPlayer>();
     for (const r of rows) {
+      const remainingPence = Math.max(0, r.share_pence - (r.credited_pence ?? 0));
+      if (remainingPence === 0) continue;
       const m = matchById.get(r.match_id);
       const oppId = m ? (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id) : null;
       const entry: OutstandingMatch = {
         matchId: r.match_id,
         opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
         date: m?.match_date ?? "",
-        sharePence: r.share_pence,
+        sharePence: remainingPence,
       };
       const name = profileName.get(r.player_id) ?? "Player";
       const existing = byPlayer.get(r.player_id);
       if (existing) {
-        existing.totalPence += r.share_pence;
+        existing.totalPence += remainingPence;
         existing.matches.push(entry);
       } else {
-        byPlayer.set(r.player_id, { player_id: r.player_id, name, totalPence: r.share_pence, matches: [entry] });
+        byPlayer.set(r.player_id, { player_id: r.player_id, name, totalPence: remainingPence, matches: [entry] });
       }
     }
     setOutstanding(Array.from(byPlayer.values()).sort((a, b) => b.totalPence - a.totalPence));
@@ -1505,7 +1644,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </button>
         <button onClick={() => setShowTopUp(true)}
-          className="text-xs font-semibold text-accent border border-accent/30 bg-accent/10 px-3 py-1.5 rounded-xl">
+          className={`text-xs font-semibold px-3 py-1.5 rounded-xl border ${myOwedPence > 0 ? "text-red-400 border-red-500/30 bg-red-500/10" : "text-accent border-accent/30 bg-accent/10"}`}>
           + Top Up
         </button>
         {role === "captain" && (
@@ -1519,15 +1658,28 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
             )}
           </button>
         )}
-        <a href="/my-team/history" className="ml-auto text-xs font-semibold text-text-secondary flex items-center gap-1 flex-shrink-0">
+        <a href="/my-team/history" className="relative ml-auto text-xs font-semibold text-text-secondary flex items-center gap-1 flex-shrink-0">
           Match History
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          {historyAlertCount > 0 && (
+            <span className="absolute -top-2 -left-4 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+              {historyAlertCount}
+            </span>
+          )}
         </a>
       </div>
       {reserved > 0 && (
         <p className="text-[11px] text-text-secondary mt-1">
           £{reserved.toFixed(2)} reserved for a pending match · £{(credits - reserved).toFixed(2)} available
         </p>
+      )}
+      {myOwedPence > 0 && (
+        <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <p className="text-[11px] text-yellow-400">
+            Your previous matches haven&apos;t been paid off. Top up your required amount above.
+          </p>
+        </div>
       )}
 
       {/* Transaction log modal — captain only */}
@@ -1729,7 +1881,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                     teamId={teamId}
                     userId={userId}
                     currentCredits={credits}
-                    onSuccess={(newBalance) => { setCredits(newBalance); setSuccess(true); }}
+                    onSuccess={(newBalance) => { setCredits(newBalance); setSuccess(true); loadMyOwed(); }}
                     onBack={() => setClientSecret(null)}
                   />
                 </Elements>
@@ -1748,7 +1900,16 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                 </p>
 
                 {/* Preset amounts */}
-                <div className="grid grid-cols-4 gap-2 mb-4">
+                <div className={`grid gap-2 mb-4 ${myOwedPence > 0 ? "grid-cols-5" : "grid-cols-4"}`}>
+                  {myOwedPence > 0 && (() => {
+                    const owedAmount = myOwedPence / 100;
+                    return (
+                      <button onClick={() => { setSelectedAmount(owedAmount); setCustomInput(""); }}
+                        className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === owedAmount && !customInput ? "bg-red-500 text-white border-red-500" : "bg-red-500/10 border-red-500/30 text-red-400"}`}>
+                        £{owedAmount.toFixed(2)}
+                      </button>
+                    );
+                  })()}
                   {[10, 20, 50, 100].map((amt) => (
                     <button key={amt} onClick={() => { setSelectedAmount(amt); setCustomInput(""); }}
                       className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === amt && !customInput ? "bg-accent text-black border-accent" : "bg-surface-2 border-border text-text-primary"}`}>
@@ -1805,7 +1966,7 @@ export default function MyTeamPage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold mb-0.5">
           {role === "new_user" ? "Browse Teams" : "My Team"}
@@ -1821,6 +1982,9 @@ export default function MyTeamPage() {
       </header>
       {(role === "captain" || role === "player") && user && (
         <NextFixtureBanner userId={user.id} role={role as "captain" | "player"} />
+      )}
+      {(role === "captain" || role === "player") && user && (
+        <TeamAnnouncementBanner userId={user.id} role={role as "captain" | "player"} />
       )}
       {role === "new_user" && !user && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">

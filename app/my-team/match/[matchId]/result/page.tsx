@@ -151,7 +151,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
   }
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>

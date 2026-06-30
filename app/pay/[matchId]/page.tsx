@@ -331,7 +331,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   // Stripe init / load error
   if (loadError) {
     return (
-      <div className="flex flex-col min-h-screen pt-12 pb-20 px-4">
+      <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
         <div className="flex items-center gap-3 mb-6">
           <a href={`/my-team/match/${params.matchId}`}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
@@ -358,14 +358,14 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   // Paid
   if (paid) {
     return (
-      <div className="flex flex-col min-h-screen pt-12 pb-20 px-4">
+      <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
         <PaymentSuccess matchInfo={matchInfo} />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen pt-12 pb-20 px-4">
+    <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <a href={`/my-team/match/${params.matchId}`}>

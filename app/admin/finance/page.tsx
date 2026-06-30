@@ -83,7 +83,7 @@ export default function AdminFinancePage() {
   const netUnitr = cashIn - cash.payoutsPence;
 
   return (
-    <div className="px-4 md:px-8 pt-12 pb-10 max-w-3xl mx-auto space-y-6">
+    <div className="px-4 md:px-8 pt-16 pb-10 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-bold">Finance</h1>
         <p className="text-xs text-text-secondary mt-0.5">In-app credit and real Stripe cash, tracked separately.</p>

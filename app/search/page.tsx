@@ -101,7 +101,7 @@ function SearchContent() {
   const hasResults = players.length > 0 || teams.length > 0;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-6">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-6">
       <header className="mb-5">
         <h1 className="text-2xl font-bold mb-4">Search</h1>
         <div className="relative">
