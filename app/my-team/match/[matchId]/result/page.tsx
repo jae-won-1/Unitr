@@ -13,7 +13,23 @@ type Match = {
 };
 
 type RosterPlayer = { player_id: string; name: string };
-type Participation = { started: boolean; subbedOn: boolean; goals: number };
+type PlayerStats = { goals: number; assists: number };
+
+function Counter({
+  value, onChange, disabled, min = 0, max,
+}: { value: number; onChange: (n: number) => void; disabled?: boolean; min?: number; max?: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <button type="button" disabled={disabled || value <= min}
+        onClick={() => onChange(Math.max(min ?? 0, value - 1))}
+        className="w-7 h-7 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary disabled:opacity-30 text-sm">−</button>
+      <span className="text-sm font-bold w-5 text-center">{value}</span>
+      <button type="button" disabled={disabled || (max !== undefined && value >= max)}
+        onClick={() => onChange(value + 1)}
+        className="w-7 h-7 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary disabled:opacity-30 text-sm">+</button>
+    </div>
+  );
+}
 
 export default function SubmitResultPage({ params }: { params: { matchId: string } }) {
   const router = useRouter();
@@ -25,7 +41,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [teamScore, setTeamScore] = useState("");
   const [opponentScore, setOpponentScore] = useState("");
-  const [participation, setParticipation] = useState<Record<string, Participation>>({});
+  const [stats, setStats] = useState<Record<string, PlayerStats>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
@@ -63,53 +79,62 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
         ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
         setRoster(rosterList);
 
-        const { data: existingResult } = await supabase.from("match_results").select("team_score, opponent_score").eq("match_id", params.matchId).eq("team_id", tid).maybeSingle();
+        const { data: existingResult } = await supabase.from("match_results")
+          .select("team_score, opponent_score").eq("match_id", params.matchId).eq("team_id", tid).maybeSingle();
         if (existingResult) {
           setTeamScore(String(existingResult.team_score));
           setOpponentScore(String(existingResult.opponent_score));
         }
-        const { data: existingPlayers } = await supabase.from("match_result_players").select("player_id, started, subbed_on, goals").eq("match_id", params.matchId).eq("team_id", tid);
+        const { data: existingPlayers } = await supabase.from("match_result_players")
+          .select("player_id, goals, assists").eq("match_id", params.matchId).eq("team_id", tid);
         if (existingPlayers && existingPlayers.length > 0) {
-          const prefill: Record<string, Participation> = {};
+          const prefill: Record<string, PlayerStats> = {};
           for (const p of existingPlayers) {
-            prefill[p.player_id] = { started: p.started, subbedOn: p.subbed_on, goals: p.goals };
+            if (p.goals > 0 || p.assists > 0) {
+              prefill[p.player_id] = { goals: p.goals, assists: p.assists ?? 0 };
+            }
           }
-          setParticipation(prefill);
+          setStats(prefill);
         }
       }
     }
     load();
   }, [user, params.matchId]);
 
-  const setField = (playerId: string, field: keyof Participation, value: boolean | number) => {
-    setParticipation((prev) => {
-      const current = prev[playerId] ?? { started: false, subbedOn: false, goals: 0 };
-      const updated = { ...current, [field]: value };
-      if (field === "started" && value === true) updated.subbedOn = false;
-      if (field === "subbedOn" && value === true) updated.started = false;
-      return { ...prev, [playerId]: updated };
-    });
+  const setStat = (playerId: string, field: keyof PlayerStats, value: number) => {
+    setStats((prev) => ({
+      ...prev,
+      [playerId]: { ...(prev[playerId] ?? { goals: 0, assists: 0 }), [field]: value },
+    }));
   };
 
+  const totalGoals = Object.values(stats).reduce((s, p) => s + p.goals, 0);
+  const totalAssists = Object.values(stats).reduce((s, p) => s + p.assists, 0);
+  const ts = parseInt(teamScore, 10);
+
   const handleSubmit = async () => {
-    if (!user || !myTeamId) return;
+    if (!user || !myTeamId || !match) return;
+    const m = match;
     if (teamScore.trim() === "" || opponentScore.trim() === "") {
       setError("Enter the final score for both teams.");
       return;
     }
-    const ts = parseInt(teamScore, 10);
-    const os = parseInt(opponentScore, 10);
-    if (isNaN(ts) || isNaN(os) || ts < 0 || os < 0) {
+    if (isNaN(ts) || isNaN(parseInt(opponentScore, 10)) || ts < 0 || parseInt(opponentScore, 10) < 0) {
       setError("Scores must be valid non-negative numbers.");
       return;
     }
-    const participants = Object.entries(participation).filter(([, p]) => p.started || p.subbedOn);
-    if (participants.length === 0) {
-      setError("Tick at least one player who started or was subbed on.");
+    if (totalGoals !== ts) {
+      setError(`Goals scored by players (${totalGoals}) must add up exactly to your team's score (${ts}).`);
       return;
     }
+    if (totalAssists > ts) {
+      setError(`Total assists (${totalAssists}) can't exceed total goals (${ts}).`);
+      return;
+    }
+
     setSaving(true);
     setError(null);
+    const os = parseInt(opponentScore, 10);
 
     await supabase.from("match_results").upsert({
       match_id: params.matchId,
@@ -119,19 +144,48 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       submitted_by: user.id,
     }, { onConflict: "match_id,team_id" });
 
-    await supabase.from("match_result_players").upsert(
-      participants.map(([playerId, p]) => ({
+    // Delete old player rows then insert fresh ones (only players with any stat).
+    await supabase.from("match_result_players").delete()
+      .eq("match_id", params.matchId).eq("team_id", myTeamId);
+
+    const playerRows = Object.entries(stats)
+      .filter(([, p]) => p.goals > 0 || p.assists > 0)
+      .map(([playerId, p]) => ({
         match_id: params.matchId,
         team_id: myTeamId,
         player_id: playerId,
-        started: p.started,
-        subbed_on: p.subbedOn,
+        started: false,
+        subbed_on: false,
         goals: p.goals,
-      })),
-      { onConflict: "match_id,player_id" }
-    );
+        assists: p.assists,
+      }));
+    if (playerRows.length > 0) {
+      await supabase.from("match_result_players").insert(playerRows);
+    }
 
     await supabase.from("matches").update({ result_submitted: true }).eq("id", params.matchId);
+
+    const oppTeamId = m.posting_team_id === myTeamId ? m.challenging_team_id : m.posting_team_id;
+    const { data: oppResult } = await supabase.from("match_results")
+      .select("team_score, opponent_score, submitted_by").eq("match_id", params.matchId).eq("team_id", oppTeamId).maybeSingle();
+
+    if (oppResult) {
+      const scoresMatch = oppResult.team_score === os && oppResult.opponent_score === ts;
+      if (scoresMatch) {
+        await supabase.from("matches").update({ result_verified: true }).eq("id", params.matchId);
+      } else {
+        await supabase.from("match_results").delete().eq("match_id", params.matchId);
+        await supabase.from("matches").update({ result_submitted: false, result_verified: false }).eq("id", params.matchId);
+        const msg = `⚠️ Score conflict for your match on ${m.match_date}. Please re-submit the correct result.`;
+        await supabase.from("messages").insert([
+          { sender_id: user.id, receiver_id: oppResult.submitted_by, type: "score_conflict", body: msg },
+          { sender_id: user.id, receiver_id: user.id, type: "score_conflict", body: `⚠️ Score conflict on ${m.match_date}. Your submission differed from the opponent's. Please re-submit.` },
+        ]);
+        setSaving(false);
+        setError("Score conflict: the opponent submitted a different result. Both submissions have been cleared — please coordinate and re-submit.");
+        return;
+      }
+    }
 
     setSaving(false);
     router.push("/my-team/history");
@@ -140,7 +194,6 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
   if (match === undefined) {
     return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
   }
-
   if (!match) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-3">
@@ -149,6 +202,8 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       </div>
     );
   }
+
+  const goalsLeft = ts - totalGoals;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
@@ -165,7 +220,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       <div className="flex flex-col gap-5">
         {alreadySubmitted && (
           <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
-            <p className="text-xs text-accent">A result has already been submitted for this match — saving again will update it.</p>
+            <p className="text-xs text-accent">A result has already been submitted — saving again will update it.</p>
           </div>
         )}
 
@@ -178,49 +233,78 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
         {/* Score */}
         <section className="bg-surface-2 border border-border rounded-2xl p-4">
           <p className="text-sm font-semibold mb-3">Final Score</p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-end gap-3">
             <div className="flex-1 flex flex-col gap-1.5">
-              <label className="text-xs text-text-secondary truncate">{myTeamName}</label>
-              <input type="number" min={0} inputMode="numeric" value={teamScore} onChange={(e) => setTeamScore(e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-lg font-bold outline-none focus:border-accent/50" />
+              <label className="text-xs font-semibold text-text-primary">Your Team</label>
+              <input type="number" min={0} inputMode="numeric" value={teamScore}
+                onChange={(e) => setTeamScore(e.target.value)}
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-bold outline-none focus:border-accent/50" />
             </div>
-            <span className="text-text-secondary font-bold pt-5">–</span>
+            <span className="text-text-secondary font-bold pb-3">–</span>
             <div className="flex-1 flex flex-col gap-1.5">
-              <label className="text-xs text-text-secondary truncate">{opponentName}</label>
-              <input type="number" min={0} inputMode="numeric" value={opponentScore} onChange={(e) => setOpponentScore(e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-lg font-bold outline-none focus:border-accent/50" />
+              <label className="text-xs font-semibold text-text-primary">Opponent</label>
+              <input type="number" min={0} inputMode="numeric" value={opponentScore}
+                onChange={(e) => setOpponentScore(e.target.value)}
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-bold outline-none focus:border-accent/50" />
             </div>
           </div>
         </section>
 
-        {/* Squad participation + scorers */}
+        {/* Goals */}
         <section className="bg-surface-2 border border-border rounded-2xl p-4">
-          <p className="text-sm font-semibold mb-1">Who Played</p>
-          <p className="text-xs text-text-secondary mb-3">Tick Started or Subbed On for each player who took part, and add their goals.</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-semibold">Goalscorers</p>
+            {!isNaN(ts) && ts > 0 && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${goalsLeft === 0 ? "bg-accent/10 text-accent" : "bg-yellow-500/10 text-yellow-400"}`}>
+                {goalsLeft === 0 ? "✓ All accounted for" : `${goalsLeft} goal${goalsLeft !== 1 ? "s" : ""} left`}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-text-secondary mb-3">
+            Goals per player must add up to your team&apos;s score exactly.
+          </p>
           <div className="space-y-2">
             {roster.map((p) => {
-              const part = participation[p.player_id] ?? { started: false, subbedOn: false, goals: 0 };
-              const participated = part.started || part.subbedOn;
+              const playerStats = stats[p.player_id] ?? { goals: 0, assists: 0 };
               return (
-                <div key={p.player_id} className="bg-background border border-border rounded-xl px-3 py-2.5">
-                  <p className="text-sm font-medium mb-2 truncate">{p.player_id === user?.id ? "You" : p.name}</p>
+                <div key={p.player_id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+                  <p className="flex-1 text-sm font-medium truncate">{p.player_id === user?.id ? "You" : p.name}</p>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setField(p.player_id, "started", !part.started)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${part.started ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
-                      Started
-                    </button>
-                    <button type="button" onClick={() => setField(p.player_id, "subbedOn", !part.subbedOn)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${part.subbedOn ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
-                      Subbed On
-                    </button>
-                    <div className="flex items-center gap-2 ml-auto">
-                      <button type="button" disabled={!participated} onClick={() => setField(p.player_id, "goals", Math.max(0, part.goals - 1))}
-                        className="w-6 h-6 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary disabled:opacity-30">−</button>
-                      <span className="text-sm font-bold w-6 text-center">{part.goals}</span>
-                      <button type="button" disabled={!participated} onClick={() => setField(p.player_id, "goals", part.goals + 1)}
-                        className="w-6 h-6 rounded-full bg-surface-2 border border-border flex items-center justify-center text-text-secondary disabled:opacity-30">+</button>
-                      <span className="text-[10px] text-text-secondary flex-shrink-0">goals</span>
-                    </div>
+                    <span className="text-[10px] text-text-secondary">⚽</span>
+                    <Counter
+                      value={playerStats.goals}
+                      onChange={(n) => setStat(p.player_id, "goals", n)}
+                      max={isNaN(ts) ? undefined : ts - totalGoals + playerStats.goals}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Assists */}
+        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-semibold">Assists</p>
+            <span className="text-xs text-text-secondary">{totalAssists} total</span>
+          </div>
+          <p className="text-xs text-text-secondary mb-3">
+            Assists don&apos;t need to match exactly — total must not exceed goals scored.
+          </p>
+          <div className="space-y-2">
+            {roster.map((p) => {
+              const playerStats = stats[p.player_id] ?? { goals: 0, assists: 0 };
+              return (
+                <div key={p.player_id} className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+                  <p className="flex-1 text-sm font-medium truncate">{p.player_id === user?.id ? "You" : p.name}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-text-secondary">🅰️</span>
+                    <Counter
+                      value={playerStats.assists}
+                      onChange={(n) => setStat(p.player_id, "assists", n)}
+                      max={isNaN(ts) ? undefined : ts - totalAssists + playerStats.assists}
+                    />
                   </div>
                 </div>
               );

@@ -36,7 +36,9 @@ function effectiveStatus(status: string, timeChanged: boolean) {
   return timeChanged ? status : "confirmed";
 }
 
-type Tab = "overview" | "squad" | "payment" | "tactics";
+type Tab = "overview" | "squad" | "payment" | "tactics" | "result";
+
+type ResultPlayer = { player_id: string; name: string; started: boolean; subbed_on: boolean; goals: number };
 
 const formations: Record<string, { position: string; x: number; y: number }[]> = {
   "4-3-3": [
@@ -96,6 +98,11 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const [settleError, setSettleError] = useState<string | null>(null);
   const [rosterLocked, setRosterLocked] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());  // players the captain removed from charging
+  const [resultVerified, setResultVerified] = useState(false);
+  const [myResult, setMyResult] = useState<{ teamScore: number; opponentScore: number } | null>(null);
+  const [oppResult, setOppResult] = useState<{ teamScore: number; opponentScore: number } | null>(null);
+  const [myResultPlayers, setMyResultPlayers] = useState<ResultPlayer[]>([]);
+  const [oppResultPlayers, setOppResultPlayers] = useState<ResultPlayer[]>([]);
 
   const matchMedia = tactics.media.filter((m) => m.matchId === params.matchId);
   const teamMedia = tactics.media.filter((m) => !m.matchId);
@@ -196,6 +203,50 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     const iv = setInterval(tick, 1000);
     return () => clearInterval(iv);
   }, [match]);
+
+  // Load submitted results + players for both teams whenever the match is known.
+  useEffect(() => {
+    if (!match) return;
+    const currentMatch = match;
+    async function loadResults() {
+      const [{ data: results }, { data: players }] = await Promise.all([
+        supabase.from("match_results").select("team_id, team_score, opponent_score").eq("match_id", params.matchId),
+        supabase.from("match_result_players").select("team_id, player_id, started, subbed_on, goals").eq("match_id", params.matchId),
+      ]);
+
+      // Fetch names for all players in the result.
+      const playerIds = [...new Set((players ?? []).map((p) => p.player_id))];
+      const { data: profiles } = playerIds.length > 0
+        ? await supabase.from("profiles").select("id, full_name").in("id", playerIds)
+        : { data: [] };
+      const nameById = new Map((profiles ?? []).map((p) => [p.id, p.full_name as string]));
+
+      // Check if result is verified via DB (both teams submitted matching scores).
+      const { data: matchMeta } = await supabase.from("matches").select("result_verified").eq("id", params.matchId).maybeSingle();
+      setResultVerified(!!matchMeta?.result_verified);
+
+      // My team vs opponent split — myTeamId may still be null on first render;
+      // fall back to posting_team_id as "home" if not yet resolved.
+      const tid = myTeamId ?? currentMatch.postingTeamId;
+      const oppId = tid === currentMatch.postingTeamId ? currentMatch.challengingTeamId : currentMatch.postingTeamId;
+
+      const myRes = (results ?? []).find((r) => r.team_id === tid);
+      const oppRes = (results ?? []).find((r) => r.team_id === oppId);
+      setMyResult(myRes ? { teamScore: myRes.team_score, opponentScore: myRes.opponent_score } : null);
+      setOppResult(oppRes ? { teamScore: oppRes.team_score, opponentScore: oppRes.opponent_score } : null);
+
+      const toPlayer = (p: { player_id: string; started: boolean; subbed_on: boolean; goals: number }): ResultPlayer => ({
+        player_id: p.player_id,
+        name: nameById.get(p.player_id) ?? "Player",
+        started: p.started,
+        subbed_on: p.subbed_on,
+        goals: p.goals,
+      });
+      setMyResultPlayers((players ?? []).filter((p) => p.team_id === tid).map(toPlayer));
+      setOppResultPlayers((players ?? []).filter((p) => p.team_id === oppId).map(toPlayer));
+    }
+    loadResults();
+  }, [match, myTeamId, params.matchId]);
 
   const handleConfirmAttendance = async (newStatus: "confirmed" | "declined") => {
     if (!user || !myTeamId) return;
@@ -385,6 +436,34 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const teamPoolPence = isPoster ? feePence - halfPence : halfPence;
   const teamShare = chargedParticipants.length > 0 ? teamPoolPence / chargedParticipants.length / 100 : 0;
 
+  // ── Result-view derived data ──────────────────────────────────
+  const pitchPositions = formations[formation] ?? formations["4-3-3"];
+  const myStarters = myResultPlayers.filter((p) => p.started);
+  const myBench    = myResultPlayers.filter((p) => p.subbed_on);
+  const myScorers  = myResultPlayers.filter((p) => p.goals > 0);
+  const oppScorers = oppResultPlayers.filter((p) => p.goals > 0);
+  const hasResult  = !!myResult || !!oppResult;
+  const myS = myResult?.teamScore ?? 0;
+  const oppS = myResult?.opponentScore ?? 0;
+  const myInitials  = myTeamName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const oppInitials = opponentName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const fmtMatchDate = /^\d{4}-\d{2}-\d{2}$/.test(match.match_date)
+    ? new Date(match.match_date + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "long", year: "numeric" })
+    : match.match_date;
+  const playerNameMap = new Map<string, string>([
+    ...confirmations.map((c): [string, string] => [c.player_id, c.full_name]),
+    ...myResultPlayers.map((p): [string, string] => [p.player_id, p.name]),
+  ]);
+  // Returns initials + first name for the player assigned to pitch slot i
+  // (from match_tactics lineup), falling back to result-order if no lineup.
+  const slotPlayer = (i: number): { initials: string; firstName: string } | null => {
+    const pid = lineup[i] ?? myStarters[i]?.player_id;
+    if (!pid) return null;
+    const n = playerNameMap.get(pid) ?? myResultPlayers.find((p) => p.player_id === pid)?.name ?? "";
+    if (!n) return null;
+    return { initials: n.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(), firstName: n.split(" ")[0] };
+  };
+
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       {/* Header */}
@@ -394,456 +473,159 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         </a>
         <div className="flex-1">
           <h1 className="text-base font-bold">{myTeamName} vs {opponentName}</h1>
-          <p className="text-xs text-text-secondary">{match.match_date} · {match.match_time}</p>
         </div>
-        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-1 rounded-full">Confirmed</span>
       </div>
 
-      {/* Tabs */}
-      <div className="flex bg-surface-2 border border-border rounded-xl p-1 mb-5 gap-0.5">
-        {(["overview", "squad", "payment", "tactics"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${tab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
-            {t}
-          </button>
-        ))}
-      </div>
+      {/* ── Result view (no tabs) ──────────────────────────────── */}
 
-      {/* ── OVERVIEW ── */}
-      {tab === "overview" && (
-        <div className="space-y-4">
-          <div className="bg-accent/10 border border-accent/30 rounded-2xl p-4 space-y-2.5">
-            <p className="text-sm font-bold text-accent mb-1">Match Details</p>
-            {[
-              { label: "My Team", value: myTeamName },
-              { label: "Opponent", value: opponentName },
-              { label: "Date", value: match.match_date },
-              { label: "Kick-off", value: match.match_time },
-              { label: "Venue", value: match.confirmedPitch.name },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex items-center justify-between text-xs">
-                <span className="text-text-secondary">{label}</span>
-                <span className="font-semibold">{value}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Match share — settled after the match via Team Credits */}
-          <div className="bg-surface-2 border border-border rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-semibold">Match Share</p>
-              <span className="text-sm font-bold text-accent">£{perPlayer}/player</span>
+      {/* ── Score block ── */}
+      <div className="bg-surface-2 border border-border rounded-2xl pt-5 pb-4 px-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
+              <span className="text-sm font-bold text-accent">{myInitials}</span>
             </div>
-            <p className="text-xs text-text-secondary mb-3">
-              {confirmedCount}/{confirmations.length} players confirmed
-            </p>
-            {isCaptain ? (
-              <button onClick={() => setTab("payment")}
-                className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-                Settle Squad
-              </button>
+            <p className="text-xs font-semibold text-center leading-tight">{myTeamName}</p>
+          </div>
+          <div className="flex flex-col items-center px-3">
+            {hasResult ? (
+              <>
+                <p className="text-5xl font-extrabold tracking-tighter leading-none mb-1">{myS} – {oppS}</p>
+                <p className="text-[11px] text-text-secondary">{resultVerified ? "Full time" : "Pending"}</p>
+              </>
             ) : (
-              <p className="text-xs text-text-secondary">
-                After the match, your share is collected under <span className="text-accent font-semibold">Team Credits → Dues</span>. You&apos;ll get a reminder to settle it.
-              </p>
+              <p className="text-sm text-text-secondary font-medium">No result yet</p>
             )}
           </div>
-
-          {/* Attendance */}
-          {timeChanged ? (
-            myConfirmStatus !== null && (
-              <div className="bg-surface-2 border border-border rounded-2xl p-4">
-                <p className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-1.5">Final Confirmation Needed</p>
-                <p className="text-xs text-text-secondary mb-3">
-                  Kick-off ({match.match_time}) is different from your team&apos;s original availability poll ({originalPost?.match_time}). Confirm you can still make it.
-                </p>
-                <div className="flex gap-2">
-                  <button onClick={() => handleConfirmAttendance("confirmed")}
-                    className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${myConfirmStatus === "confirmed" ? "bg-accent text-black" : "bg-surface border border-border text-text-secondary"}`}>
-                    ✓ I&apos;m In
-                  </button>
-                  <button onClick={() => handleConfirmAttendance("declined")}
-                    className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-colors ${myConfirmStatus === "declined" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-surface border border-border text-text-secondary"}`}>
-                    ✕ Can&apos;t Make It
-                  </button>
-                </div>
-              </div>
-            )
-          ) : (
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 flex items-center gap-2.5">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
-              <p className="text-xs text-text-secondary">Kick-off matches your team&apos;s original availability poll — no further confirmation needed.</p>
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center">
+              <span className="text-sm font-bold text-text-secondary">{oppInitials}</span>
             </div>
-          )}
+            <p className="text-xs font-semibold text-center leading-tight">{opponentName}</p>
+          </div>
         </div>
-      )}
 
-      {/* ── SQUAD ── */}
-      {tab === "squad" && (
+        <div className="border-t border-border pt-3 flex flex-col items-center gap-0.5">
+          <p className="text-[11px] text-text-secondary">{fmtMatchDate} · {match.match_time}</p>
+          <p className="text-[11px] text-text-secondary">{match.confirmedPitch.name}</p>
+        </div>
+
+        {(myScorers.length > 0 || oppScorers.length > 0) && (
+          <div className="border-t border-border pt-3 flex gap-2 text-[11px]">
+            <div className="flex-1 space-y-0.5">
+              {myScorers.map((p) => (
+                <p key={p.player_id} className="text-text-secondary">⚽ {p.name}{p.goals > 1 ? ` ×${p.goals}` : ""}</p>
+              ))}
+            </div>
+            <div className="flex-1 space-y-0.5 text-right">
+              {oppScorers.map((p) => (
+                <p key={p.player_id} className="text-text-secondary">{p.name}{p.goals > 1 ? ` ×${p.goals}` : ""} ⚽</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!hasResult && isCaptain && (
+          <a href={`/my-team/match/${params.matchId}/result`}
+            className="block w-full py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold text-center">
+            Submit Result
+          </a>
+        )}
+        {myResult && !resultVerified && !oppResult && (
+          <p className="text-[11px] text-yellow-400 text-center">Waiting for {opponentName} to submit their result</p>
+        )}
+      </div>
+
+      {myStarters.length > 0 && (
         <div>
-          {!timeChanged && (
-            <p className="text-[11px] text-text-secondary mb-3">Kick-off matches each team&apos;s availability poll — listed players are participating.</p>
-          )}
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* My team */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1 truncate">{myTeamName}</p>
-              {myTeamConfs.length === 0 ? (
-                <p className="text-[11px] text-text-secondary py-4 text-center">No players listed.</p>
-              ) : myTeamConfs.map((c) => {
-                const initials = c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                const isMe = c.player_id === user?.id;
-                return (
-                  <div key={c.player_id} className="bg-surface-2 border border-border rounded-xl px-2.5 py-2 flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] font-bold text-accent">{initials}</span>
-                      </div>
-                      <p className="flex-1 min-w-0 text-xs font-medium truncate">{c.full_name}{isMe ? " (You)" : ""}</p>
-                    </div>
-                    {timeChanged ? (
-                      isMe ? (
-                        <div className="flex gap-1">
-                          <button onClick={() => handleConfirmAttendance("confirmed")}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-colors ${myConfirmStatus === "confirmed" ? "bg-accent text-black" : "bg-surface border border-border text-text-secondary"}`}>
-                            In
-                          </button>
-                          <button onClick={() => handleConfirmAttendance("declined")}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-colors ${myConfirmStatus === "declined" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-surface border border-border text-text-secondary"}`}>
-                            Out
-                          </button>
-                        </div>
-                      ) : <ConfirmBadge status={c.status} />
-                    ) : (
-                      <span className="text-[9px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full self-start">Playing</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Opponent team */}
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1 truncate">{opponentName}</p>
-              {opponentConfs.length === 0 ? (
-                <p className="text-[11px] text-text-secondary py-4 text-center">No players listed.</p>
-              ) : opponentConfs.map((c) => {
-                const initials = c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                return (
-                  <div key={c.player_id} className="bg-surface-2 border border-border rounded-xl px-2.5 py-2 flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
-                        <span className="text-[10px] font-bold text-text-secondary">{initials}</span>
-                      </div>
-                      <p className="flex-1 min-w-0 text-xs font-medium truncate">{c.full_name}</p>
-                    </div>
-                    {timeChanged ? (
-                      <ConfirmBadge status={c.status} />
-                    ) : (
-                      <span className="text-[9px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full self-start">Playing</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── PAYMENT ── */}
-      {tab === "payment" && (
-        <div className="space-y-4">
-          <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-            <p className="text-sm font-semibold">Payment Breakdown</p>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between text-text-secondary">
-                <span>Pitch hire (1hr)</span>
-                <span className="font-semibold text-text-primary">£{match.confirmedPitch.price}</span>
-              </div>
-              <div className="flex justify-between text-text-secondary">
-                <span>Unitr fee (5%)</span>
-                <span className="font-semibold text-text-primary">£{(match.confirmedPitch.price * 0.05).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-text-secondary">
-                <span>{myTeamName} players</span>
-                <span className="font-semibold text-text-primary">{myParticipants.length} played</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-2">
-                <span className="font-semibold text-text-primary">Your share (inc. 5%)</span>
-                <span className="font-bold text-accent text-sm">£{(teamShare * 1.05).toFixed(2)}</span>
-              </div>
-            </div>
-            <p className="text-[10px] text-text-secondary">
-              The pitch is already secured with team credit. When the squad is locked, each
-              player who played is charged automatically to refill the credit.
-            </p>
-          </div>
-
-          <div className="bg-surface-2 border border-border rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold">Payment Deadline</p>
-              <span className={`text-sm font-bold tabular-nums ${countdown === "Expired" ? "text-red-400" : "text-accent"}`}>{countdown}</span>
-            </div>
-            <div className="w-full h-1.5 bg-background rounded-full mb-2">
-              <div className="h-1.5 bg-accent rounded-full transition-all"
-                style={{ width: `${Math.min(100, confirmations.length > 0 ? (confirmedCount / confirmations.length) * 100 : 0)}%` }} />
-            </div>
-            <p className="text-xs text-text-secondary">{confirmedCount} of {confirmations.length} players confirmed</p>
-          </div>
-
-          {/* ── Captain: lock squad & auto-charge saved cards ── */}
-          {isCaptain ? (
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold">Settle {myTeamName}</p>
-                {rosterLocked && (
-                  <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Squad locked</span>
-                )}
-              </div>
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between text-text-secondary">
-                  <span>Your team&apos;s share of pitch</span>
-                  <span className="font-semibold text-text-primary">£{(teamPoolPence / 100).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-text-secondary">
-                  <span>Players being charged</span>
-                  <span className="font-semibold text-text-primary">{chargedParticipants.length} of {myParticipants.length}</span>
-                </div>
-                <div className="flex justify-between border-t border-border pt-1.5">
-                  <span className="font-semibold text-text-primary">Each pays (+5% fee)</span>
-                  <span className="font-bold text-accent">£{teamShare.toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Captain picks who's charged — defaults to everyone who played */}
-              {!rosterLocked && myParticipants.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-text-secondary">Tap to exclude a player from this charge (e.g. a guest or no-show who was still confirmed).</p>
-                  {myParticipants.map((c) => {
-                    const isIn = !excluded.has(c.player_id);
-                    return (
-                      <button key={c.player_id}
-                        onClick={() => setExcluded((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(c.player_id)) next.delete(c.player_id); else next.add(c.player_id);
-                          return next;
-                        })}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-colors ${isIn ? "bg-background border-border" : "bg-surface border-border opacity-50"}`}>
-                        <span className="truncate">{c.player_id === user?.id ? `${c.full_name} (You)` : c.full_name}</span>
-                        <span className={`text-[10px] font-semibold flex-shrink-0 ${isIn ? "text-accent" : "text-text-secondary"}`}>
-                          {isIn ? "Charging" : "Excluded"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Per-player results after settling */}
-              {settleResults && (
-                <div className="space-y-1.5">
-                  {myParticipants.map((c) => {
-                    const r = settleResults[c.player_id];
-                    return (
-                      <div key={c.player_id} className="flex items-center justify-between text-xs bg-background border border-border rounded-lg px-3 py-2">
-                        <span className="truncate">{c.full_name}</span>
-                        {r?.ok ? (
-                          <span className="text-[10px] font-semibold text-accent flex-shrink-0">Charged ✓</span>
-                        ) : r ? (
-                          <span className="text-[10px] font-semibold text-red-400 flex-shrink-0">{r.reason ?? "Failed"}</span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-accent flex-shrink-0">Already settled</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {Object.values(settleResults).some((r) => !r.ok) && (
-                    <p className="text-[10px] text-text-secondary">
-                      Players whose card failed can still pay manually below — the pitch stays
-                      secured by your team credit in the meantime.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {settleError && <p className="text-xs text-red-400">{settleError}</p>}
-
-              <button onClick={handleSettleSquad} disabled={settling}
-                className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
-                {settling ? "Charging cards…" : rosterLocked ? "Re-run for unsettled players" : "Lock squad & charge cards"}
-              </button>
-              <p className="text-[10px] text-text-secondary text-center">
-                Charges each player&apos;s saved card automatically · refills team credit
-              </p>
-            </div>
-          ) : (
-            /* ── Player: shares are settled after the match in Team Credits → Dues ── */
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
-              <p className="text-sm font-semibold">Your share</p>
-              <p className="text-xs text-text-secondary">
-                Once this match has been played, your share is added to your team&apos;s
-                Dues. Settle it any time from Team Credits — you&apos;ll get a reminder too.
-              </p>
-              <a href="/my-team"
-                className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center">
-                Go to Team Credits
-              </a>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TACTICS ── */}
-      {tab === "tactics" && (
-        <div className="space-y-4">
-          {tacticsLoaded && (
-            <button onClick={loadFromTeamTactics}
-              className="w-full py-2.5 rounded-xl bg-surface-2 border border-dashed border-border text-xs font-semibold text-text-secondary flex items-center justify-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
-              Load from My Team Tactics
-            </button>
-          )}
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {Object.keys(formations).map((f) => (
-              <button key={f} onClick={() => { setFormation(f); setLineup({}); }}
-                className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${formation === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{f}</button>
-            ))}
-          </div>
-          <p className="text-[11px] text-text-secondary -mt-2">Tap a position to assign a player from your squad.</p>
-
-          <div className="relative w-full rounded-2xl overflow-hidden" style={{ paddingBottom: "130%", background: "linear-gradient(180deg, #1a5c1a 0%, #1e6b1e 25%, #1a5c1a 50%, #1e6b1e 75%, #1a5c1a 100%)" }}>
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">{myTeamName} · Starting XI</p>
+          <div className="relative w-full rounded-2xl overflow-hidden" style={{ paddingBottom: "130%", background: "linear-gradient(180deg,#1a5c1a 0%,#1e6b1e 25%,#1a5c1a 50%,#1e6b1e 75%,#1a5c1a 100%)" }}>
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 130" preserveAspectRatio="none">
-              <rect x="5" y="5" width="90" height="120" rx="1" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <line x1="5" y1="65" x2="95" y2="65" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <circle cx="50" cy="65" r="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <circle cx="50" cy="65" r="0.8" fill="rgba(255,255,255,0.6)"/>
-              <rect x="22" y="5" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <rect x="34" y="5" width="32" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <rect x="22" y="105" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-              <rect x="34" y="115" width="32" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
+              <rect x="5" y="5" width="90" height="120" rx="1" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <line x1="5" y1="65" x2="95" y2="65" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <circle cx="50" cy="65" r="10" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <rect x="22" y="5" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <rect x="22" y="107" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
             </svg>
-            {players.map((p, i) => {
-              const assignedPlayer = myTeamConfs.find((c) => c.player_id === lineup[i]);
-              const label = assignedPlayer
-                ? assignedPlayer.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
-                : p.position;
+            {pitchPositions.map((pos, i) => {
+              const sp = slotPlayer(i);
+              if (!sp) return null;
               return (
-                <button key={i} onClick={() => setPickerSlot(i)}
-                  className="absolute flex flex-col items-center gap-0.5" style={{ left: `${p.x}%`, top: `${p.y}%`, transform: "translate(-50%, -50%)" }}>
-                  <div className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center shadow-lg ${assignedPlayer ? "bg-blue-500" : "bg-accent"}`}>
-                    <span className="text-[9px] font-bold text-black leading-none">{label}</span>
+                <div key={i} className="absolute flex flex-col items-center gap-0.5"
+                  style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%,-50%)" }}>
+                  <div className="w-9 h-9 rounded-full bg-white border-2 border-white/80 flex items-center justify-center shadow-lg">
+                    <span className="text-[10px] font-bold text-black leading-none">{sp.initials}</span>
                   </div>
-                  {assignedPlayer && (
-                    <span className="text-[8px] font-semibold text-white bg-black/50 rounded px-1 truncate max-w-[44px]">
-                      {assignedPlayer.full_name.split(" ")[0]}
-                    </span>
-                  )}
-                </button>
+                  <span className="text-[9px] font-semibold text-white drop-shadow-md bg-black/40 rounded px-1 truncate max-w-[48px] text-center">{sp.firstName}</span>
+                </div>
               );
             })}
           </div>
 
-          <div>
-            <p className="text-sm font-semibold mb-2">Match Plan</p>
-            <div className="flex gap-2 flex-wrap">
-              {["Possession", "Counter-Attack", "High Press", "Direct Play", "Park the Bus"].map((s) => (
-                <button key={s} onClick={() => setStyle(s === style ? null : s)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${style === s ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{s}</button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold mb-2">Match Notes</p>
-            <textarea rows={3}
-              placeholder={`Instructions vs ${opponentName} — weaknesses, set pieces, key threats…`}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50 resize-none"
-            />
-          </div>
-
-          <div>
-            <p className="text-sm font-semibold mb-2">Media</p>
-            {[...matchMedia, ...teamMedia].length === 0 ? (
-              <p className="text-xs text-text-secondary italic mb-3">No media added yet.</p>
-            ) : (
-              <div className="space-y-2 mb-3">
-                {[...matchMedia, ...teamMedia].map((item) => (
-                  <div key={item.id} className="bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.type === "video" ? "bg-purple-500/15 border border-purple-500/30" : "bg-blue-500/15 border border-blue-500/30"}`}>
-                      {item.type === "video"
-                        ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
+          {myBench.length > 0 && (
+            <div className="mt-3 bg-surface-2 border border-border rounded-xl p-3">
+              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Bench</p>
+              <div className="space-y-2">
+                {myBench.map((p) => {
+                  const init = p.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <div key={p.player_id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="#22c55e"><path d="M12 2l10 20H2z"/></svg>
+                        <p className="text-sm">{p.name}</p>
+                      </div>
+                      {p.goals > 0 && <span className="text-[11px] text-text-secondary">⚽ {p.goals}</span>}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.label}</p>
-                      <p className="text-xs text-text-secondary capitalize">{item.type}</p>
-                    </div>
-                    <button onClick={() => saveTactics({ media: tactics.media.filter((m) => m.id !== item.id) })} className="text-xs text-red-400">Remove</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => saveTactics({ media: [...tactics.media, { id: String(Date.now()), type: "image", label: "New image tactic", matchId: params.matchId }] })}
-                className="flex flex-col items-center gap-2 bg-surface-2 border border-dashed border-border rounded-xl py-4 text-text-secondary">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <span className="text-xs font-semibold">Upload Image</span>
-              </button>
-              <button onClick={() => saveTactics({ media: [...tactics.media, { id: String(Date.now() + 1), type: "video", label: "New video tactic", matchId: params.matchId }] })}
-                className="flex flex-col items-center gap-2 bg-surface-2 border border-dashed border-border rounded-xl py-4 text-text-secondary">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <span className="text-xs font-semibold">Upload Video</span>
-              </button>
             </div>
-          </div>
-
-          <button onClick={handleSaveMatchTactics} disabled={savingTactics}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
-            {savingTactics ? "Saving…" : "Save & Share with Squad"}
-          </button>
+          )}
         </div>
       )}
 
-      {/* Lineup slot player picker */}
-      {pickerSlot !== null && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={() => setPickerSlot(null)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-5 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <p className="font-bold mb-1">Assign {players[pickerSlot].position}</p>
-            <p className="text-xs text-text-secondary mb-4">Pick a player from {myTeamName}.</p>
-            <div className="space-y-2">
-              {myTeamConfs.length === 0 && <p className="text-xs text-text-secondary py-4 text-center">No squad listed.</p>}
-              {myTeamConfs.map((c) => {
-                const initials = c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                const assignedElsewhere = Object.entries(lineup).some(([slot, pid]) => Number(slot) !== pickerSlot && pid === c.player_id);
+      {oppResultPlayers.length > 0 && (
+        <div className="bg-surface-2 border border-border rounded-2xl p-4">
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">{opponentName}</p>
+          {oppResultPlayers.filter((p) => p.started).map((p) => {
+            const init = p.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+            return (
+              <div key={p.player_id} className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                  <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
+                </div>
+                <p className="flex-1 text-sm">{p.name}</p>
+                {p.goals > 0 && <span className="text-[11px] text-text-secondary">⚽ {p.goals}</span>}
+              </div>
+            );
+          })}
+          {oppResultPlayers.filter((p) => p.subbed_on).length > 0 && (
+            <>
+              <div className="border-t border-border pt-2 mt-1 mb-2">
+                <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Bench</p>
+              </div>
+              {oppResultPlayers.filter((p) => p.subbed_on).map((p) => {
+                const init = p.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
                 return (
-                  <button key={c.player_id}
-                    onClick={() => { setLineup((prev) => ({ ...prev, [pickerSlot]: c.player_id })); setPickerSlot(null); }}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-surface-2 text-left">
-                    <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-accent">{initials}</span>
+                  <div key={p.player_id} className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
                     </div>
-                    <p className="flex-1 text-sm font-medium truncate">{c.full_name}</p>
-                    {assignedElsewhere && <span className="text-[10px] text-text-secondary flex-shrink-0">already placed</span>}
-                  </button>
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="#22c55e"><path d="M12 2l10 20H2z"/></svg>
+                      <p className="text-sm">{p.name}</p>
+                    </div>
+                    {p.goals > 0 && <span className="text-[11px] text-text-secondary">⚽ {p.goals}</span>}
+                  </div>
                 );
               })}
-            </div>
-            {lineup[pickerSlot] !== undefined && (
-              <button onClick={() => { setLineup((prev) => { const next = { ...prev }; delete next[pickerSlot]; return next; }); setPickerSlot(null); }}
-                className="w-full mt-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold">
-                Clear Slot
-              </button>
-            )}
-            <button onClick={() => setPickerSlot(null)} className="w-full mt-2 py-2.5 rounded-xl border border-border text-text-secondary text-xs font-semibold">
-              Cancel
-            </button>
-          </div>
+            </>
+          )}
         </div>
       )}
-
     </div>
   );
 }
