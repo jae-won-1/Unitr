@@ -24,6 +24,9 @@ const ISO_MONTHS: Record<string, number> = {
   Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
   Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
 };
+function isExpired(matchDate: string, matchTime: string): boolean {
+  return new Date(`${matchDate}T${matchTime}:00`) < new Date();
+}
 function toISODate(raw: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
@@ -866,14 +869,16 @@ function usePosts(excludeCaptainId: string | null, userId?: string) {
         securedBookingId: row.secured_booking_id ?? null,
       }));
 
+      const active = mapped.filter((p) => !isExpired(p.match_date, p.match_time));
+
       // Secured-pitch posts float to the top (pitch already locked in, joinable
       // right away), then availability-matching posts.
-      mapped.sort((a, b) =>
+      active.sort((a, b) =>
         (b.pitchSecured ? 1 : 0) - (a.pitchSecured ? 1 : 0) ||
         (b.availabilityMatch ? 1 : 0) - (a.availabilityMatch ? 1 : 0)
       );
 
-      setPosts(mapped);
+      setPosts(active);
       setLoading(false);
     }
 
@@ -913,7 +918,7 @@ function useMyPosts(captainId?: string) {
           payment_mode: row.payment_mode ?? "credit",
           pitchSecured: Boolean(row.pitch_secured),
           securedBookingId: row.secured_booking_id ?? null,
-        })));
+        })).filter((p) => !isExpired(p.match_date, p.match_time)));
         setLoading(false);
       });
   }, [captainId]);

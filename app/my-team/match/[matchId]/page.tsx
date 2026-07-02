@@ -204,10 +204,11 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     return () => clearInterval(iv);
   }, [match]);
 
-  // Load submitted results + players for both teams whenever the match is known.
+  // Load submitted results + players for both teams whenever the match and team are known.
   useEffect(() => {
-    if (!match) return;
+    if (!match || !myTeamId) return;
     const currentMatch = match;
+    const tid = myTeamId;
     async function loadResults() {
       const [{ data: results }, { data: players }] = await Promise.all([
         supabase.from("match_results").select("team_id, team_score, opponent_score").eq("match_id", params.matchId),
@@ -225,9 +226,6 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       const { data: matchMeta } = await supabase.from("matches").select("result_verified").eq("id", params.matchId).maybeSingle();
       setResultVerified(!!matchMeta?.result_verified);
 
-      // My team vs opponent split — myTeamId may still be null on first render;
-      // fall back to posting_team_id as "home" if not yet resolved.
-      const tid = myTeamId ?? currentMatch.postingTeamId;
       const oppId = tid === currentMatch.postingTeamId ? currentMatch.challengingTeamId : currentMatch.postingTeamId;
 
       const myRes = (results ?? []).find((r) => r.team_id === tid);
@@ -525,7 +523,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           </div>
         )}
 
-        {!hasResult && isCaptain && (
+        {!myResult && isCaptain && (
           <a href={`/my-team/match/${params.matchId}/result`}
             className="block w-full py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold text-center">
             Submit Result

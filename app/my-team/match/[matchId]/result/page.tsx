@@ -50,16 +50,23 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
     if (!user) return;
     async function load() {
       const { data: m } = await supabase.from("matches")
-        .select("id, posting_team_id, challenging_team_id, match_date, result_submitted")
+        .select("id, posting_team_id, challenging_team_id, match_date")
         .eq("id", params.matchId).maybeSingle();
       if (!m) { setMatch(null); return; }
       setMatch(m);
-      setAlreadySubmitted(!!m.result_submitted);
 
       const { data: captainTeam } = await supabase.from("teams").select("id, name").eq("captain_id", user!.id).maybeSingle();
-      const tid = captainTeam?.id ?? null;
+      let tid = captainTeam?.id ?? null;
+      let resolvedName = captainTeam?.name;
+      if (!tid) {
+        // Fallback: generic lookup can fail if captain_id isn't set correctly.
+        // Check the two teams in this match directly.
+        const { data: matchTeams } = await supabase.from("teams").select("id, name, captain_id").in("id", [m.posting_team_id, m.challenging_team_id]);
+        const myTeam = (matchTeams ?? []).find((t) => t.captain_id === user!.id);
+        if (myTeam) { tid = myTeam.id; resolvedName = myTeam.name; }
+      }
       setMyTeamId(tid);
-      if (captainTeam?.name) setMyTeamName(captainTeam.name);
+      if (resolvedName) setMyTeamName(resolvedName);
 
       const oppId = m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id;
       const { data: oppTeam } = await supabase.from("teams").select("name").eq("id", oppId).maybeSingle();
@@ -81,6 +88,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
 
         const { data: existingResult } = await supabase.from("match_results")
           .select("team_score, opponent_score").eq("match_id", params.matchId).eq("team_id", tid).maybeSingle();
+        setAlreadySubmitted(!!existingResult);
         if (existingResult) {
           setTeamScore(String(existingResult.team_score));
           setOpponentScore(String(existingResult.opponent_score));
@@ -163,8 +171,6 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       await supabase.from("match_result_players").insert(playerRows);
     }
 
-    await supabase.from("matches").update({ result_submitted: true }).eq("id", params.matchId);
-
     const oppTeamId = m.posting_team_id === myTeamId ? m.challenging_team_id : m.posting_team_id;
     const { data: oppResult } = await supabase.from("match_results")
       .select("team_score, opponent_score, submitted_by").eq("match_id", params.matchId).eq("team_id", oppTeamId).maybeSingle();
@@ -172,7 +178,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
     if (oppResult) {
       const scoresMatch = oppResult.team_score === os && oppResult.opponent_score === ts;
       if (scoresMatch) {
-        await supabase.from("matches").update({ result_verified: true }).eq("id", params.matchId);
+        await supabase.from("matches").update({ result_submitted: true, result_verified: true }).eq("id", params.matchId);
       } else {
         await supabase.from("match_results").delete().eq("match_id", params.matchId);
         await supabase.from("matches").update({ result_submitted: false, result_verified: false }).eq("id", params.matchId);

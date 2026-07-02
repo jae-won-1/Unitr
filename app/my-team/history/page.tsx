@@ -20,6 +20,7 @@ type MatchRow = {
   confirmed_pitch: { price?: number } | null;
   fees_settled: boolean;
   result_submitted: boolean;
+  result_verified: boolean;
 };
 
 type RosterPlayer = { player_id: string; name: string };
@@ -289,16 +290,20 @@ export default function MatchHistoryPage() {
       const past = all.filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.date) && f.date < today);
 
       const { data: rows } = past.length > 0
-        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted").in("post_id", past.map((f) => f.postId))
+        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", past.map((f) => f.postId))
         : { data: [] };
       const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
-      setMatchRows(Object.fromEntries((rows ?? []).map((r) => [r.id, r as MatchRow])));
+      setMatchRows(Object.fromEntries((rows ?? []).map((r) => [r.id, r as unknown as MatchRow])));
 
-      const submittedMatchIds = (rows ?? []).filter((r) => r.result_submitted).map((r) => r.id);
-      if (submittedMatchIds.length > 0 && tid) {
+      // Fetch all match_results for past matches, then filter client-side to the
+      // current team only. Consistent with match detail page which uses the same
+      // pattern — server-side eq("team_id") can return opponent rows unexpectedly.
+      const allMatchIds = (rows ?? []).map((r) => r.id);
+      if (allMatchIds.length > 0 && tid) {
         const { data: results } = await supabase.from("match_results")
-          .select("match_id, team_score, opponent_score").eq("team_id", tid).in("match_id", submittedMatchIds);
-        setMatchResults(Object.fromEntries((results ?? []).map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
+          .select("match_id, team_id, team_score, opponent_score").in("match_id", allMatchIds);
+        const myResults = (results ?? []).filter((r) => r.team_id === tid);
+        setMatchResults(Object.fromEntries(myResults.map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
       }
 
       const withRows: HistoryFixture[] = past
@@ -358,7 +363,7 @@ export default function MatchHistoryPage() {
                       {f.pitch}
                     </div>
                   </div>
-                  {f.matchRowId && m?.result_submitted && matchResults[f.matchRowId] && (() => {
+                  {f.matchRowId && m?.result_verified && matchResults[f.matchRowId] && (() => {
                     const r = matchResults[f.matchRowId];
                     const outcome = r.teamScore > r.opponentScore ? "won" : r.teamScore < r.opponentScore ? "lost" : "drew";
                     const colorClass = outcome === "won" ? "text-accent" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
@@ -368,7 +373,7 @@ export default function MatchHistoryPage() {
                   })()}
                 </div>
 
-                {f.matchRowId && isCaptainViewer && !m?.result_submitted ? (
+                {f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
                   <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
                     Submit Result
                   </a>

@@ -34,6 +34,19 @@ function getInitials(name: string) {
   return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
+const AVAIL_MONTHS: Record<string, number> = {
+  JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+  JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+};
+function isDateOptionExpired(opt: DateOption): boolean {
+  const m = opt.date.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+  if (!m) return false;
+  const month = AVAIL_MONTHS[m[2].toUpperCase()];
+  if (month === undefined) return false;
+  const [h, min] = opt.time.split(":").map(Number);
+  return new Date(Number(m[3]), month, Number(m[1]), h, min) < new Date();
+}
+
 function parseDateOption(dateStr: string, timeStr: string): DateOption {
   const d = new Date(dateStr + "T" + timeStr);
   const day = String(d.getDate()).padStart(2, "0");
@@ -75,7 +88,9 @@ function PlayerAvailability() {
         .maybeSingle();
 
       if (!req) { setLoading(false); return; }
-      setRequest(req);
+      const activeOptions = (req.date_options as DateOption[]).filter((opt) => !isDateOptionExpired(opt));
+      if (activeOptions.length === 0) { setLoading(false); return; }
+      setRequest({ ...req, date_options: activeOptions });
 
       const { data: existing } = await supabase
         .from("availability_responses")
@@ -328,7 +343,9 @@ function CaptainAvailability() {
         .limit(1).maybeSingle();
 
       if (!req) { setLoading(false); return; }
-      setRequest(req);
+      const activeOptions = (req.date_options as DateOption[]).filter((opt) => !isDateOptionExpired(opt));
+      if (activeOptions.length === 0) { setLoading(false); return; }
+      setRequest({ ...req, date_options: activeOptions });
 
       const { data: resps } = await supabase
         .from("availability_responses")
