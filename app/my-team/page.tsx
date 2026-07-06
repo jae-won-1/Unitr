@@ -948,7 +948,7 @@ function CaptainMyTeam() {
           {[
             { label: "Team Management", icon: "👥", href: "/my-team/players" },
             { label: "Post Announcement", icon: "📋", href: "/my-team/announcement/create" },
-            { label: "Transfer Window", icon: "🔄", href: "/my-team/transfer" },
+            { label: "Calendar", icon: "📅", href: "/my-team/availability" },
             { label: "Team Settings", icon: "⚙️", href: "#" },
           ].map((a) => (
             <a key={a.label} href={a.href}

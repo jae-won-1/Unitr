@@ -150,6 +150,17 @@ export default function PlayersPage() {
         </div>
       </div>
 
+      <a href="/my-team/transfer" className="flex items-center justify-between bg-surface-2 border border-border rounded-xl px-4 py-3 mb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-xl">🔄</span>
+          <div>
+            <p className="text-sm font-semibold">Transfer Window</p>
+            <p className="text-xs text-text-secondary">Scout &amp; sign new players</p>
+          </div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
         {positions.map((pos) => (
           <button
