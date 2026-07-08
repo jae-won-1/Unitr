@@ -32,6 +32,22 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
+const MONTHS: Record<string, string> = {
+  JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06",
+  JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
+};
+
+// Availability date_options store a human string like "Tue, 30 JUN 2026".
+// Parse it to an ISO date so we can match a poll option to a match_date.
+function parseOptionDate(dateStr: string): string | null {
+  const m = /(\d{1,2})\s+([A-Z]{3})\s+(\d{4})/.exec((dateStr ?? "").toUpperCase());
+  if (!m) return null;
+  const [, day, mon, year] = m;
+  const mm = MONTHS[mon];
+  if (!mm) return null;
+  return `${year}-${mm}-${day.padStart(2, "0")}`;
+}
+
 // ── Captain's per-match payment collection panel ──────────────────────────
 function PaymentCollectionPanel({
   matchId, teamId, isPoster, pitchPricePence, opponent, date, settled, onSettledChange,
@@ -44,6 +60,7 @@ function PaymentCollectionPanel({
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [participantIds, setParticipantIds] = useState<Set<string>>(new Set());
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<CollectRow[]>([]);
   const [sending, setSending] = useState(false);
@@ -59,11 +76,12 @@ function PaymentCollectionPanel({
       // Note: teams.captain_id has no FK relationship registered with profiles
       // in the Supabase schema cache, so it can't be embedded in a select —
       // doing so makes the entire query fail (PGRST200). Fetch separately.
-      const [{ data: members }, { data: team }, { data: confs }, { data: statusRows }] = await Promise.all([
+      const [{ data: members }, { data: team }, { data: confs }, { data: statusRows }, { data: polls }] = await Promise.all([
         supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", teamId).eq("status", "approved"),
         supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle(),
         supabase.from("match_confirmations").select("player_id, status").eq("match_id", matchId).eq("team_id", teamId),
         supabase.from("payment_collection_status").select("player_id, share_pence, received").eq("match_id", matchId).eq("team_id", teamId),
+        supabase.from("availability_requests").select("id, date_options").eq("team_id", teamId),
       ]);
       const { data: captainProfile } = team?.captain_id
         ? await supabase.from("profiles").select("full_name").eq("id", team.captain_id).maybeSingle()
@@ -74,9 +92,37 @@ function PaymentCollectionPanel({
       ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
       setRoster(rosterList);
       setRows((statusRows ?? []) as CollectRow[]);
+
+      // Who "played" = players who submitted availability for THIS match's date.
+      // Find the poll whose date_options include an entry matching match_date,
+      // then collect the players who marked that option as available.
+      const participants = new Set<string>();
+      type Opt = { id: string; date: string };
+      const pollList = (polls ?? []) as { id: string; date_options: Opt[] }[];
+      let matchedPoll: { id: string; optionIds: string[] } | null = null;
+      for (const poll of pollList) {
+        const optionIds = (poll.date_options ?? [])
+          .filter((o) => parseOptionDate(o.date) === date)
+          .map((o) => o.id);
+        if (optionIds.length > 0) { matchedPoll = { id: poll.id, optionIds }; break; }
+      }
+      if (matchedPoll) {
+        const { data: resps } = await supabase.from("availability_responses")
+          .select("player_id, available_date_ids").eq("request_id", matchedPoll.id);
+        for (const r of resps ?? []) {
+          if ((r.available_date_ids ?? []).some((id: string) => matchedPoll!.optionIds.includes(id))) {
+            participants.add(r.player_id as string);
+          }
+        }
+      }
+      // Fall back to confirmed roster if no availability poll matched this date.
+      if (participants.size === 0) {
+        for (const c of (confs ?? []).filter((c) => c.status === "confirmed")) participants.add(c.player_id);
+      }
+      const participantsInRoster = new Set(rosterList.filter((p) => participants.has(p.player_id)).map((p) => p.player_id));
+      setParticipantIds(participantsInRoster);
       if (!statusRows || statusRows.length === 0) {
-        const confirmedIds = new Set((confs ?? []).filter((c) => c.status === "confirmed").map((c) => c.player_id));
-        setChecked(new Set(rosterList.filter((p) => confirmedIds.has(p.player_id)).map((p) => p.player_id)));
+        setChecked(new Set(participantsInRoster));
       }
       setLoading(false);
     }
@@ -164,12 +210,14 @@ function PaymentCollectionPanel({
           <div className="py-3 text-center"><div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
         ) : !requestSent ? (
           <div className="mt-3">
-            <p className="text-[11px] text-text-secondary mb-2">
-              Full squad — tick who played. Total owed (booking + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
+            <p className="text-[11px] text-text-secondary mb-3">
+              Total owed (booking + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
               {checked.size > 0 && <> · £{(totalWithFee / checked.size / 100).toFixed(2)}/player</>}
             </p>
-            <div className="space-y-1.5 mb-3">
-              {roster.map((p) => {
+            {(() => {
+              const played = roster.filter((p) => participantIds.has(p.player_id));
+              const others = roster.filter((p) => !participantIds.has(p.player_id));
+              const renderRow = (p: RosterPlayer) => {
                 const isChecked = checked.has(p.player_id);
                 return (
                   <button key={p.player_id} type="button"
@@ -181,8 +229,27 @@ function PaymentCollectionPanel({
                     <p className="flex-1 text-xs font-medium truncate">{p.player_id === user?.id ? "You" : p.name}</p>
                   </button>
                 );
-              })}
-            </div>
+              };
+              return (
+                <>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <p className="text-[10px] font-bold text-accent uppercase tracking-wider">Played</p>
+                    <span className="text-[10px] text-text-secondary">submitted availability</span>
+                  </div>
+                  <div className="space-y-1.5 mb-3">
+                    {played.length > 0
+                      ? played.map(renderRow)
+                      : <p className="text-[11px] text-text-secondary px-1 py-1">No availability submitted for this date — add players below.</p>}
+                  </div>
+                  {others.length > 0 && (
+                    <>
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1.5">Add from squad</p>
+                      <div className="space-y-1.5 mb-3">{others.map(renderRow)}</div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
             <button onClick={handleSend} disabled={checked.size === 0 || sending}
               className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
               {sending ? "Sending…" : `Send Payment Request (${checked.size})`}

@@ -1179,8 +1179,9 @@ function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "capta
 }
 
 // ── Credits checkout form (inside Stripe Elements) ────────────
-function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess, onBack }: {
+function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number;
+  targetPcsId?: string;
   onSuccess: (newBalance: number) => void; onBack: () => void;
 }) {
   const stripe = useStripe();
@@ -1202,6 +1203,20 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
         p_player_id: userId,
       });
       const newBalance = typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount;
+
+      // Paying a specific due (tapped from the "Payments due" list): credit
+      // exactly that row in full, not oldest-first.
+      if (targetPcsId) {
+        const { data: row } = await supabase.from("payment_collection_status")
+          .select("share_pence").eq("id", targetPcsId).maybeSingle();
+        await supabase.from("payment_collection_status").update({
+          credited_pence: row?.share_pence ?? Math.round(amount * 100),
+          received: true,
+          updated_at: new Date().toISOString(),
+        }).eq("id", targetPcsId);
+        onSuccess(newBalance);
+        return;
+      }
 
       // Apply this top-up toward the player's own outstanding match-fee dues,
       // oldest GAME first (by match_date, not row metadata), partially or
@@ -1265,8 +1280,17 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, onSuccess
 type DuePlayer = { player_id: string; name: string; status: string; sharePence: number };
 type DueGroup = { matchId: string; bookingId: string | null; opponent: string; date: string; teamPoolPence: number; players: DuePlayer[] };
 
-type OutstandingMatch = { matchId: string; opponent: string; date: string; sharePence: number };
-type OutstandingPlayer = { player_id: string; name: string; totalPence: number; matches: OutstandingMatch[] };
+// Captain's Collect Payment view — grouped by match. Each recent match with
+// an outstanding fee lists its charged players + individual pay status, and
+// the captain can remind any unpaid player.
+type CollectPlayer = { player_id: string; name: string; sharePence: number; remainingPence: number; received: boolean };
+type CollectMatch = { matchId: string; opponent: string; date: string; players: CollectPlayer[]; totalDuePence: number; paidCount: number };
+
+// A single match fee the logged-in player still owes (from a captain's
+// "Collect Payment" request) — drives the Top Up notification badge + the
+// itemised "Payments due" list the player pays from.
+type MyDue = { pcsId: string; matchId: string; opponent: string; date: string; remainingPence: number; sharePence: number };
+type SavedCard = { customerId: string; paymentMethodId: string; last4: string | null };
 
 type CreditTransaction = {
   id: string;
@@ -1289,12 +1313,19 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
-  const [outstanding, setOutstanding] = useState<OutstandingPlayer[]>([]);
+  const [collectMatches, setCollectMatches] = useState<CollectMatch[]>([]);
+  const [selectedCollectMatch, setSelectedCollectMatch] = useState<string | null>(null);
   const [collectLoading, setCollectLoading] = useState(true);
   const [remindingPlayer, setRemindingPlayer] = useState<string | null>(null);
   const [remindedPlayers, setRemindedPlayers] = useState<Set<string>>(new Set());
   const [historyAlertCount, setHistoryAlertCount] = useState(0);
   const [myOwedPence, setMyOwedPence] = useState(0);
+  const [myDues, setMyDues] = useState<MyDue[]>([]);
+  const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
+  const [dueBusy, setDueBusy] = useState<Set<string>>(new Set());
+  const [dueError, setDueError] = useState<string | null>(null);
+  const [duePaidFlash, setDuePaidFlash] = useState<number | null>(null);
+  const [payTarget, setPayTarget] = useState<{ pcsId: string; amountPence: number } | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customInput, setCustomInput] = useState("");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -1321,7 +1352,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   // Keep the outstanding-payments count fresh for the Collect Payment badge,
   // without requiring the popup to have been opened yet.
   useEffect(() => {
-    if (role === "captain" && teamId) loadOutstanding(teamId);
+    if (role === "captain" && teamId) loadCollectMatches(teamId);
   }, [role, teamId]);
 
   // Count past matches still needing attention — no result submitted yet,
@@ -1358,9 +1389,69 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setMyOwedPence((data ?? []).reduce((sum, r) => sum + Math.max(0, r.share_pence - (r.credited_pence ?? 0)), 0));
   };
 
+  // Itemised version of the above: each unpaid match fee this player owes,
+  // resolved to opponent + date, so the notification badge can show a count
+  // and the Top Up modal can list "which match + fee" to pay individually.
+  const loadMyDues = async (tid: string) => {
+    const { data: rows } = await supabase.from("payment_collection_status")
+      .select("id, match_id, share_pence, credited_pence")
+      .eq("player_id", userId).eq("included", true).eq("received", false);
+    const pending = (rows ?? [])
+      .map((r) => ({ ...r, remaining: r.share_pence - (r.credited_pence ?? 0) }))
+      .filter((r) => r.remaining > 0);
+    if (pending.length === 0) { setMyDues([]); setMyOwedPence(0); return; }
+
+    const matchIds = [...new Set(pending.map((r) => r.match_id))];
+    const { data: ms } = await supabase.from("matches")
+      .select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds);
+    const matchById = new Map((ms ?? []).map((m) => [m.id, m]));
+    const oppIds = [...new Set((ms ?? []).map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
+    const { data: teamsData } = oppIds.length
+      ? await supabase.from("teams").select("id, name").in("id", oppIds)
+      : { data: [] as { id: string; name: string }[] };
+    const teamName = new Map((teamsData ?? []).map((t) => [t.id, t.name as string]));
+
+    const dues: MyDue[] = pending.map((r) => {
+      const m = matchById.get(r.match_id);
+      const oppId = m ? (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id) : null;
+      return {
+        pcsId: r.id,
+        matchId: r.match_id,
+        opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
+        date: m?.match_date ?? "",
+        remainingPence: r.remaining,
+        sharePence: r.share_pence,
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    setMyDues(dues);
+    setMyOwedPence(dues.reduce((sum, d) => sum + d.remainingPence, 0));
+  };
+
   useEffect(() => {
     loadMyOwed();
+    // Load the player's saved card (card-on-file) so eligible dues can be
+    // charged off-session without re-entering card details.
+    supabase.from("profiles").select("stripe_customer_id, stripe_payment_method_id, card_last4").eq("id", userId).maybeSingle()
+      .then(({ data }) => {
+        if (data?.stripe_customer_id && data?.stripe_payment_method_id) {
+          setSavedCard({ customerId: data.stripe_customer_id, paymentMethodId: data.stripe_payment_method_id, last4: data.card_last4 ?? null });
+        }
+      });
   }, [userId]);
+
+  // Load itemised dues + subscribe so a captain's new payment request lights up
+  // the badge live, without the player needing to refresh.
+  useEffect(() => {
+    if (!teamId) return;
+    loadMyDues(teamId);
+    const suffix = Math.random().toString(36).slice(2);
+    const channel = supabase
+      .channel(`my_dues_${userId}_${suffix}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_collection_status", filter: `player_id=eq.${userId}` },
+        () => loadMyDues(teamId))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [teamId, userId]);
 
   // Effect 2: load balance + transactions, subscribe to both
   useEffect(() => {
@@ -1437,6 +1528,74 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setClientSecret(null);
     setIntentError(null);
     setSuccess(false);
+    setPayTarget(null);
+    setDueError(null);
+    setDuePaidFlash(null);
+  };
+
+  // Clear a paid-off due locally: refill the team's credit and mark the row.
+  // add_credit returns the new balance so we set it directly — the realtime
+  // subscription isn't guaranteed to reach the payer's own browser in time.
+  const applyDuePaid = async (due: MyDue, paidPence: number) => {
+    if (!teamId) return;
+    const { data: newBalancePence } = await supabase.rpc("add_credit", { p_team_id: teamId, p_amount_pence: paidPence, p_player_id: userId });
+    if (typeof newBalancePence === "number") setCredits(newBalancePence / 100);
+    await supabase.from("payment_collection_status")
+      .update({ credited_pence: due.sharePence, received: true, updated_at: new Date().toISOString() })
+      .eq("id", due.pcsId);
+    setMyDues((prev) => prev.filter((d) => d.pcsId !== due.pcsId));
+    setMyOwedPence((prev) => Math.max(0, prev - paidPence));
+  };
+
+  // Pay a due off the player's saved card (no card entry). Refills team credit.
+  const payDueWithCard = async (due: MyDue) => {
+    if (!savedCard || !teamId) return;
+    setDueBusy((prev) => new Set(prev).add(due.pcsId));
+    setDueError(null);
+    try {
+      const res = await fetch("/api/settle-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{
+          playerId: userId,
+          customerId: savedCard.customerId,
+          paymentMethodId: savedCard.paymentMethodId,
+          amountPence: due.remainingPence,
+          sharePence: due.remainingPence,
+          feePence: 0,
+          matchId: due.matchId,
+        }] }),
+      });
+      const data = await res.json();
+      const r = data.results?.[0];
+      if (r?.ok) {
+        await applyDuePaid(due, due.remainingPence);
+        setDuePaidFlash(Date.now());
+      } else {
+        setDueError(r?.error ?? data.error ?? "Card was declined — try topping up manually.");
+      }
+    } catch {
+      setDueError("Payment failed. Please try again.");
+    }
+    setDueBusy((prev) => { const n = new Set(prev); n.delete(due.pcsId); return n; });
+  };
+
+  // No saved card: set up a one-off Stripe payment for exactly this due's amount.
+  const startCardEntryForDue = async (due: MyDue) => {
+    if (!teamId) return;
+    setPayTarget({ pcsId: due.pcsId, amountPence: due.remainingPence });
+    setDueError(null);
+    setLoadingIntent(true);
+    setIntentError(null);
+    const res = await fetch("/api/create-credits-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountPence: due.remainingPence, teamId }),
+    });
+    const data = await res.json();
+    if (data.clientSecret) setClientSecret(data.clientSecret);
+    else { setIntentError(data.error ?? "Failed to set up payment."); setPayTarget(null); }
+    setLoadingIntent(false);
   };
 
   // Per-match dues: for every match this team played, the share each
@@ -1518,25 +1677,25 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setDuesBusy((prev) => { const next = new Set(prev); next.delete(key); return next; });
   };
 
-  // Aggregates every player's outstanding share across ALL matches (set up
-  // from each match's "Collect Payment" panel on the Match History page),
-  // so the captain sees one combined missing-cost list per player here.
-  const loadOutstanding = async (tid: string) => {
+  // Group the captain's collection requests by MATCH: each recent match with an
+  // outstanding fee, its charged players, and each player's pay status. Matches
+  // with everyone paid are dropped from the list.
+  const loadCollectMatches = async (tid: string) => {
     setCollectLoading(true);
     // Note: payment_collection_status.player_id has no FK relationship
     // registered with profiles in the Supabase schema cache, so embedding it
     // in the select makes the entire query fail (PGRST200). Fetch names separately.
     const { data: rows } = await supabase
       .from("payment_collection_status")
-      .select("match_id, player_id, share_pence, credited_pence")
-      .eq("team_id", tid).eq("included", true).eq("received", false);
+      .select("match_id, player_id, share_pence, credited_pence, received")
+      .eq("team_id", tid).eq("included", true);
 
-    if (!rows || rows.length === 0) { setOutstanding([]); setCollectLoading(false); return; }
+    if (!rows || rows.length === 0) { setCollectMatches([]); setCollectLoading(false); return; }
 
     const matchIds = [...new Set(rows.map((r) => r.match_id))];
     const playerIds = [...new Set(rows.map((r) => r.player_id))];
     const [{ data: ms }, { data: profilesData }] = await Promise.all([
-      supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, match_date").in("id", matchIds),
+      supabase.from("matches").select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds),
       supabase.from("profiles").select("id, full_name").in("id", playerIds),
     ]);
     const oppIds = [...new Set((ms ?? []).map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
@@ -1545,44 +1704,56 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     const matchById = new Map((ms ?? []).map((m) => [m.id, m]));
     const profileName = new Map((profilesData ?? []).map((p) => [p.id, p.full_name as string]));
 
-    const byPlayer = new Map<string, OutstandingPlayer>();
+    const byMatch = new Map<string, CollectMatch>();
     for (const r of rows) {
       const remainingPence = Math.max(0, r.share_pence - (r.credited_pence ?? 0));
-      if (remainingPence === 0) continue;
+      const paid = r.received || remainingPence === 0;
       const m = matchById.get(r.match_id);
       const oppId = m ? (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id) : null;
-      const entry: OutstandingMatch = {
-        matchId: r.match_id,
-        opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
-        date: m?.match_date ?? "",
-        sharePence: remainingPence,
+      const player: CollectPlayer = {
+        player_id: r.player_id,
+        name: profileName.get(r.player_id) ?? "Player",
+        sharePence: r.share_pence,
+        remainingPence,
+        received: paid,
       };
-      const name = profileName.get(r.player_id) ?? "Player";
-      const existing = byPlayer.get(r.player_id);
+      const existing = byMatch.get(r.match_id);
       if (existing) {
-        existing.totalPence += remainingPence;
-        existing.matches.push(entry);
+        existing.players.push(player);
+        existing.totalDuePence += remainingPence;
+        if (paid) existing.paidCount += 1;
       } else {
-        byPlayer.set(r.player_id, { player_id: r.player_id, name, totalPence: remainingPence, matches: [entry] });
+        byMatch.set(r.match_id, {
+          matchId: r.match_id,
+          opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
+          date: m?.match_date ?? "",
+          players: [player],
+          totalDuePence: remainingPence,
+          paidCount: paid ? 1 : 0,
+        });
       }
     }
-    setOutstanding(Array.from(byPlayer.values()).sort((a, b) => b.totalPence - a.totalPence));
+    const groups = Array.from(byMatch.values())
+      .filter((g) => g.totalDuePence > 0)                       // only matches still owed
+      .map((g) => ({ ...g, players: g.players.sort((a, b) => Number(a.received) - Number(b.received)) }))
+      .sort((a, b) => b.date.localeCompare(a.date));             // most recent first
+    setCollectMatches(groups);
     setCollectLoading(false);
   };
 
-  // Tap a player to send them a follow-up reminder as a direct message,
-  // itemising every match they still owe for.
-  const remindPlayer = async (player: OutstandingPlayer) => {
-    setRemindingPlayer(player.player_id);
-    const lines = player.matches.map((m) => `vs ${m.opponent} (${m.date}): £${(m.sharePence / 100).toFixed(2)}`).join("\n");
+  // Remind one player about one match's fee via a direct message.
+  const remindPlayer = async (match: CollectMatch, player: CollectPlayer) => {
+    const key = `${match.matchId}:${player.player_id}`;
+    setRemindingPlayer(key);
     await supabase.from("messages").insert({
       sender_id: userId,
       receiver_id: player.player_id,
       type: "payment_reminder",
-      body: `Reminder: you still owe £${(player.totalPence / 100).toFixed(2)} in match fees.\n${lines}\nPlease pay your captain.`,
+      match_id: match.matchId,
+      body: `Reminder: you owe £${(player.remainingPence / 100).toFixed(2)} for the match vs ${match.opponent} (${match.date}). Please pay from the Top Up tab.`,
     });
     setRemindingPlayer(null);
-    setRemindedPlayers((prev) => new Set(prev).add(player.player_id));
+    setRemindedPlayers((prev) => new Set(prev).add(key));
   };
 
   const openLog = async (startTab: "deposits" | "bookings" | "dues" = "deposits") => {
@@ -1609,7 +1780,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     })));
   };
 
-  const effectiveAmount = selectedAmount ?? (customInput ? parseFloat(customInput) : null);
+  const effectiveAmount = payTarget ? payTarget.amountPence / 100 : selectedAmount ?? (customInput ? parseFloat(customInput) : null);
 
   const handleContinue = async () => {
     if (!effectiveAmount || effectiveAmount < 1 || !teamId) return;
@@ -1644,16 +1815,21 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
         </button>
         <button onClick={() => setShowTopUp(true)}
-          className={`text-xs font-semibold px-3 py-1.5 rounded-xl border ${myOwedPence > 0 ? "text-red-400 border-red-500/30 bg-red-500/10" : "text-accent border-accent/30 bg-accent/10"}`}>
+          className={`relative text-xs font-semibold px-3 py-1.5 rounded-xl border ${myOwedPence > 0 ? "text-red-400 border-red-500/30 bg-red-500/10" : "text-accent border-accent/30 bg-accent/10"}`}>
           + Top Up
+          {myDues.length > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+              {myDues.length}
+            </span>
+          )}
         </button>
         {role === "captain" && (
-          <button onClick={() => { setRemindedPlayers(new Set()); setShowCollect(true); if (teamId) loadOutstanding(teamId); }}
+          <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
             className="relative text-xs font-semibold text-text-primary border border-border bg-surface-2 px-3 py-1.5 rounded-xl">
             Collect Payment
-            {outstanding.length > 0 && (
+            {collectMatches.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {outstanding.length}
+                {collectMatches.length}
               </span>
             )}
           </button>
@@ -1800,21 +1976,26 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
         </div>
       )}
 
-      {/* Collect Payment modal — captain only */}
-      {showCollect && (
+      {/* Collect Payment modal — captain only. Drill-down: recent matches with
+          payments due → a match's players + pay status → remind unpaid players. */}
+      {showCollect && (() => {
+        const selected = selectedCollectMatch ? collectMatches.find((m) => m.matchId === selectedCollectMatch) ?? null : null;
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowCollect(false)}>
           <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-bold text-base">Collect Payment</p>
-                  {outstanding.length > 0 && (
-                    <span className="text-base font-bold text-red-400 flex-shrink-0">
-                      £{(outstanding.reduce((sum, p) => sum + p.totalPence, 0) / 100).toFixed(2)}
-                    </span>
-                  )}
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {selected && (
+                  <button onClick={() => setSelectedCollectMatch(null)} className="flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                  </button>
+                )}
+                <div className="min-w-0">
+                  <p className="font-bold text-base truncate">{selected ? `vs ${selected.opponent}` : "Collect Payment"}</p>
+                  <p className="text-xs text-text-secondary truncate">
+                    {selected ? `${selected.date} · tap Remind to notify a player` : "Recent matches with payments due"}
+                  </p>
                 </div>
-                <p className="text-xs text-text-secondary">Combined missing cost · tap a player to remind</p>
               </div>
               <button onClick={() => setShowCollect(false)} className="flex-shrink-0 ml-3">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1824,23 +2005,45 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
             <div className="overflow-y-auto flex-1 space-y-2">
               {collectLoading ? (
                 <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
-              ) : outstanding.length === 0 ? (
+              ) : selected ? (
+                /* ── Players in the selected match ── */
+                selected.players.map((p) => {
+                  const key = `${selected.matchId}:${p.player_id}`;
+                  const busy = remindingPlayer === key;
+                  const reminded = remindedPlayers.has(key);
+                  return (
+                    <div key={p.player_id} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{p.player_id === userId ? "You" : p.name}</p>
+                        <p className="text-[10px] text-text-secondary">£{(p.sharePence / 100).toFixed(2)} share</p>
+                      </div>
+                      {p.received ? (
+                        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2.5 py-1 rounded-full flex-shrink-0">Paid ✓</span>
+                      ) : (
+                        <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded}
+                          className="text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
+                          {busy ? "Sending…" : reminded ? "Reminded ✓" : "Remind"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              ) : collectMatches.length === 0 ? (
                 <p className="text-xs text-text-secondary text-center py-8">Everyone&apos;s paid up — no missing payments.</p>
               ) : (
-                outstanding.map((p) => {
-                  const busy = remindingPlayer === p.player_id;
-                  const reminded = remindedPlayers.has(p.player_id);
+                /* ── Recent matches with payments due ── */
+                collectMatches.map((g) => {
+                  const unpaid = g.players.length - g.paidCount;
                   return (
-                    <button key={p.player_id} onClick={() => remindPlayer(p)} disabled={busy}
-                      className="w-full bg-surface-2 border border-border rounded-xl p-3 text-left disabled:opacity-60">
+                    <button key={g.matchId} onClick={() => { setSelectedCollectMatch(g.matchId); }}
+                      className="w-full bg-surface-2 border border-border rounded-xl p-3 text-left">
                       <div className="flex items-center gap-2">
-                        <p className="flex-1 min-w-0 text-sm font-semibold truncate">
-                          {p.player_id === userId ? "You" : p.name}
-                        </p>
-                        <span className="text-sm font-bold text-red-400 flex-shrink-0">£{(p.totalPence / 100).toFixed(2)}</span>
+                        <p className="flex-1 min-w-0 text-sm font-semibold truncate">vs {g.opponent}</p>
+                        <span className="text-sm font-bold text-red-400 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                       </div>
                       <p className="text-[10px] text-text-secondary mt-1">
-                        {p.matches.length} match{p.matches.length > 1 ? "es" : ""} unpaid · {busy ? "Sending…" : reminded ? "Reminder sent ✓" : "Tap to send reminder"}
+                        {g.date} · {unpaid} player{unpaid !== 1 ? "s" : ""} still to pay · {g.paidCount}/{g.players.length} paid
                       </p>
                     </button>
                   );
@@ -1849,7 +2052,8 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {showTopUp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5" onClick={closeModal}>
@@ -1881,8 +2085,14 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                     teamId={teamId}
                     userId={userId}
                     currentCredits={credits}
-                    onSuccess={(newBalance) => { setCredits(newBalance); setSuccess(true); loadMyOwed(); }}
-                    onBack={() => setClientSecret(null)}
+                    targetPcsId={payTarget?.pcsId}
+                    onSuccess={(newBalance) => {
+                      setCredits(newBalance);
+                      setSuccess(true);
+                      loadMyOwed();
+                      if (payTarget) { setMyDues((prev) => prev.filter((d) => d.pcsId !== payTarget.pcsId)); if (teamId) loadMyDues(teamId); }
+                    }}
+                    onBack={() => { setClientSecret(null); setPayTarget(null); }}
                   />
                 </Elements>
               </>
@@ -1895,9 +2105,58 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
                 </div>
-                <p className="text-xs text-text-secondary mb-5">
+                <p className="text-xs text-text-secondary mb-4">
                   Current balance: <span className="font-semibold text-text-primary">£{credits.toFixed(2)}</span>
                 </p>
+
+                {/* Payments due — itemised match fees the captain has requested.
+                    Tap a fee to pay it: charged off a saved card instantly, or
+                    via card entry otherwise. Paying refills the team credit. */}
+                {myDues.length > 0 && (
+                  <div className="mb-5">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <p className="text-xs font-bold text-red-400 uppercase tracking-wider">Payments due</p>
+                      <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 rounded-full">{myDues.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {myDues.map((due) => {
+                        const busy = dueBusy.has(due.pcsId);
+                        return (
+                          <div key={due.pcsId} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate">vs {due.opponent}</p>
+                              <p className="text-[10px] text-text-secondary">{due.date} · £{(due.remainingPence / 100).toFixed(2)} share</p>
+                            </div>
+                            <button
+                              onClick={() => (savedCard ? payDueWithCard(due) : startCardEntryForDue(due))}
+                              disabled={busy || loadingIntent}
+                              className="flex-shrink-0 text-xs font-bold bg-accent text-black px-3 py-2 rounded-lg disabled:opacity-50">
+                              {busy ? "Paying…" : `Pay £${(due.remainingPence / 100).toFixed(2)}`}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {savedCard ? (
+                      <p className="text-[10px] text-text-secondary mt-2">Charged instantly to your saved card •••• {savedCard.last4 ?? "0000"}.</p>
+                    ) : (
+                      <p className="text-[10px] text-text-secondary mt-2">Tap to pay — add a card on your Profile to skip card entry next time.</p>
+                    )}
+                    {dueError && <p className="text-[11px] text-red-400 mt-2">{dueError}</p>}
+                    <div className="flex items-center gap-2 my-4">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[10px] text-text-secondary uppercase tracking-wider">or top up manually</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                  </div>
+                )}
+
+                {duePaidFlash && (
+                  <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2 mb-4">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <p className="text-[11px] text-accent font-semibold">Payment received — team credit topped up.</p>
+                  </div>
+                )}
 
                 {/* Preset amounts */}
                 <div className={`grid gap-2 mb-4 ${myOwedPence > 0 ? "grid-cols-5" : "grid-cols-4"}`}>

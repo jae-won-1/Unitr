@@ -9,7 +9,13 @@
       "Read(//c/dev/Unitr/**)",
       "Bash(npm run *)",
       "Bash(netstat -ano)",
-      "Bash(kill -9 17148 36636 10656)"
+      "Bash(kill -9 17148 36636 10656)",
+      "Bash(node _q.js)",
+      "Bash(grep -qE \"Ready in|compiled|error\" /tmp/nextdev.log)",
+      "Bash(break)",
+      "Bash(curl -s -o /dev/null -w \"my-team: %{http_code}\\\\n\" http://localhost:3111/my-team)",
+      "Bash(curl -s -o /dev/null -w \"history: %{http_code}\\\\n\" http://localhost:3111/my-team/history)",
+      "Read(//tmp/**)"
     ]
   }
 }
