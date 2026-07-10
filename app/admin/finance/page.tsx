@@ -35,6 +35,29 @@ export default function AdminFinancePage() {
   const [creditByType, setCreditByType] = useState<Record<string, { in: number; out: number; count: number }>>({});
   const [creditInCirculation, setCreditInCirculation] = useState(0);
   const [cash, setCash] = useState({ chargesPence: 0, feesPence: 0, payoutsPence: 0, payoutCount: 0, chargeCount: 0 });
+  const [stripeBalance, setStripeBalance] = useState<{ availablePence: number; pendingPence: number } | null>(null);
+  const [funding, setFunding] = useState(false);
+
+  // Test-mode Stripe platform balance — what venue transfers actually draw from.
+  const loadBalance = () =>
+    fetch("/api/dev/fund-test-balance")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && !d.error) setStripeBalance(d); })
+      .catch(() => {});
+
+  const handleFund = async () => {
+    setFunding(true);
+    try {
+      const res = await fetch("/api/dev/fund-test-balance", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountPence: 20000 }),
+      });
+      const d = await res.json();
+      if (res.ok) setStripeBalance((prev) => ({ availablePence: d.availablePence, pendingPence: prev?.pendingPence ?? 0 }));
+    } finally {
+      setFunding(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -73,6 +96,7 @@ export default function AdminFinancePage() {
       setLoading(false);
     }
     load();
+    loadBalance();
   }, []);
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
@@ -126,6 +150,28 @@ export default function AdminFinancePage() {
           &lsquo;deposit&rsquo; in the credit ledger above. Credit in circulation is a liability against this cash.
         </p>
       </div>
+
+      {/* ── 3) Stripe platform balance (test mode) ── */}
+      {stripeBalance && (
+        <div className="bg-surface-2 border border-border rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold">Stripe platform balance</p>
+            <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">test mode</span>
+          </div>
+          <div className="space-y-2">
+            <Row label="Available (backs venue transfers)" value={fmt(stripeBalance.availablePence)} strong />
+            <Row label="Pending (settling card charges)" value={fmt(stripeBalance.pendingPence)} />
+          </div>
+          <button onClick={handleFund} disabled={funding}
+            className="w-full mt-4 py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+            {funding ? "Funding…" : "Add £200 test funds"}
+          </button>
+          <p className="text-[10px] text-text-secondary mt-2">
+            Venue transfers draw from the available balance. In test mode, normal card charges sit in
+            pending — this button charges Stripe&rsquo;s bypass-pending test card so funds land instantly.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

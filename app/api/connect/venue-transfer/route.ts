@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
-
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { adminSupabase } from "@/lib/supabase-admin";
 
 // Pay a venue: transfer the pitch fee from Unitr's Stripe balance to the
 // venue's connected account. This is the CASH counterpart to the in-app

@@ -254,7 +254,7 @@ export default function BookPitchPanel() {
     const endTime = `${String(Math.min(h + 1, 23)).padStart(2, "0")}:00`;
     const totalPence = pitch.price_per_hour * 100;
 
-    const { error: bookingErr } = await supabase.from("pitch_bookings").insert({
+    const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
       pitch_id: pitch.id,
       booked_by: user.id,
       match_date: date,
@@ -268,10 +268,25 @@ export default function BookPitchPanel() {
       unitr_fee_pence: Math.round(totalPence * 0.05),
       status: "confirmed",
       payment_status: "paid",
-    });
+    }).select("id").single();
 
     setBooking(false);
     if (bookingErr) { setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
+
+    // Cash side: pay the venue its fee (Stripe Connect, test mode). Same rule
+    // as the team-credit path — every paid booking produces exactly one
+    // venue_transfers row so in-app payments reconcile against real payouts.
+    // Best-effort: an unconnected venue or empty test balance is recorded as
+    // a failed transfer and must not block the booking.
+    fetch("/api/connect/venue-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pitchId: pitch.id,
+        bookingId: bookingRow?.id ?? null,
+        amountPence: totalPence,
+      }),
+    }).catch(() => {});
 
     // Reflect the new booking locally so the slot flips to "taken" instantly
     setSlotMap((prev) => prev[pitch.id]

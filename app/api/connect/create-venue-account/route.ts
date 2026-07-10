@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
-
-// Service-role client — API routes write past RLS like the rest of the app.
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { adminSupabase } from "@/lib/supabase-admin";
 
 // Create (or reuse) a Stripe Connect EXPRESS account for a venue's pitch and
 // return an onboarding link. TEST MODE: this lets a venue "connect" a payout
