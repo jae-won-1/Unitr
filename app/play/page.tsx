@@ -947,6 +947,11 @@ function PlayerPlay() {
   const { posts, loading, removePost } = usePosts(null, user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
 
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "matches" || t === "tournaments" || t === "ringer") setTab(t);
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -982,6 +987,11 @@ function CaptainPlay() {
   const { posts, loading, removePost } = usePosts(user?.id ?? null, user?.id);
   const { posts: myPosts, loading: myPostsLoading, removePost: removeMyPost } = useMyPosts(user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
+
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "matches" || t === "tournaments" || t === "ringer") setTab(t);
+  }, []);
 
   const myPost = myPosts[0] ?? null;
 

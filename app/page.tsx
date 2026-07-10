@@ -315,16 +315,36 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
       {/* Quick actions */}
       <section>
         <h3 className="font-bold mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex justify-between gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[
-            { label: "Collect Availability", icon: "📅", href: "/my-team/availability" },
-            { label: "Post a Match", icon: "⚽", href: "/play/create" },
-            { label: "Scout Players", icon: "🔍", href: "/my-team/transfer" },
-            { label: "Team Messages", icon: "💬", href: "/messages" },
+            {
+              label: "Fill in for Game", href: "/play?tab=ringer",
+              icon: <><circle cx="9" cy="7" r="4" /><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" /><path d="M19 8v6" /><path d="M16 11h6" /></>,
+            },
+            {
+              label: "Transfer Window", href: "/my-team/transfer",
+              icon: <><path d="M17 3l4 4-4 4" /><path d="M21 7H7" /><path d="M7 21l-4-4 4-4" /><path d="M3 17h14" /></>,
+            },
+            {
+              label: "Calendar", href: "/my-team/availability",
+              icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></>,
+            },
+            {
+              label: "Book Court", href: "/book",
+              icon: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M12 5v14" /><circle cx="12" cy="12" r="3" /></>,
+            },
+            {
+              label: "Stats", href: "/profile",
+              icon: <><path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></>,
+            },
           ].map((action) => (
-            <a key={action.label} href={action.href} className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
-              <span className="text-2xl">{action.icon}</span>
-              <p className="text-sm font-semibold">{action.label}</p>
+            <a key={action.label} href={action.href} className="flex flex-col items-center gap-2 flex-1 min-w-[64px]">
+              <span className="w-14 h-14 rounded-full bg-accent text-black flex items-center justify-center">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {action.icon}
+                </svg>
+              </span>
+              <p className="text-[11px] font-semibold text-center leading-tight">{action.label}</p>
             </a>
           ))}
         </div>
