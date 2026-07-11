@@ -46,6 +46,11 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
+function getDayName(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()];
+}
+
 function Stars({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
@@ -89,39 +94,50 @@ function ConfirmBooking({ pitch, date, time, booking, onCancel, onConfirm }: {
 }
 
 // ── Booking Confirmed ─────────────────────────────────────────
-function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: string; time: string; onDone: () => void }) {
+function BookingConfirmed({ pitch, date, time, posted, onDone }: { pitch: Pitch; date: string; time: string; posted: boolean; onDone: () => void }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
         <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
-        <p className="text-lg font-bold mb-1">Pitch Booked!</p>
+        <p className="text-lg font-bold mb-1">{posted ? "Pitch Booked & Posted!" : "Pitch Booked!"}</p>
         <p className="text-sm font-semibold mb-0.5">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-1">{pitch.address}</p>
         <p className="text-xs text-accent font-medium mb-4">{fmtDate(date)} · {time}</p>
         <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left space-y-1">
           <div className="flex justify-between text-xs"><span className="text-text-secondary">Total (inc. 5% fee)</span><span className="font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span></div>
-          <p className="text-[10px] text-text-secondary">The venue has been notified and the slot is now reserved.</p>
+          <p className="text-[10px] text-text-secondary">
+            {posted
+              ? "Your pitch is secured and the match is live in the Play feed — any team can join straight away."
+              : "The venue has been notified and the slot is now reserved."}
+          </p>
         </div>
-        <button onClick={onDone} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+        {posted && (
+          <a href="/play" className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">View in Play feed</a>
+        )}
+        <button onClick={onDone} className={`w-full py-3 rounded-xl font-bold text-sm ${posted ? "bg-surface-2 border border-border text-text-primary" : "bg-accent text-black"}`}>Done</button>
       </div>
     </div>
   );
 }
 
 // ── Main Content ──────────────────────────────────────────────
-export default function BookPitchPanel() {
+export default function BookPitchPanel({ initialDate, initialTime, autoPost }: { initialDate?: string; initialTime?: string; autoPost?: boolean } = {}) {
   const { user } = useAuth();
 
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "map">("list");
   const [bookerName, setBookerName] = useState<string>("");
+  // The captain's team — needed to auto-post the booking as a secured match.
+  const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
 
-  // Filters — default the date to today so availability shows immediately
-  const [filterDate, setFilterDate] = useState(localISO(new Date()));
-  const [filterTime, setFilterTime] = useState("");
+  // Filters — pre-fill from the captain's chosen posting slot when the Book tab
+  // is opened via "lock in a pitch first"; otherwise default the date to today
+  // so availability shows immediately.
+  const [filterDate, setFilterDate] = useState(initialDate || localISO(new Date()));
+  const [filterTime, setFilterTime] = useState(initialTime || "");
   const [filterSize, setFilterSize] = useState("All");
   const [filterLocation, setFilterLocation] = useState("");
 
@@ -132,7 +148,7 @@ export default function BookPitchPanel() {
   // Booking flow
   const [pendingSlot, setPendingSlot] = useState<{ pitch: Pitch; date: string; time: string } | null>(null);
   const [booking, setBooking] = useState(false);
-  const [bookedInfo, setBookedInfo] = useState<{ pitch: Pitch; date: string; time: string } | null>(null);
+  const [bookedInfo, setBookedInfo] = useState<{ pitch: Pitch; date: string; time: string; posted: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
@@ -153,8 +169,8 @@ export default function BookPitchPanel() {
   useEffect(() => {
     if (!user) return;
     async function loadName() {
-      const { data: team } = await supabase.from("teams").select("name").eq("captain_id", user!.id).maybeSingle();
-      if (team?.name) { setBookerName(team.name); return; }
+      const { data: ownTeam } = await supabase.from("teams").select("id, name, location").eq("captain_id", user!.id).maybeSingle();
+      if (ownTeam?.name) { setTeam(ownTeam); setBookerName(ownTeam.name); return; }
       const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user!.id).maybeSingle();
       setBookerName((profile as { full_name?: string } | null)?.full_name ?? "Session booking");
     }
@@ -270,8 +286,7 @@ export default function BookPitchPanel() {
       payment_status: "paid",
     }).select("id").single();
 
-    setBooking(false);
-    if (bookingErr) { setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
+    if (bookingErr) { setBooking(false); setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
 
     // Cash side: pay the venue its fee (Stripe Connect, test mode). Same rule
     // as the team-credit path — every paid booking produces exactly one
@@ -288,12 +303,50 @@ export default function BookPitchPanel() {
       }),
     }).catch(() => {});
 
+    // If the captain came from "lock in a pitch first", their intent was to post
+    // a match — so turn this fresh booking straight into a secured match post
+    // (pitch already paid for, opponents can join immediately) instead of making
+    // them convert it manually from My Bookings.
+    let posted = false;
+    if (autoPost && team && bookingRow?.id) {
+      const pitchOption = {
+        id: pitch.id,
+        name: pitch.name,
+        address: pitch.address,
+        price: pitch.price_per_hour,
+        format: pitch.formats[0] ?? "5-a-side",
+        distance: "",
+        time,
+      };
+      const { data: post } = await supabase.from("match_posts").insert({
+        team_id: team.id,
+        captain_id: user.id,
+        team_name: team.name,
+        team_location: team.location ?? "",
+        match_date: date,
+        match_time: time,
+        day_name: getDayName(date),
+        pitch_options: [pitchOption],
+        description: null,
+        status: "open",
+        payment_mode: "secured",
+        hold_pence: 0,
+        pitch_secured: true,
+        secured_booking_id: bookingRow.id,
+      }).select("id").single();
+      if (post) {
+        await supabase.from("pitch_bookings").update({ post_id: post.id }).eq("id", bookingRow.id);
+        posted = true;
+      }
+    }
+
+    setBooking(false);
     // Reflect the new booking locally so the slot flips to "taken" instantly
     setSlotMap((prev) => prev[pitch.id]
       ? { ...prev, [pitch.id]: prev[pitch.id].map((s) => s.time === time ? { ...s, status: "booked" } : s) }
       : prev);
     setPendingSlot(null);
-    setBookedInfo({ pitch, date, time });
+    setBookedInfo({ pitch, date, time, posted });
   };
 
   return (
@@ -494,6 +547,7 @@ export default function BookPitchPanel() {
           pitch={bookedInfo.pitch}
           date={bookedInfo.date}
           time={bookedInfo.time}
+          posted={bookedInfo.posted}
           onDone={() => setBookedInfo(null)}
         />
       )}

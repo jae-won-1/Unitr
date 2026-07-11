@@ -156,6 +156,17 @@ export default function CreateMatchPage() {
     router.push("/pitches?mode=select");
   };
 
+  // "Lock in a pitch first": carry the captain's chosen posting date/time over
+  // to the Book tab so it opens pre-filtered to that exact slot.
+  const handleLockInPitch = () => {
+    const params = new URLSearchParams({ view: "book", intent: "post" });
+    if (originalSlot) {
+      params.set("date", originalSlot.date);
+      if (originalSlot.time) params.set("time", originalSlot.time);
+    }
+    router.push(`/play?${params.toString()}`);
+  };
+
   const removePitchOption = (id: string) => {
     setPitchOptions((prev) => {
       const updated = prev.filter((p) => p.id !== id);
@@ -325,13 +336,13 @@ export default function CreateMatchPage() {
               <p className="text-xs text-text-secondary leading-relaxed mb-2.5">
                 This post splits the pitch fee with your opponent and the chosen pitch isn&apos;t reserved until a match is confirmed.
                 To <span className="text-text-primary font-medium">guarantee a pitch up front</span>, book and pay for one in the
-                Book tab, then turn that booking into a post — opponents can join instantly.
+                Book tab and it&apos;ll be posted automatically — opponents can join instantly.
               </p>
-              <a href="/play?view=book"
+              <button type="button" onClick={handleLockInPitch}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent">
                 Secure a pitch in the Book tab
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </a>
+              </button>
             </div>
           </div>
         </div>

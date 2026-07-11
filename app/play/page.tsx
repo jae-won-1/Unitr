@@ -114,6 +114,14 @@ function ChallengePanel({
   // Check which pitch options are still available for this date/time
   useEffect(() => {
     async function checkAvailability() {
+      // A secured post already owns its pitch booking for this exact slot — that
+      // booking IS the reserved pitch both teams will play on, not a conflict.
+      // Treat it as available so the challenger can join.
+      if (post.pitchSecured) {
+        setPitchAvail(Object.fromEntries(post.pitchOptions.map((p) => [p.id, true])));
+        setCheckingAvail(false);
+        return;
+      }
       const result: Record<string, boolean> = {};
       await Promise.all(
         post.pitchOptions.map(async (pitch) => {
@@ -189,6 +197,19 @@ function ChallengePanel({
         setSaving(false);
         setSlotTakenError(
           `The posting team no longer has enough credit to cover their half of this pitch (£${(posterHalfPence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
+        );
+        return;
+      }
+    } else {
+      // Secured post: the poster already paid the venue in cash via the direct
+      // booking, so only the challenger needs credit — to reimburse their half.
+      const { data: chalCr } = await supabase
+        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
+      const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
+      if (chalAvail < challengerHalfPence) {
+        setSaving(false);
+        setSlotTakenError(
+          `Your team needs £${(challengerHalfPence / 100).toFixed(2)} in available credit to cover your half of this secured pitch. Top up team credit and try again.`
         );
         return;
       }
@@ -305,8 +326,7 @@ function ChallengePanel({
         // Phase 2: each team's credit is debited its own half directly — no
         // fronting/reimbursement. No per-player replenishment is created here —
         // the squad is still fluid; settlement is deferred to roster-lock (see
-        // the match page "Settle" step). Secured posts already paid for the
-        // pitch directly — nothing to capture.
+        // the match page "Settle" step).
         if (!isSecured) {
           const { error: settleErr } = await supabase.rpc("split_pitch_fee", {
             p_match_id: matchRecord.id,
@@ -329,6 +349,17 @@ function ChallengePanel({
             });
             await supabase.from("match_posts").update({ hold_pence: 0 }).eq("id", holdOwner.id);
           }
+        } else {
+          // Secured post: the poster fronted the whole pitch fee via the direct
+          // booking. The challenger reimburses their half into the poster's
+          // credit now; both teams' players replenish their own share post-match.
+          const { error: reimburseErr } = await supabase.rpc("reimburse_secured_pitch", {
+            p_match_id: matchRecord.id,
+            p_posting_team: post.team_id,
+            p_challenging_team: team.id,
+            p_fee_pence: feePence,
+          });
+          if (reimburseErr) console.error("reimburse_secured_pitch failed:", reimburseErr.message);
         }
 
         // ── Cash side: pay the venue (Stripe Connect, test mode) ──
@@ -496,10 +527,20 @@ function ChallengePanel({
           {selectedPitch && (
             <div className="bg-surface-2 border border-border rounded-xl p-3 text-xs text-text-secondary">
               <p className="font-semibold text-text-primary mb-1">Payment</p>
-              <p>
-                £{((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 22).toFixed(2)}/player charged automatically{" "}
-                <span className="text-accent font-semibold">3 hours after confirmation</span>. Split across all players via Stripe.
-              </p>
+              {post.pitchSecured ? (
+                <p>
+                  This pitch is already booked & paid by {post.team}. On joining, your team credit is charged{" "}
+                  <span className="text-accent font-semibold">
+                    £{(Math.floor((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) * 100 / 2) / 100).toFixed(2)}
+                  </span>{" "}
+                  — your half of the fee — to reimburse them. Players top up their share post-match.
+                </p>
+              ) : (
+                <p>
+                  £{((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 22).toFixed(2)}/player charged automatically{" "}
+                  <span className="text-accent font-semibold">3 hours after confirmation</span>. Split across all players via Stripe.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1056,11 +1097,23 @@ type PlayView = "find" | "book" | "mybookings";
 export default function PlayPage() {
   const { role, roleLoading } = useRole();
   const [view, setView] = useState<PlayView>("find");
+  // Posting slot carried over from "lock in a pitch first" so the Book tab
+  // opens pre-filtered to the captain's chosen match date/time — and, when the
+  // captain's intent was to post, auto-posts the booking as a secured match.
+  const [bookDate, setBookDate] = useState<string | undefined>();
+  const [bookTime, setBookTime] = useState<string | undefined>();
+  const [bookAutoPost, setBookAutoPost] = useState(false);
 
   // Allow deep-linking to a tab, e.g. /play?view=book from the Create Match page.
   useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get("view");
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("view");
     if (v === "book" || v === "mybookings") setView(v);
+    const d = params.get("date");
+    const t = params.get("time");
+    if (d) setBookDate(d);
+    if (t) setBookTime(t);
+    if (params.get("intent") === "post") setBookAutoPost(true);
   }, []);
 
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
@@ -1095,7 +1148,7 @@ export default function PlayPage() {
         </>
       ) : view === "book" ? (
         <div className="-mx-4">
-          <BookPitchPanel />
+          <BookPitchPanel initialDate={bookDate} initialTime={bookTime} autoPost={bookAutoPost} />
         </div>
       ) : (
         <MyBookingsPanel />

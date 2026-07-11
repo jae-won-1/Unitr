@@ -15,7 +15,20 @@
       "Bash(break)",
       "Bash(curl -s -o /dev/null -w \"my-team: %{http_code}\\\\n\" http://localhost:3111/my-team)",
       "Bash(curl -s -o /dev/null -w \"history: %{http_code}\\\\n\" http://localhost:3111/my-team/history)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(git pull *)",
+      "Bash(node \"C:/Users/User/AppData/Local/Temp/claude/c--Users-User-unitr/f360b378-2097-46c6-b969-a28b469fba82/scratchpad/check_db.mjs\")",
+      "Bash(curl -s http://localhost:3001/api/dev/fund-test-balance)",
+      "Bash(curl -s -X POST http://localhost:3001/api/dev/fund-test-balance -H \"Content-Type: application/json\" -d '{\"amountPence\": 50000}')",
+      "Bash(node setup_venue.mjs)",
+      "Bash(curl -s -X POST http://localhost:3001/api/connect/venue-transfer -H \"Content-Type: application/json\" -d '{\"pitchId\": \"3b5ead13-8eca-4fcb-8985-edfe256ec0b3\", \"amountPence\": 11000}')",
+      "Bash(sed -i 's/stripe.balance.retrieve\\({ stripeAccount: \\\\x27acct_1TrTcvJw7mJLjk11\\\\x27 }\\)/stripe.balance.retrieve\\({}, { stripeAccount: \\\\x27acct_1TrTcvJw7mJLjk11\\\\x27 }\\)/' verify_transfer.mjs)",
+      "Bash(node verify_transfer.mjs)",
+      "Bash(curl -s -X POST http://localhost:3001/api/connect/account-status -H \"Content-Type: application/json\" -d '{\"pitchId\": \"3b5ead13-8eca-4fcb-8985-edfe256ec0b3\"}')",
+      "PowerShell(npx tsc --noEmit)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(curl -sS -o /dev/null -w \"http_code: %{http_code}\\\\n\" https://github.com --max-time 15)",
+      "Bash(git status *)"
     ]
   }
 }
