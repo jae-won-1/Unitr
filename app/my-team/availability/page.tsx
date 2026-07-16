@@ -408,7 +408,7 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
   if (!request) return (
     <div className="py-12 text-center">
       <p className="text-sm text-text-secondary">No availability request yet.</p>
-      <p className="text-xs text-text-secondary mt-1">Your captain hasn't sent one yet.</p>
+      <p className="text-xs text-text-secondary mt-1">Your captain hasn&apos;t sent one yet.</p>
     </div>
   );
   if (submitted) return (

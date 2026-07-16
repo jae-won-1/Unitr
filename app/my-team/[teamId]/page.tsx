@@ -34,8 +34,8 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         setMembers(
           (data ?? []).map((m) => ({
             player_id: m.player_id as string,
-            full_name: (m.profiles as { full_name: string } | null)?.full_name ?? "Unknown player",
-            position: (m.profiles as { position: string | null } | null)?.position ?? null,
+            full_name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown player",
+            position: (m.profiles as unknown as { position: string | null } | null)?.position ?? null,
           }))
         );
       });

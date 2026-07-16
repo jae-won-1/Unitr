@@ -132,7 +132,7 @@ export default function TacticsPage() {
         </a>
         <div>
           <h1 className="text-xl font-bold">Tactics Board</h1>
-          <p className="text-xs text-text-secondary">Set your team's formation, style, and tactic points</p>
+          <p className="text-xs text-text-secondary">Set your team&apos;s formation, style, and tactic points</p>
         </div>
       </div>
 

@@ -312,7 +312,7 @@ function PlayerMyTeam() {
     return (
       <div className="space-y-4">
         <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
-          <p className="font-semibold mb-1">You're not in a team yet</p>
+          <p className="font-semibold mb-1">You&apos;re not in a team yet</p>
           <p className="text-xs text-text-secondary mb-4">Request to join a team below or wait for a captain to approve your request.</p>
         </div>
         <BrowseTeams />
@@ -543,7 +543,7 @@ function PlayerMyTeam() {
           </div>
           {tactics.notes && (
             <div className="bg-background rounded-xl p-3 mb-3">
-              <p className="text-xs font-semibold text-text-secondary mb-1">Captain's Notes</p>
+              <p className="text-xs font-semibold text-text-secondary mb-1">Captain&apos;s Notes</p>
               <p className="text-xs text-text-secondary leading-relaxed">{tactics.notes}</p>
             </div>
           )}

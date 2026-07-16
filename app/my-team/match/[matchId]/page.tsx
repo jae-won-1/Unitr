@@ -109,6 +109,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
   useEffect(() => {
     if (!user) return;
+    const currentUser = user;
     async function load() {
       const { data: m } = await supabase.from("matches").select("*").eq("id", params.matchId).maybeSingle();
       if (!m) { setMatch(null); return; }
@@ -132,11 +133,11 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         created_at: m.created_at,
       });
 
-      const { data: captainTeam } = await supabase.from("teams").select("id").eq("captain_id", user.id).maybeSingle();
+      const { data: captainTeam } = await supabase.from("teams").select("id").eq("captain_id", currentUser.id).maybeSingle();
       let tid = captainTeam?.id ?? null;
       if (!tid) {
         const { data: mem } = await supabase.from("team_members").select("team_id")
-          .eq("player_id", user.id).eq("status", "approved").maybeSingle();
+          .eq("player_id", currentUser.id).eq("status", "approved").maybeSingle();
         tid = mem?.team_id ?? null;
       }
       setMyTeamId(tid);
@@ -156,10 +157,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         player_id: c.player_id,
         team_id: c.team_id,
         status: c.status,
-        full_name: (c.profiles as { full_name: string } | null)?.full_name ?? "Unknown",
+        full_name: (c.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
       }));
       setConfirmations(mapped);
-      setMyConfirmStatus(mapped.find((c) => c.player_id === user.id)?.status ?? null);
+      setMyConfirmStatus(mapped.find((c) => c.player_id === currentUser.id)?.status ?? null);
     }
     load();
   }, [user, params.matchId]);

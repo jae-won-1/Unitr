@@ -42,7 +42,7 @@ export default function TransferWindowPage() {
       {/* Info banner */}
       <div className="bg-accent/10 border border-accent/30 rounded-xl p-3 mb-4">
         <p className="text-xs text-accent font-semibold mb-0.5">Recommended for Hackney United</p>
-        <p className="text-xs text-text-secondary">Based on your team's open positions and location. Send a request to invite a player.</p>
+        <p className="text-xs text-text-secondary">Based on your team&apos;s open positions and location. Send a request to invite a player.</p>
       </div>
 
       {/* Filters */}
