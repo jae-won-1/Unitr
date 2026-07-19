@@ -23,6 +23,8 @@ function formatMatchDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 
+type Category = "match" | "tournament" | "league" | "manual";
+
 type Booking = {
   id: string;
   match_date: string;
@@ -35,9 +37,29 @@ type Booking = {
   booking_type: string;
   payment_status: string;
   booker_name: string;
+  category: Category;
 };
 
 const STATUS_FILTERS = ["All", "Confirmed", "Pending", "Cancelled"] as const;
+
+const CATEGORY_TABS: { k: "all" | Category; label: string }[] = [
+  { k: "all", label: "All" },
+  { k: "match", label: "Matches" },
+  { k: "tournament", label: "Tournaments" },
+  { k: "league", label: "Leagues" },
+  { k: "manual", label: "Manual" },
+];
+
+const CATEGORY_META: Record<Category, { label: string; cls: string }> = {
+  match: { label: "Match", cls: "bg-accent/10 text-accent" },
+  tournament: { label: "Tournament", cls: "bg-purple-500/10 text-purple-400" },
+  league: { label: "League", cls: "bg-blue-500/10 text-blue-400" },
+  manual: { label: "Manual", cls: "bg-surface text-text-secondary" },
+};
+
+// A booking's payment counts as settled only when it's "paid". Everything else
+// (unpaid, pay-at-reception, pay-after-match) is money still to collect.
+function isPaid(status: string) { return status === "paid"; }
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -52,9 +74,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function CategoryBadge({ category }: { category: Category }) {
+  const m = CATEGORY_META[category];
+  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>{m.label}</span>;
+}
+
 function PaymentBadge({ status }: { status: string }) {
   if (status === "paid") return (
     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent">Paid</span>
+  );
+  if (status === "reception") return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">Pay at reception</span>
   );
   if (status === "after_match") return (
     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">Pay after match</span>
@@ -69,6 +99,7 @@ export default function VenueBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("All");
+  const [category, setCategory] = useState<"all" | Category>("all");
 
   useEffect(() => {
     if (!user) return;
@@ -78,18 +109,62 @@ export default function VenueBookingsPage() {
       if (!ps || ps.length === 0) { setLoading(false); return; }
 
       const { data: bks } = await supabase.from("pitch_bookings")
-        .select("id, match_date, start_time, end_time, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status, booker_name, booked_by")
+        .select("id, match_date, start_time, end_time, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status, booker_name, booked_by, stripe_payment_intent_id")
         .in("pitch_id", ps.map((p) => p.id)).order("match_date", { ascending: false });
 
-      // Use booker_name from DB if set (manual bookings), otherwise look up profile
-      const enriched = await Promise.all((bks ?? []).map(async (b) => {
+      const rows = bks ?? [];
+      const bookingIds = rows.map((b) => b.id);
+
+      // Fetch the payment picture in three batched queries:
+      //  • open_matches → the match_type (match / tournament / league) so we can
+      //    categorise the listing bookings.
+      //  • player_payments → a paid card charge for a booking (direct Book flow).
+      //  • venue_transfers → the payout Unitr sent the venue. A paid transfer is
+      //    the definitive "the venue got its money" signal and fires for BOTH
+      //    credit- and card-paid Unitr bookings, so we reconcile against it.
+      const [{ data: oms }, { data: pays }, { data: transfers }] = await Promise.all([
+        bookingIds.length
+          ? supabase.from("open_matches").select("booking_id, match_type").in("booking_id", bookingIds)
+          : Promise.resolve({ data: [] as { booking_id: string; match_type: string }[] }),
+        bookingIds.length
+          ? supabase.from("player_payments").select("booking_id, status").in("booking_id", bookingIds)
+          : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
+        bookingIds.length
+          ? supabase.from("venue_transfers").select("booking_id, status").in("booking_id", bookingIds)
+          : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
+      ]);
+      const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));
+      const paidBookingIds = new Set((pays ?? []).filter((p) => p.status === "paid").map((p) => p.booking_id));
+      const paidOutBookingIds = new Set((transfers ?? []).filter((t) => t.status === "paid" && t.booking_id).map((t) => t.booking_id));
+
+      // Reconcile Unitr (platform) bookings: if the money actually moved — a paid
+      // card charge, a Stripe intent on the booking, or a completed venue payout —
+      // mark it paid and persist the correction so it stays fixed.
+      const toMarkPaid: string[] = [];
+      const enriched = await Promise.all(rows.map(async (b) => {
         let name = b.booker_name;
         if (!name) {
           const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
           name = (prof as { full_name: string } | null)?.full_name ?? "Unknown";
         }
-        return { ...b, booker_name: name, payment_status: b.payment_status ?? "unpaid", match_date: normalizeMatchDate(b.match_date) } as Booking;
+
+        let payment = b.payment_status ?? "unpaid";
+        const paidViaUnitr = b.booking_type === "platform" &&
+          (paidBookingIds.has(b.id) || paidOutBookingIds.has(b.id) || Boolean(b.stripe_payment_intent_id));
+        if (paidViaUnitr && payment !== "paid") { payment = "paid"; toMarkPaid.push(b.id); }
+
+        const category: Category = b.booking_type === "manual" ? "manual"
+          : b.booking_type === "open_match"
+            ? (matchTypeByBooking.get(b.id) === "tournament" ? "tournament"
+              : matchTypeByBooking.get(b.id) === "league" ? "league" : "match")
+            : "match"; // platform = a team's match booked through Unitr
+
+        return { ...b, booker_name: name, payment_status: payment, category, match_date: normalizeMatchDate(b.match_date) } as Booking;
       }));
+
+      if (toMarkPaid.length) {
+        await supabase.from("pitch_bookings").update({ payment_status: "paid" }).in("id", toMarkPaid);
+      }
       setBookings(enriched);
       setLoading(false);
     }
@@ -106,7 +181,10 @@ export default function VenueBookingsPage() {
     setBookings((b) => b.map((x) => x.id === id ? { ...x, payment_status } : x));
   };
 
-  const filtered = filter === "All" ? bookings : bookings.filter((b) => b.status === filter.toLowerCase());
+  const filtered = bookings.filter((b) =>
+    (filter === "All" || b.status === filter.toLowerCase()) &&
+    (category === "all" || b.category === category)
+  );
 
   // Group by upcoming vs past using match_date string comparison
   const today = new Date();
@@ -139,11 +217,24 @@ export default function VenueBookingsPage() {
         <p className="text-xs text-text-secondary mt-0.5">{bookings.length} total booking{bookings.length !== 1 ? "s" : ""}</p>
       </div>
 
-      {/* Filter tabs */}
+      {/* Category tabs — highlight matches / tournaments / leagues separately */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {CATEGORY_TABS.map((c) => {
+          const count = c.k === "all" ? bookings.length : bookings.filter((b) => b.category === c.k).length;
+          return (
+            <button key={c.k} onClick={() => setCategory(c.k)}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${category === c.k ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+              {c.label}{count > 0 ? ` · ${count}` : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Status filter */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {STATUS_FILTERS.map((f) => (
           <button key={f} onClick={() => setFilter(f)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filter === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${filter === f ? "bg-text-primary/10 text-text-primary border-text-primary/30" : "bg-surface-2 text-text-secondary border-border"}`}>
             {f}
           </button>
         ))}
@@ -166,13 +257,17 @@ export default function VenueBookingsPage() {
                     {/* Header */}
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0 pr-2">
-                        <p className="font-semibold text-sm truncate">{b.booker_name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-sm truncate">{b.booker_name}</p>
+                          <CategoryBadge category={b.category} />
+                        </div>
                         <p className="text-xs text-text-secondary mt-0.5">
                           {formatMatchDate(b.match_date)} · {b.start_time}{endTime ? `–${endTime}` : ""}
                         </p>
-                        {b.booking_type === "manual" && (
-                          <span className="text-[10px] text-text-secondary italic">External booking</span>
-                        )}
+                        <span className="text-[10px] text-text-secondary italic">
+                          {b.booking_type === "manual" ? "External booking"
+                            : b.booking_type === "platform" ? "Booked via Unitr" : "Listing"}
+                        </span>
                       </div>
                       <StatusBadge status={b.status} />
                     </div>

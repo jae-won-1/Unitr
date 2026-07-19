@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 type DaySchedule = { day_of_week: number; open_time: string; close_time: string; is_active: boolean };
 type Block = { id: string; block_date: string; start_time: string | null; end_time: string | null; reason: string | null };
 type PricingRule = { id: string; name: string; days: number[]; start_time: string; end_time: string; price: number };
-type SettingsTab = "info" | "pitches" | "schedule" | "pricing" | "holidays";
+type SettingsTab = "info" | "pitches" | "schedule" | "pricing" | "holidays" | "payouts";
 type PitchItem = { id: string; name: string; price_per_hour: number; formats: string[]; surfaces: string[]; capacity: number | null };
 
 const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "11-a-side"];
@@ -702,6 +702,132 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
   );
 }
 
+// ── Payouts Tab ───────────────────────────────────────────────
+// One Stripe payout account per VENUE (not per pitch) — connecting it here
+// covers every pitch at the venue. Payout history lives in Reports.
+function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
+  const primaryId = pitches[0]?.id;
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [payoutsEnabled, setPayoutsEnabled] = useState(false);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!primaryId) return;
+    let cancelled = false;
+    async function load() {
+      // DB first (instant), then Stripe for the live capability check.
+      const { data: p } = await supabase.from("pitches")
+        .select("stripe_account_id, payouts_enabled").eq("id", primaryId).maybeSingle();
+      if (!cancelled && p) {
+        setConnected(!!p.stripe_account_id);
+        setPayoutsEnabled(!!p.payouts_enabled);
+        setAccountId(p.stripe_account_id ?? null);
+      }
+      try {
+        const res = await fetch("/api/connect/account-status", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pitchId: primaryId }),
+        });
+        const d = await res.json();
+        if (!cancelled && res.ok) {
+          setConnected(!!d.connected);
+          setPayoutsEnabled(!!d.payoutsEnabled);
+          if (d.accountId) setAccountId(d.accountId);
+        }
+      } catch { /* offline — DB snapshot already shown */ }
+      if (!cancelled) setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [primaryId]);
+
+  const handleConnect = async () => {
+    if (!primaryId) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/connect/create-venue-account", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pitchId: primaryId }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.onboardingUrl) {
+        setError(d.error ?? "Could not start onboarding.");
+        setConnecting(false);
+        return;
+      }
+      window.location.href = d.onboardingUrl;
+    } catch {
+      setError("Could not reach the payment service.");
+      setConnecting(false);
+    }
+  };
+
+  if (loading) return <div className="py-12 text-center text-sm text-text-secondary">Checking payout status…</div>;
+
+  return (
+    <div className="space-y-4 pb-8">
+      <div className="bg-surface-2 border border-border rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-sm font-semibold">Payout account</p>
+          {payoutsEnabled ? (
+            <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Payouts enabled</span>
+          ) : connected ? (
+            <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Onboarding incomplete</span>
+          ) : (
+            <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Not connected</span>
+          )}
+        </div>
+        <p className="text-xs text-text-secondary mb-4">
+          When a booking is paid on any of your pitches, Unitr transfers the pitch fee to this
+          account. One account covers your whole venue{pitches.length > 1 ? ` — all ${pitches.length} pitches pay out here` : ""}.
+          Test mode — no real money moves.
+        </p>
+
+        {accountId && (
+          <div className="bg-background border border-border rounded-xl px-3 py-2.5 mb-4">
+            <p className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-0.5">Stripe account</p>
+            <p className="text-xs font-mono">{accountId}</p>
+          </div>
+        )}
+
+        {payoutsEnabled ? (
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Ready to receive payouts. See payout history in Reports.
+          </div>
+        ) : (
+          <button onClick={handleConnect} disabled={connecting}
+            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+            {connecting ? "Starting…" : connected ? "Resume Onboarding" : "Connect Payout Account"}
+          </button>
+        )}
+        {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+      </div>
+
+      {pitches.length > 1 && (
+        <div className="bg-surface-2 border border-border rounded-2xl p-4">
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Covered pitches</p>
+          <div className="space-y-1.5">
+            {pitches.map((p) => (
+              <div key={p.id} className="flex items-center justify-between text-sm">
+                <span className="font-medium">{p.name}</span>
+                <span className="text-xs text-text-secondary">£{p.price_per_hour}/hr</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-text-secondary mt-3">
+            Revenue is still tracked per pitch — see the breakdown in Reports.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────
 export default function VenueSettingsPage() {
   const { user, signOut } = useAuth();
@@ -709,6 +835,12 @@ export default function VenueSettingsPage() {
   const [allPitches, setAllPitches] = useState<PitchItem[]>([]);
   const [selectedPitchId, setSelectedPitchId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("info");
+
+  // Returning from Stripe onboarding (?connect=done|refresh) → land on Payouts.
+  useEffect(() => {
+    const connect = new URLSearchParams(window.location.search).get("connect");
+    if (connect) setActiveTab("payouts");
+  }, []);
   const [form, setForm] = useState({
     name: "", address: "",
     price_per_hour: "", capacity: "", contact_email: "", description: "",
@@ -785,6 +917,7 @@ export default function VenueSettingsPage() {
     { key: "schedule", label: "Schedule" },
     { key: "pricing", label: "Pricing" },
     { key: "holidays", label: "Holidays" },
+    { key: "payouts", label: "Payouts" },
   ];
 
   return (
@@ -829,6 +962,9 @@ export default function VenueSettingsPage() {
       )}
       {activeTab === "holidays" && (
         <HolidaysTab pitches={allPitches} pitchId={pitchId} onPitchChange={setSelectedPitchId} />
+      )}
+      {activeTab === "payouts" && (
+        <PayoutsTab pitches={allPitches} />
       )}
 
       <button onClick={async () => { await signOut(); router.push("/"); }}

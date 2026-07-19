@@ -309,6 +309,9 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     booker_name: "",
     notes: "",
   });
+  // Manual bookings: how the team is paying. "reception" = pay in person at
+  // the desk (often after the game) → recorded unpaid until the desk collects.
+  const [manualPayment, setManualPayment] = useState<"paid" | "reception">("reception");
   const [omForm, setOmForm] = useState({
     title: "",
     format: "5-a-side",
@@ -349,7 +352,8 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       unitr_fee_pence: 0,
       status: "confirmed",
       booking_type: "manual",
-      payment_status: "unpaid",
+      // Manager's choice: paid online now, or to be collected at reception.
+      payment_status: manualPayment === "paid" ? "paid" : "reception",
       booker_name: form.booker_name.trim(),
       notes: form.notes.trim() || null,
     }).select().single();
@@ -541,12 +545,32 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
               </div>
 
               {bookingType === "manual" ? (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
-                  <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
-                    placeholder="e.g. Maintenance, private hire, league game…"
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
-                </div>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium">Notes <span className="text-text-secondary font-normal">(optional)</span></label>
+                    <input value={form.notes} onChange={(e) => set("notes", e.target.value)}
+                      placeholder="e.g. Maintenance, private hire, league game…"
+                      className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium">Payment</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { k: "paid", label: "Paid online", desc: "Already paid" },
+                        { k: "reception", label: "Pay at reception", desc: "Collect in person" },
+                      ] as const).map((opt) => {
+                        const active = manualPayment === opt.k;
+                        return (
+                          <button key={opt.k} type="button" onClick={() => setManualPayment(opt.k)}
+                            className={`rounded-xl border p-3 text-left transition-colors ${active ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
+                            <p className="text-sm font-semibold">{opt.label}</p>
+                            <p className="text-[10px] text-text-secondary mt-0.5">{opt.desc}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3">
@@ -658,22 +682,31 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
               )}
             </div>
             <div className="flex gap-2">
-              {(["unpaid", "after_match", "paid"] as const).map((s) => {
-                const labels = { unpaid: "Unpaid", after_match: "After Match", paid: "Paid" };
-                const active = paymentStatus === s;
-                return (
-                  <button key={s} onClick={() => onPaymentUpdate(booking.id, s)}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors ${
-                      active
-                        ? s === "paid" ? "bg-accent text-black border-accent"
-                          : s === "after_match" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
-                          : "bg-red-500/20 text-red-400 border-red-500/40"
-                        : "bg-surface border-border text-text-secondary"
-                    }`}>
-                    {labels[s]}
-                  </button>
-                );
-              })}
+              {(() => {
+                // Show the payment states that make sense for this booking kind:
+                // manual → reception (pay in person); open_match → after_match.
+                const labels: Record<string, string> = {
+                  unpaid: "Unpaid", reception: "At Reception", after_match: "After Match", paid: "Paid",
+                };
+                const middle = booking.booking_type === "manual" ? "reception"
+                  : booking.booking_type === "open_match" ? "after_match" : null;
+                const options = (middle ? ["unpaid", middle, "paid"] : ["unpaid", "paid"]) as string[];
+                return options.map((s) => {
+                  const active = paymentStatus === s;
+                  return (
+                    <button key={s} onClick={() => onPaymentUpdate(booking.id, s)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                        active
+                          ? s === "paid" ? "bg-accent text-black border-accent"
+                            : s === "unpaid" ? "bg-red-500/20 text-red-400 border-red-500/40"
+                            : "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                          : "bg-surface border-border text-text-secondary"
+                      }`}>
+                      {labels[s]}
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
 

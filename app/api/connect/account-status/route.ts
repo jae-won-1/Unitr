@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 
-// Refresh a pitch's payout status from Stripe. Called by the venue portal
-// after onboarding (and on load) so `pitches.payouts_enabled` mirrors whether
-// the connected account can actually receive transfers.
+// Refresh a VENUE's payout status from Stripe. The venue's pitches all share
+// one connected account, so the answer is mirrored onto every pitch row in
+// the group — `pitches.payouts_enabled` tracks whether the venue's account
+// can actually receive transfers.
 export async function POST(req: NextRequest) {
   try {
     const { pitchId } = await req.json();
@@ -14,7 +15,7 @@ export async function POST(req: NextRequest) {
 
     const { data: pitch } = await adminSupabase
       .from("pitches")
-      .select("id, stripe_account_id, payouts_enabled")
+      .select("id, venue_owner_id, stripe_account_id, payouts_enabled")
       .eq("id", pitchId)
       .maybeSingle();
     if (!pitch) {
@@ -29,16 +30,18 @@ export async function POST(req: NextRequest) {
     // what stripe.transfers.create checks, so that's what we mirror.
     const payoutsEnabled = account.capabilities?.transfers === "active";
 
-    if (payoutsEnabled !== pitch.payouts_enabled) {
-      await adminSupabase
-        .from("pitches")
-        .update({ payouts_enabled: payoutsEnabled })
-        .eq("id", pitch.id);
+    // Mirror onto every pitch sharing this venue account.
+    const update = adminSupabase.from("pitches").update({ payouts_enabled: payoutsEnabled });
+    if (pitch.venue_owner_id) {
+      await update.eq("venue_owner_id", pitch.venue_owner_id).eq("stripe_account_id", pitch.stripe_account_id);
+    } else {
+      await update.eq("id", pitch.id);
     }
 
     return NextResponse.json({
       connected: true,
       payoutsEnabled,
+      accountId: pitch.stripe_account_id,
       detailsSubmitted: account.details_submitted ?? false,
     });
   } catch (err) {

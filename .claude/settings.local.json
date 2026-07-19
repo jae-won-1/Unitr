@@ -28,7 +28,28 @@
       "PowerShell(npx tsc --noEmit)",
       "Bash(echo \"exit: $?\")",
       "Bash(curl -sS -o /dev/null -w \"http_code: %{http_code}\\\\n\" https://github.com --max-time 15)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(node \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-User-unitr\\\\b512c0ab-19a3-42b7-b2fc-d006023758d1\\\\scratchpad\\\\inspect.js\")",
+      "Bash(node \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-User-unitr\\\\b512c0ab-19a3-42b7-b2fc-d006023758d1\\\\scratchpad\\\\inspect2.js\")",
+      "Bash(node \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-User-unitr\\\\b512c0ab-19a3-42b7-b2fc-d006023758d1\\\\scratchpad\\\\backfill-venue-accounts.js\")",
+      "Bash(node \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-User-unitr\\\\b512c0ab-19a3-42b7-b2fc-d006023758d1\\\\scratchpad\\\\check-credits.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -X POST http://localhost:3000/api/connect/account-status -H \"Content-Type: application/json\" -d '{\"pitchId\":\"1470e618-4183-431a-baeb-08bd54a24f18\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/connect/account-status -H \"Content-Type: application/json\" -d '{\"pitchId\":\"e78092c3-0b17-4138-ab99-16314dfb7ad6\"}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/connect/venue-transfer -H \"Content-Type: application/json\" -d '{\"pitchId\":\"1470e618-4183-431a-baeb-08bd54a24f18\",\"amountPence\":100}')",
+      "Bash(node \"C:\\\\Users\\\\User\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-User-unitr\\\\b512c0ab-19a3-42b7-b2fc-d006023758d1\\\\scratchpad\\\\cleanup-test-transfer.js\")",
+      "Bash(npx next *)",
+      "Read(//c/Users/User/.claude/projects/c--Users-User-unitr/memory/**)",
+      "Bash(sed -i 's/— test venue account acct_1TrTcvJw7mJLjk11 on Powerleague Shoreditch; Connect enabled; anon-key fallback for admin routes/— one payout account per venue; per-venue test accounts incl. Aspire acct_1TuxaVFIUrTD9Xnu; anon-key fallback for admin routes/' MEMORY.md)",
+      "Bash(npx supabase *)",
+      "Bash(curl -s -o /dev/null -w \"server:%{http_code}\\\\n\" http://localhost:3000/book)",
+      "Bash(curl -s -X POST http://localhost:3000/api/create-payment-intent -H \"Content-Type: application/json\" -d '{\"amountPence\":8400}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/book/pay-credit -H \"Content-Type: application/json\" -d '{\"teamId\":\"fbe92b17-73a7-4680-b444-3bf9b0c1b7cc\",\"feePence\":100}')",
+      "Bash(curl -s -X POST http://localhost:3000/api/book/pay-credit -H \"Content-Type: application/json\" -d '{\"teamId\":\"fbe92b17-73a7-4680-b444-3bf9b0c1b7cc\",\"feePence\":999999}')",
+      "Bash(node -e ' *)",
+      "Bash(npx --no-install kill-port 3001)",
+      "Bash(powershell -Command 'Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -Expand OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }')",
+      "Bash(git fetch *)"
     ]
   }
 }

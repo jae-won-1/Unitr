@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
+import { stripePromise } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import "leaflet/dist/leaflet.css";
@@ -64,30 +66,156 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
-// ── Confirm Booking ───────────────────────────────────────────
-function ConfirmBooking({ pitch, date, time, booking, onCancel, onConfirm }: {
-  pitch: Pitch; date: string; time: string; booking: boolean; onCancel: () => void; onConfirm: () => void;
+// ── Card form (must live inside <Elements>) ───────────────────
+// Collects card details and confirms the PaymentIntent. On success it hands
+// the intent id back up so the parent can finalise the booking.
+function CardBookingForm({ totalPence, working, onPaid, onError }: {
+  totalPence: number; working: boolean; onPaid: (intentId: string) => void; onError: (msg: string) => void;
 }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    setPaying(true);
+    onError("");
+    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
+    if (error) { onError(error.message ?? "Payment failed. Please try again."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded") {
+      onPaid(paymentIntent.id);
+      // parent takes over (books + closes); keep the button disabled meanwhile
+    } else {
+      onError("Payment did not complete. Please try again.");
+      setPaying(false);
+    }
+  };
+
+  const busy = paying || working;
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={() => !booking && onCancel()}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
-        <p className="text-lg font-bold mb-1">Confirm booking</p>
+    <div className="space-y-4">
+      <PaymentElement />
+      <button onClick={handlePay} disabled={busy || !stripe}
+        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+        {busy
+          ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Processing…</>
+          : `Pay £${(totalPence / 100).toFixed(2)}`}
+      </button>
+    </div>
+  );
+}
+
+// ── Confirm & Pay for a booking ───────────────────────────────
+// Captains choose team credit or card; everyone else pays by card only.
+// Only the pitch fee is debited from credit; card payments add the 5% fee.
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, working, error, onCancel, onPayCredit, onCardPaid, onError }: {
+  pitch: Pitch; date: string; time: string;
+  isCaptain: boolean; teamCreditPence: number | null;
+  working: boolean; error: string | null;
+  onCancel: () => void;
+  onPayCredit: () => void;
+  onCardPaid: (intentId: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const pitchFeePence = Math.round(pitch.price_per_hour * 100);
+  const unitrFeePence = Math.round(pitchFeePence * 0.05);
+  const cardTotalPence = pitchFeePence + unitrFeePence;
+  const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= pitchFeePence;
+
+  const [method, setMethod] = useState<"credit" | "card">(creditOk ? "credit" : "card");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loadingSecret, setLoadingSecret] = useState(false);
+
+  // Lazily create a PaymentIntent the first time the card method is active.
+  useEffect(() => {
+    if (method !== "card" || clientSecret || loadingSecret) return;
+    setLoadingSecret(true);
+    fetch("/api/create-payment-intent", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountPence: cardTotalPence }),
+    })
+      .then((r) => r.json())
+      .then((d) => { if (d.clientSecret) setClientSecret(d.clientSecret); else onError(d.error ?? "Could not start card payment."); })
+      .catch(() => onError("Could not reach the payment service."))
+      .finally(() => setLoadingSecret(false));
+  }, [method, clientSecret, loadingSecret, cardTotalPence, onError]);
+
+  const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={() => !working && onCancel()}>
+      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <p className="text-lg font-bold mb-1">Confirm & pay</p>
         <p className="text-sm font-semibold">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-4">{pitch.address}</p>
-        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 space-y-1.5 text-xs">
-          <div className="flex justify-between"><span className="text-text-secondary">When</span><span className="font-semibold">{fmtDate(date)} · {time}–{`${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`}</span></div>
-          <div className="flex justify-between"><span className="text-text-secondary">Pitch hire (1hr)</span><span className="font-semibold">£{pitch.price_per_hour}</span></div>
-          <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(pitch.price_per_hour * 0.05).toFixed(2)}</span></div>
-          <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Total</span><span className="font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span></div>
+
+        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 space-y-1.5 text-xs">
+          <div className="flex justify-between"><span className="text-text-secondary">When</span><span className="font-semibold">{fmtDate(date)} · {time}–{endTime}</span></div>
+          <div className="flex justify-between"><span className="text-text-secondary">Pitch hire (1hr)</span><span className="font-semibold">£{(pitchFeePence / 100).toFixed(2)}</span></div>
+          {method === "card" && (
+            <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
+          )}
+          <div className="flex justify-between border-t border-border pt-1.5 mt-1.5">
+            <span className="font-semibold">Total</span>
+            <span className="font-bold text-accent">£{((method === "credit" ? pitchFeePence : cardTotalPence) / 100).toFixed(2)}</span>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <button onClick={onCancel} disabled={booking} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">Cancel</button>
-          <button onClick={onConfirm} disabled={booking} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-            {booking
-              ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
-              : "Confirm & Book"}
-          </button>
-        </div>
+
+        {/* Payment method — captains pick; others are card-only */}
+        {isCaptain ? (
+          <div className="mb-4">
+            <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Pay with</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => creditOk && setMethod("credit")} disabled={!creditOk}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  method === "credit" ? "border-accent bg-accent/10" : "border-border bg-surface-2"
+                } ${!creditOk ? "opacity-50 cursor-not-allowed" : ""}`}>
+                <p className="text-sm font-semibold">Team credit</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">
+                  {teamCreditPence === null ? "—" : `£${(teamCreditPence / 100).toFixed(2)} available`}
+                </p>
+                {!creditOk && teamCreditPence !== null && (
+                  <p className="text-[10px] text-red-400 mt-0.5">Not enough — top up in My Team</p>
+                )}
+              </button>
+              <button onClick={() => setMethod("card")}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  method === "card" ? "border-accent bg-accent/10" : "border-border bg-surface-2"
+                }`}>
+                <p className="text-sm font-semibold">Card</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">Pay by debit/credit card</p>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+            <p className="text-xs font-semibold">Paying by card</p>
+            <p className="text-[10px] text-text-secondary mt-0.5">Team credit is available to team captains only.</p>
+          </div>
+        )}
+
+        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+        {/* Payment action */}
+        {method === "credit" ? (
+          <div className="flex gap-3">
+            <button onClick={onCancel} disabled={working} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">Cancel</button>
+            <button onClick={onPayCredit} disabled={working || !creditOk}
+              className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {working
+                ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
+                : `Pay £${(pitchFeePence / 100).toFixed(2)} with credit`}
+            </button>
+          </div>
+        ) : loadingSecret || !clientSecret ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+          </div>
+        ) : (
+          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#00E676", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
+            <CardBookingForm totalPence={cardTotalPence} working={working} onPaid={onCardPaid} onError={onError} />
+          </Elements>
+        )}
       </div>
     </div>
   );
@@ -131,7 +259,12 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
   const [view, setView] = useState<"list" | "map">("list");
   const [bookerName, setBookerName] = useState<string>("");
   // The captain's team — needed to auto-post the booking as a secured match.
+  // Present only when the user is a team captain (loaded by captain_id), so it
+  // doubles as the "is this user an admin/captain?" flag for payment options.
   const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
+  // Available team credit (balance − reserved), in pence. null = not loaded / no account.
+  const [teamCreditPence, setTeamCreditPence] = useState<number | null>(null);
+  const isCaptain = team !== null;
 
   // Filters — pre-fill from the captain's chosen posting slot when the Book tab
   // is opened via "lock in a pitch first"; otherwise default the date to today
@@ -170,7 +303,15 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
     if (!user) return;
     async function loadName() {
       const { data: ownTeam } = await supabase.from("teams").select("id, name, location").eq("captain_id", user!.id).maybeSingle();
-      if (ownTeam?.name) { setTeam(ownTeam); setBookerName(ownTeam.name); return; }
+      if (ownTeam?.name) {
+        setTeam(ownTeam);
+        setBookerName(ownTeam.name);
+        // Load the team pot so the captain can choose to pay from credit.
+        const { data: credit } = await supabase.from("team_credits")
+          .select("balance_pence, reserved_pence").eq("team_id", ownTeam.id).maybeSingle();
+        setTeamCreditPence(credit ? credit.balance_pence - (credit.reserved_pence ?? 0) : 0);
+        return;
+      }
       const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user!.id).maybeSingle();
       setBookerName((profile as { full_name?: string } | null)?.full_name ?? "Session booking");
     }
@@ -258,8 +399,11 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
     setFilterDate(localISO(new Date()));
   };
 
-  // Reserve the slot — writes to pitch_bookings so the venue portal sees it.
-  const confirmBooking = async () => {
+  // Finalise a booking after the chosen payment succeeds.
+  //   method "credit" — captain pays the pitch fee from the team pot (no 5%).
+  //   method "card"    — card already charged (intentId set); records the payment.
+  // Writes to pitch_bookings so the venue portal sees it, then pays the venue.
+  const completeBooking = async (method: "credit" | "card", intentId?: string) => {
     if (!pendingSlot) return;
     const { pitch, date, time } = pendingSlot;
     if (!user) { setError("You must be signed in to book."); setPendingSlot(null); return; }
@@ -268,7 +412,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
 
     const h = Number(time.split(":")[0]);
     const endTime = `${String(Math.min(h + 1, 23)).padStart(2, "0")}:00`;
-    const totalPence = pitch.price_per_hour * 100;
+    const pitchFeePence = Math.round(pitch.price_per_hour * 100);   // what the venue receives
+    const unitrFeePence = Math.round(pitchFeePence * 0.05);
 
     const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
       pitch_id: pitch.id,
@@ -278,28 +423,59 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
       end_time: endTime,
       booker_name: bookerName || "Session booking",
       booking_type: "platform",
-      total_price_pence: totalPence,
+      total_price_pence: pitchFeePence,
       player_count: 0,
       per_player_pence: 0,
-      unitr_fee_pence: Math.round(totalPence * 0.05),
+      unitr_fee_pence: method === "card" ? unitrFeePence : 0,
       status: "confirmed",
-      payment_status: "paid",
+      // Credit is debited just below; card was already charged upstream.
+      payment_status: method === "card" ? "paid" : "pending",
+      stripe_payment_intent_id: intentId ?? null,
     }).select("id").single();
 
-    if (bookingErr) { setBooking(false); setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
+    if (bookingErr || !bookingRow) { setBooking(false); setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
 
-    // Cash side: pay the venue its fee (Stripe Connect, test mode). Same rule
-    // as the team-credit path — every paid booking produces exactly one
-    // venue_transfers row so in-app payments reconcile against real payouts.
-    // Best-effort: an unconnected venue or empty test balance is recorded as
-    // a failed transfer and must not block the booking.
+    // ── Collect payment ──
+    if (method === "credit") {
+      if (!team) { setBooking(false); setError("Only team captains can pay with credit."); return; }
+      const res = await fetch("/api/book/pay-credit", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: team.id, feePence: pitchFeePence, bookingId: bookingRow.id }),
+      }).catch(() => null);
+      const d = res ? await res.json().catch(() => null) : null;
+      if (!res || !res.ok || !d?.ok) {
+        // Roll the booking back so we never hold a slot without payment.
+        await supabase.from("pitch_bookings").update({ status: "cancelled", payment_status: "failed" }).eq("id", bookingRow.id);
+        setBooking(false);
+        setError(d?.error === "INSUFFICIENT_CREDIT" ? "Not enough team credit. Top up in My Team." : (d?.error ?? "Couldn't debit team credit."));
+        return;
+      }
+      if (typeof d.newBalancePence === "number") setTeamCreditPence(d.newBalancePence);
+    } else {
+      // Card path: record the per-payment row so finance/reporting sees the charge.
+      await supabase.from("player_payments").insert({
+        booking_id: bookingRow.id,
+        player_id: user.id,
+        amount_pence: pitchFeePence,
+        unitr_fee_pence: unitrFeePence,
+        total_pence: pitchFeePence + unitrFeePence,
+        status: "paid",
+        purpose: "individual",
+        stripe_payment_intent_id: intentId ?? null,
+      });
+    }
+
+    // Cash side: pay the venue its pitch fee (Stripe Connect, test mode). Every
+    // paid booking produces exactly one venue_transfers row so in-app payments
+    // reconcile against real payouts. Best-effort: an unconnected venue or empty
+    // test balance is recorded as a failed transfer and must not block booking.
     fetch("/api/connect/venue-transfer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         pitchId: pitch.id,
-        bookingId: bookingRow?.id ?? null,
-        amountPence: totalPence,
+        bookingId: bookingRow.id,
+        amountPence: pitchFeePence,
       }),
     }).catch(() => {});
 
@@ -529,15 +705,20 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
         </div>
       )}
 
-      {/* Confirm booking */}
+      {/* Confirm & pay */}
       {pendingSlot && (
-        <ConfirmBooking
+        <BookingPaymentModal
           pitch={pendingSlot.pitch}
           date={pendingSlot.date}
           time={pendingSlot.time}
-          booking={booking}
-          onCancel={() => { if (!booking) setPendingSlot(null); }}
-          onConfirm={confirmBooking}
+          isCaptain={isCaptain}
+          teamCreditPence={teamCreditPence}
+          working={booking}
+          error={error}
+          onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}
+          onPayCredit={() => completeBooking("credit")}
+          onCardPaid={(intentId) => completeBooking("card", intentId)}
+          onError={(msg) => setError(msg || null)}
         />
       )}
 
