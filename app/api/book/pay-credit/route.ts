@@ -3,9 +3,8 @@ import { adminSupabase } from "@/lib/supabase-admin";
 
 // Debit a team's credit for a DIRECT pitch booking (no opponent/match).
 // This is the single-team counterpart to split_pitch_fee — a captain paying
-// for a pitch out of the team pot. Only the pitch fee is debited; the 5%
-// platform fee applies to card payments, not to the internal credit pot
-// (consistent with the match credit flow, which never charges fees to credit).
+// for a pitch out of the team pot. The caller passes the full amount including
+// the 5% Unitr fee, so credit payments and card payments are treated equally.
 //
 // No SECURITY DEFINER RPC exists for this and we can't add one in this
 // prototype (anon key only), so the debit is a guarded read-modify-write

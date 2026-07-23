@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useTactics } from "@/contexts/TacticsContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -204,6 +204,24 @@ async function attachMatchRowIds<T extends { postId: string }>(fixtures: T[]): P
   return fixtures.map((f) => ({ ...f, matchRowId: byPostId.get(f.postId) ?? null }));
 }
 
+const POLL_MONTHS: Record<string, number> = {
+  JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+  JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+};
+
+function isPollExpired(dateOptions: { date: string; time: string }[]): boolean {
+  if (!dateOptions.length) return true;
+  const times = dateOptions.map((opt) => {
+    const m = opt.date.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (!m) return Infinity;
+    const mo = POLL_MONTHS[m[2].toUpperCase()];
+    if (mo === undefined) return Infinity;
+    const [h, min] = opt.time.split(":").map(Number);
+    return new Date(Number(m[3]), mo, Number(m[1]), h, min).getTime();
+  });
+  return Math.min(...times) < Date.now();
+}
+
 // ── Player My Team ────────────────────────────────────────────
 function PlayerMyTeam() {
   const { tactics } = useTactics();
@@ -353,7 +371,7 @@ function PlayerMyTeam() {
       </section>
 
       {/* Availability Status */}
-      {availabilityRequest && (
+      {availabilityRequest && !isPollExpired(availabilityRequest.date_options) && (
         <section className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4">
           <h3 className="text-base font-bold mb-3">Availability Status</h3>
 
@@ -671,6 +689,15 @@ function CaptainMyTeam() {
     supabase.from("availability_requests").select("id, date_options, created_at")
       .eq("team_id", myTeam.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
       .then(async ({ data: req }) => {
+        if (req && isPollExpired(req.date_options)) {
+          await fetch("/api/availability/delete", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestId: req.id, captainId: user!.id }),
+          });
+          setAvailabilityRequest(null);
+          return;
+        }
         setAvailabilityRequest(req ?? null);
         if (req) {
           const [{ data: resps }, { data: mine }] = await Promise.all([
@@ -778,7 +805,7 @@ function CaptainMyTeam() {
             </div>
           </div>
         </div>
-        {availabilityRequest && (
+        {availabilityRequest && !isPollExpired(availabilityRequest.date_options) && (
           <div className="bg-accent/5 border border-accent/20 rounded-2xl px-4 py-4 mb-1">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-bold">Availability Status</h3>
@@ -931,7 +958,7 @@ function CaptainMyTeam() {
               Collect Availability
             </span>
           ) : (
-            <a href="/my-team/availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
+            <a href="/my-team/collect-availability" className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-semibold text-center">
               Collect Availability
             </a>
           )}
@@ -1308,7 +1335,10 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [logTab, setLogTab] = useState<"deposits" | "bookings" | "dues">("deposits");
+  const [logTab, setLogTab] = useState<"deposits" | "bookings">("deposits");
+  const [depositsExpanded, setDepositsExpanded] = useState(false);
+  const [bookingsExpanded, setBookingsExpanded] = useState(false);
+  const [owedByPlayer, setOwedByPlayer] = useState<Record<string, number>>({});
   const [bookingTx, setBookingTx] = useState<{ id: string; player_name: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
@@ -1453,6 +1483,33 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     return () => { supabase.removeChannel(channel); };
   }, [teamId, userId]);
 
+  const loadDeposits = useCallback(async () => {
+    if (!teamId) return;
+    const { data } = await supabase
+      .from("team_credit_transactions")
+      .select("id, player_id, amount_pence, created_at")
+      .eq("team_id", teamId)
+      .eq("type", "deposit")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (!data || data.length === 0) { setTransactions([]); return; }
+    // Separate profiles lookup — avoids FK traversal issue with auth.users ref
+    const pids = [...new Set(data.map((t) => t.player_id).filter(Boolean))];
+    const { data: profs } = pids.length > 0
+      ? await supabase.from("profiles").select("id, full_name").in("id", pids)
+      : { data: [] as { id: string; full_name: string }[] };
+    const nameById = new Map((profs ?? []).map((p) => [p.id, p.full_name as string]));
+    setTransactions(
+      data.map((t) => ({
+        id: t.id,
+        player_id: t.player_id,
+        amount_pence: t.amount_pence,
+        created_at: t.created_at,
+        player_name: nameById.get(t.player_id) ?? "Unknown",
+      }))
+    );
+  }, [teamId]);
+
   // Effect 2: load balance + transactions, subscribe to both
   useEffect(() => {
     if (!teamId) return;
@@ -1464,26 +1521,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
         setReserved((data?.reserved_pence ?? 0) / 100);
       });
 
-    // Load deposit history (join profiles for name)
-    async function loadTransactions() {
-      const { data } = await supabase
-        .from("team_credit_transactions")
-        .select("id, player_id, amount_pence, created_at, profiles(full_name)")
-        .eq("team_id", teamId)
-        .eq("type", "deposit")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      setTransactions(
-        (data ?? []).map((t) => ({
-          id: t.id,
-          player_id: t.player_id,
-          amount_pence: t.amount_pence,
-          created_at: t.created_at,
-          player_name: (t.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
-        }))
-      );
-    }
-    loadTransactions();
+    loadDeposits();
 
     const suffix = Math.random().toString(36).slice(2);
 
@@ -1519,7 +1557,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
       supabase.removeChannel(balanceChannel);
       supabase.removeChannel(txChannel);
     };
-  }, [teamId]);
+  }, [teamId, loadDeposits]);
 
   const closeModal = () => {
     setShowTopUp(false);
@@ -1756,27 +1794,39 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setRemindedPlayers((prev) => new Set(prev).add(key));
   };
 
-  const openLog = async (startTab: "deposits" | "bookings" | "dues" = "deposits") => {
+  const openLog = async (startTab: "deposits" | "bookings" = "deposits") => {
     setLogTab(startTab);
     setShowLog(true);
     if (!teamId) return;
+    // Always reload deposits so the popup is fresh on every open
+    loadDeposits();
     loadDues(teamId);
-    // Load booking payments for this team's matches
-    const { data: posts } = await supabase.from("match_posts")
-      .select("id, match_date").eq("captain_id", userId).eq("status", "matched");
-    const postIds = (posts ?? []).map((p) => p.id);
-    if (postIds.length === 0) { setBookingTx([]); return; }
-    const { data: payments } = await supabase.from("player_payments")
-      .select("id, player_id, amount_pence, created_at, booking_id, profiles(full_name), match_posts(team_name)")
-      .in("booking_id", postIds)
-      .eq("status", "paid")
+    // Load per-player outstanding balances from payment_collection_status
+    const { data: pcs } = await supabase
+      .from("payment_collection_status")
+      .select("player_id, share_pence, credited_pence")
+      .eq("team_id", teamId)
+      .eq("included", true)
+      .eq("received", false);
+    const owedMap: Record<string, number> = {};
+    (pcs ?? []).forEach((r) => {
+      const remaining = (r.share_pence ?? 0) - (r.credited_pence ?? 0);
+      if (remaining > 0) owedMap[r.player_id] = (owedMap[r.player_id] ?? 0) + remaining;
+    });
+    setOwedByPlayer(owedMap);
+    // Load outgoing credit transactions (pitch bookings, match captures, etc.)
+    const { data: outgoing } = await supabase
+      .from("team_credit_transactions")
+      .select("id, amount_pence, created_at, type")
+      .eq("team_id", teamId)
+      .lt("amount_pence", 0)
       .order("created_at", { ascending: false });
-    setBookingTx((payments ?? []).map((p) => ({
-      id: p.id,
-      player_name: (p.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
-      opponent: (p.match_posts as unknown as { team_name: string } | null)?.team_name ?? "Match",
-      amount_pence: p.amount_pence,
-      created_at: p.created_at,
+    setBookingTx((outgoing ?? []).map((t) => ({
+      id: t.id,
+      player_name: t.type === "booking_capture" ? "Pitch booking" : "Match payment",
+      opponent: "",
+      amount_pence: Math.abs(t.amount_pence),
+      created_at: t.created_at,
     })));
   };
 
@@ -1805,7 +1855,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   return (
     <>
       <div className="flex items-center gap-2 mt-2">
-        <button onClick={() => openLog(role === "captain" ? "deposits" : "dues")}
+        <button onClick={() => openLog("deposits")}
           className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5 hover:border-accent/40 transition-colors">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -1826,7 +1876,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
         {role === "captain" && (
           <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
             className="relative text-xs font-semibold text-text-primary border border-border bg-surface-2 px-3 py-1.5 rounded-xl">
-            Collect Payment
+            Unpaid Payment
             {collectMatches.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                 {collectMatches.length}
@@ -1874,7 +1924,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
             {/* Tabs */}
             <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1 mb-4 flex-shrink-0">
-              {(["deposits", "bookings", "dues"] as const).map((t) => (
+              {(["deposits", "bookings"] as const).map((t) => (
                 <button key={t} onClick={() => setLogTab(t)}
                   className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${logTab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
                   {t}
@@ -1882,95 +1932,80 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
               ))}
             </div>
 
-            <div className="overflow-y-auto flex-1 space-y-2">
-              {logTab === "deposits" && (
-                transactions.length === 0
-                  ? <p className="text-xs text-text-secondary text-center py-8">No deposits yet.</p>
-                  : transactions.map((tx) => {
-                      const initials = tx.player_name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                      const diffMins = Math.floor((Date.now() - new Date(tx.created_at).getTime()) / 60000);
-                      const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
+            <div className="overflow-y-auto flex-1">
+              {logTab === "deposits" && (() => {
+                const playerMap = new Map<string, { player_id: string; player_name: string; totalDeposited: number }>();
+                transactions.forEach((tx) => {
+                  const existing = playerMap.get(tx.player_id);
+                  if (existing) { existing.totalDeposited += tx.amount_pence; }
+                  else { playerMap.set(tx.player_id, { player_id: tx.player_id, player_name: tx.player_name, totalDeposited: tx.amount_pence }); }
+                });
+                const sorted = [...playerMap.values()].sort((a, b) => b.totalDeposited - a.totalDeposited);
+                const displayed = depositsExpanded ? sorted : sorted.slice(0, 5);
+                if (sorted.length === 0) return <p className="text-[11px] text-text-secondary text-center py-8">No deposits yet.</p>;
+                return (
+                  <div className="space-y-1.5">
+                    {displayed.map((p) => {
+                      const owed = owedByPlayer[p.player_id] ?? 0;
+                      const initials = p.player_name.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
                       return (
-                        <div key={tx.id} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
-                          <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-bold text-accent">{initials}</span>
+                        <div key={p.player_id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                          <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                            <span className="text-[9px] font-bold text-accent">{initials}</span>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium">{tx.player_id === userId ? "You" : tx.player_name}</p>
-                            <p className="text-xs text-text-secondary">Topped up · {timeAgo}</p>
+                          <p className="flex-1 min-w-0 text-xs font-medium truncate">{p.player_id === userId ? "You" : p.player_name}</p>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className="text-xs font-bold text-green-400">+£{(p.totalDeposited / 100).toFixed(2)}</span>
+                            {owed > 0 && <span className="text-xs font-semibold text-red-400">(£{(owed / 100).toFixed(2)})</span>}
                           </div>
-                          <span className="text-sm font-bold text-accent">+£{(tx.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
-                    })
-              )}
+                    })}
+                    {sorted.length > 5 && (
+                      <div className="flex justify-end pt-1">
+                        <button onClick={() => setDepositsExpanded(!depositsExpanded)}
+                          className="text-[10px] font-semibold text-text-secondary hover:text-text-primary transition-colors">
+                          {depositsExpanded ? "Show less" : "View More"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
-              {logTab === "bookings" && (
-                bookingTx.length === 0
-                  ? <p className="text-xs text-text-secondary text-center py-8">No booking payments yet.</p>
-                  : bookingTx.map((p) => {
-                      const initials = p.player_name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              {logTab === "bookings" && (() => {
+                const displayed = bookingsExpanded ? bookingTx : bookingTx.slice(0, 5);
+                if (bookingTx.length === 0) return <p className="text-[11px] text-text-secondary text-center py-8">No booking payments yet.</p>;
+                return (
+                  <div className="space-y-1.5">
+                    {displayed.map((p) => {
+                      const initials = p.player_name.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
                       const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
                       const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
                       return (
-                        <div key={p.id} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
-                          <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-bold text-text-secondary">{initials}</span>
+                        <div key={p.id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                          <div className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                            <span className="text-[9px] font-bold text-text-secondary">{initials}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{p.player_name}</p>
-                            <p className="text-xs text-text-secondary">vs {p.opponent} · {timeAgo}</p>
+                            <p className="text-xs font-medium truncate">{p.player_name}</p>
+                            <p className="text-[10px] text-text-secondary">{p.opponent ? `vs ${p.opponent} · ` : ""}{timeAgo}</p>
                           </div>
-                          <span className="text-sm font-bold text-text-primary">£{(p.amount_pence / 100).toFixed(2)}</span>
+                          <span className="text-xs font-bold text-red-400">-£{(p.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
-                    })
-              )}
-
-              {logTab === "dues" && (
-                dues.length === 0
-                  ? <p className="text-xs text-text-secondary text-center py-8">No match dues yet.</p>
-                  : dues.map((g) => {
-                      const paidCount = g.players.filter((p) => p.status === "paid").length;
-                      return (
-                        <div key={g.matchId} className="bg-surface-2 border border-border rounded-xl p-3 mb-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold truncate">vs {g.opponent}</p>
-                              <p className="text-[10px] text-text-secondary">{g.date} · team owes £{(g.teamPoolPence / 100).toFixed(2)}</p>
-                            </div>
-                            <span className="text-[10px] font-semibold text-text-secondary flex-shrink-0">{paidCount}/{g.players.length} paid</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {g.players.map((p) => {
-                              const key = `${g.matchId}:${p.player_id}`;
-                              const busy = duesBusy.has(key);
-                              const paid = p.status === "paid";
-                              const failed = p.status === "failed";
-                              return (
-                                <div key={p.player_id} className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2">
-                                  <p className="flex-1 min-w-0 text-xs font-medium truncate">
-                                    {p.player_id === userId ? "You" : p.name}
-                                  </p>
-                                  <span className="text-xs font-semibold text-text-secondary flex-shrink-0">£{(p.sharePence / 100).toFixed(2)}</span>
-                                  {paid ? (
-                                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full flex-shrink-0">Paid</span>
-                                  ) : (role === "captain" || p.player_id === userId) ? (
-                                    <button onClick={() => markDuePaid(g, p)} disabled={busy}
-                                      className="text-[10px] font-bold bg-accent text-black px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50">
-                                      {busy ? "…" : p.player_id === userId ? "Pay share" : failed ? "Mark paid" : "Top up"}
-                                    </button>
-                                  ) : (
-                                    <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Unpaid</span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })
-              )}
+                    })}
+                    {bookingTx.length > 5 && (
+                      <div className="flex justify-end pt-1">
+                        <button onClick={() => setBookingsExpanded(!bookingsExpanded)}
+                          className="text-[10px] font-semibold text-text-secondary hover:text-text-primary transition-colors">
+                          {bookingsExpanded ? "Show less" : "View More"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

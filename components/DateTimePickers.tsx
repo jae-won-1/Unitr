@@ -104,20 +104,27 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
 }
 
 // ── Time Picker ───────────────────────────────────────────────
-export function TimePicker({ value, onChange }: { value: string; onChange: (t: string) => void }) {
+export function TimePicker({
+  value,
+  onChange,
+  selectedDate,
+}: {
+  value: string;
+  onChange: (t: string) => void;
+  selectedDate?: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const parse = (val: string) => {
-    if (!val) return { hour: 9, minute: 0, ampm: "AM" };
-    const [h, m] = val.split(":").map(Number);
-    return { hour: h === 0 ? 12 : h > 12 ? h - 12 : h, minute: m, ampm: h >= 12 ? "PM" : "AM" };
+  const parse = (val: string): { hour: number; ampm: "AM" | "PM" } => {
+    if (!val) return { hour: 9, ampm: "AM" };
+    const [h] = val.split(":").map(Number);
+    return { hour: h === 0 ? 12 : h > 12 ? h - 12 : h, ampm: h >= 12 ? "PM" : "AM" };
   };
 
   const initial = parse(value);
   const [hour, setHour] = useState(initial.hour);
-  const [minute, setMinute] = useState(initial.minute);
-  const [ampm, setAmpm] = useState(initial.ampm);
+  const [ampm, setAmpm] = useState<"AM" | "PM">(initial.ampm);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -127,19 +134,32 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (t: s
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
-  const emit = (h: number, m: number, a: string) => {
-    let hour24 = h;
-    if (a === "AM" && h === 12) hour24 = 0;
-    else if (a === "PM" && h !== 12) hour24 = h + 12;
-    onChange(`${String(hour24).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  // Past-hour blocking: only active when selectedDate is today.
+  const todayStr = new Date().toISOString().split("T")[0];
+  const currentHour = new Date().getHours();
+  const isToday = !!selectedDate && selectedDate === todayStr;
+  const toHour24 = (h: number, a: "AM" | "PM") =>
+    a === "AM" ? (h === 12 ? 0 : h) : (h === 12 ? 12 : h + 12);
+  const isHourPast = (h: number, a: "AM" | "PM") =>
+    isToday && toHour24(h, a) <= currentHour;
+
+  const emit = (h: number, a: "AM" | "PM") => {
+    if (isHourPast(h, a)) return;
+    const hour24 = toHour24(h, a);
+    onChange(`${String(hour24).padStart(2, "0")}:00`);
   };
 
   const display = value
-    ? (() => { const { hour: h, minute: m, ampm: a } = parse(value); return `${h}:${String(m).padStart(2, "0")} ${a}`; })()
+    ? (() => { const { hour: h, ampm: a } = parse(value); return `${h}:00 ${a}`; })()
     : "Select time";
 
-  const HOURS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  const MINUTES = [0, 15, 30, 45];
+  const DIAL_HOURS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const SIZE = 164;
+  const C = SIZE / 2;
+  const R = 58;
+  const BR = 15;
+
+  const angleOf = (h: number) => (DIAL_HOURS.indexOf(h) * 30 - 90) * (Math.PI / 180);
 
   return (
     <div className="relative" ref={ref}>
@@ -152,48 +172,69 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (t: s
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-2xl p-3 shadow-xl w-52">
-          <p className="text-xs font-semibold text-center text-text-secondary mb-3">Select Time</p>
+        <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-2xl p-4 shadow-xl w-[196px]">
+          <p className="text-xs font-semibold text-center text-text-secondary mb-3">Kick-off hour</p>
 
-          <div className="flex gap-2 justify-center">
-            {/* Hours */}
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Hr</p>
-              <div className="flex flex-col gap-1">
-                {HOURS.map((h) => (
-                  <button key={h} type="button" onClick={() => { setHour(h); emit(h, minute, ampm); }}
-                    className={`w-12 py-1.5 rounded-lg text-xs font-bold transition-colors flex-shrink-0 ${hour === h ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+          {/* Clock dial */}
+          <svg width={SIZE} height={SIZE} style={{ display: "block" }}>
+            {/* Face ring */}
+            <circle cx={C} cy={C} r={C - 2} fill="none" stroke="#2a2a2a" strokeWidth="1.5" />
+
+            {/* Hand — only when a valid (non-past) hour is selected */}
+            {!isHourPast(hour, ampm) && (() => {
+              const a = angleOf(hour);
+              return (
+                <line
+                  x1={C} y1={C}
+                  x2={C + (R - BR - 2) * Math.cos(a)}
+                  y2={C + (R - BR - 2) * Math.sin(a)}
+                  stroke="#00E676" strokeWidth="1.5" strokeLinecap="round"
+                />
+              );
+            })()}
+
+            {/* Center dot */}
+            <circle cx={C} cy={C} r={3.5} fill="#00E676" />
+
+            {/* Hour markers */}
+            {DIAL_HOURS.map((h) => {
+              const a = angleOf(h);
+              const x = C + R * Math.cos(a);
+              const y = C + R * Math.sin(a);
+              const selected = hour === h && !isHourPast(h, ampm);
+              const past = isHourPast(h, ampm);
+              return (
+                <g key={h}
+                  onClick={() => { if (past) return; setHour(h); emit(h, ampm); }}
+                  style={{ cursor: past ? "not-allowed" : "pointer" }}>
+                  <circle cx={x} cy={y} r={BR}
+                    fill={selected ? "#00E676" : past ? "#1e1e1e" : "transparent"} />
+                  <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
+                    fontSize="12" fontWeight="700"
+                    fill={selected ? "#000000" : past ? "#333333" : "#9E9E9E"}
+                    style={{ userSelect: "none", pointerEvents: "none" }}>
                     {h}
-                  </button>
-                ))}
-              </div>
-            </div>
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
 
-            {/* Minutes */}
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Min</p>
-              <div className="flex flex-col gap-1">
-                {MINUTES.map((m) => (
-                  <button key={m} type="button" onClick={() => { setMinute(m); emit(hour, m, ampm); }}
-                    className={`w-12 py-1.5 rounded-lg text-xs font-bold transition-colors ${minute === m ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
-                    {String(m).padStart(2, "0")}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* AM/PM */}
-            <div className="flex flex-col gap-1 items-center">
-              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">—</p>
-              <div className="flex flex-col gap-1">
-                {["AM", "PM"].map((a) => (
-                  <button key={a} type="button" onClick={() => { setAmpm(a); emit(hour, minute, a); }}
-                    className={`w-12 py-1.5 rounded-lg text-xs font-bold transition-colors ${ampm === a ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* AM / PM */}
+          <div className="flex gap-2 mt-3">
+            {(["AM", "PM"] as const).map((a) => (
+              <button key={a} type="button" onClick={() => {
+                setAmpm(a);
+                if (isHourPast(hour, a)) {
+                  onChange("");
+                } else {
+                  emit(hour, a);
+                }
+              }}
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-colors ${ampm === a ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+                {a}
+              </button>
+            ))}
           </div>
         </div>
       )}

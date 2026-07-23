@@ -537,8 +537,7 @@ function ChallengePanel({
                 </p>
               ) : (
                 <p>
-                  £{((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 22).toFixed(2)}/player charged automatically{" "}
-                  <span className="text-accent font-semibold">3 hours after confirmation</span>. Split across all players via Stripe.
+                  £{(((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 2) * 1.05).toFixed(2)} charged from the team credit when you send challenge.
                 </p>
               )}
             </div>
@@ -621,7 +620,7 @@ function MatchCard({
                 <div key={p.id} className="flex items-center gap-2 text-xs text-text-secondary">
                   <span className="w-4 h-4 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[9px] font-bold flex-shrink-0">{i + 1}</span>
                   <span className="truncate">{p.name}</span>
-                  <span className="text-accent font-medium flex-shrink-0">£{p.price}/hr</span>
+                  <span className="text-accent font-medium flex-shrink-0">£{((p.price / 2) * 1.05).toFixed(2)}</span>
                   {i > 0 && <span className="text-[9px] text-text-secondary flex-shrink-0">backup</span>}
                 </div>
               ))}

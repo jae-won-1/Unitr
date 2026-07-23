@@ -120,7 +120,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
   const pitchFeePence = Math.round(pitch.price_per_hour * 100);
   const unitrFeePence = Math.round(pitchFeePence * 0.05);
   const cardTotalPence = pitchFeePence + unitrFeePence;
-  const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= pitchFeePence;
+  const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= cardTotalPence;
 
   const [method, setMethod] = useState<"credit" | "card">(creditOk ? "credit" : "card");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -152,12 +152,10 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
         <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 space-y-1.5 text-xs">
           <div className="flex justify-between"><span className="text-text-secondary">When</span><span className="font-semibold">{fmtDate(date)} · {time}–{endTime}</span></div>
           <div className="flex justify-between"><span className="text-text-secondary">Pitch hire (1hr)</span><span className="font-semibold">£{(pitchFeePence / 100).toFixed(2)}</span></div>
-          {method === "card" && (
-            <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
-          )}
+          <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
           <div className="flex justify-between border-t border-border pt-1.5 mt-1.5">
             <span className="font-semibold">Total</span>
-            <span className="font-bold text-accent">£{((method === "credit" ? pitchFeePence : cardTotalPence) / 100).toFixed(2)}</span>
+            <span className="font-bold text-accent">£{(cardTotalPence / 100).toFixed(2)}</span>
           </div>
         </div>
 
@@ -175,7 +173,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
                   {teamCreditPence === null ? "—" : `£${(teamCreditPence / 100).toFixed(2)} available`}
                 </p>
                 {!creditOk && teamCreditPence !== null && (
-                  <p className="text-[10px] text-red-400 mt-0.5">Not enough — top up in My Team</p>
+                  <p className="text-[10px] text-red-400 mt-0.5">Need £{(cardTotalPence / 100).toFixed(2)} — top up in My Team</p>
                 )}
               </button>
               <button onClick={() => setMethod("card")}
@@ -204,7 +202,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
               className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {working
                 ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
-                : `Pay £${(pitchFeePence / 100).toFixed(2)} with credit`}
+                : `Pay £${(cardTotalPence / 100).toFixed(2)} with credit`}
             </button>
           </div>
         ) : loadingSecret || !clientSecret ? (
@@ -287,6 +285,9 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
   const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
   // Compare on the hour since slots are hourly (TimePicker can return :15/:30/:45)
   const filterHour = filterTime ? `${filterTime.slice(0, 2)}:00` : "";
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const currentHour = new Date().getHours();
 
   // Fetch real venue-registered pitches only (booking.com-style discovery) —
   // excludes seed/demo pitches with no venue_owner_id since those bookings
@@ -426,7 +427,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
       total_price_pence: pitchFeePence,
       player_count: 0,
       per_player_pence: 0,
-      unitr_fee_pence: method === "card" ? unitrFeePence : 0,
+      unitr_fee_pence: unitrFeePence,
       status: "confirmed",
       // Credit is debited just below; card was already charged upstream.
       payment_status: method === "card" ? "paid" : "pending",
@@ -440,7 +441,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
       if (!team) { setBooking(false); setError("Only team captains can pay with credit."); return; }
       const res = await fetch("/api/book/pay-credit", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: team.id, feePence: pitchFeePence, bookingId: bookingRow.id }),
+        body: JSON.stringify({ teamId: team.id, feePence: pitchFeePence + unitrFeePence, bookingId: bookingRow.id }),
       }).catch(() => null);
       const d = res ? await res.json().catch(() => null) : null;
       if (!res || !res.ok || !d?.ok) {
@@ -558,7 +559,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">Time <span className="opacity-60">(optional)</span></label>
-            <TimePicker value={filterTime} onChange={setFilterTime} />
+            <TimePicker value={filterTime} selectedDate={filterDate} onChange={setFilterTime} />
           </div>
         </div>
         <div className="flex flex-col gap-1 mb-3">
@@ -583,6 +584,19 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
         </div>
         {filterTime && (
           <p className="text-[11px] text-accent mt-3">Showing pitches free at {filterHour} on {fmtDate(filterDate)}.</p>
+        )}
+        {filterDate && filterTime && (() => {
+          const dt = new Date(filterDate + "T" + filterTime);
+          const diff = dt.getTime() - Date.now();
+          return diff > 0 && diff < 86400000;
+        })() && (
+          <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5 mt-3">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="text-xs text-yellow-400">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
+          </div>
         )}
       </div>
 
@@ -671,17 +685,23 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
                       <>
                         <div className="grid grid-cols-4 gap-1.5 mb-2">
                           {slots.map(({ time, status }) => {
+                            const slotHour = parseInt(time.split(":")[0], 10);
+                            const isPast = filterDate === todayStr && slotHour <= currentHour;
+                            const isTaken = status !== "available";
+                            const isDisabled = isTaken || isPast;
                             const isFilterMatch = filterHour === time;
                             return (
                               <button key={time}
-                                disabled={status !== "available"}
+                                disabled={isDisabled}
                                 onClick={() => setPendingSlot({ pitch, date: filterDate, time })}
                                 className={`py-2 rounded-lg text-[12px] font-medium transition-colors ${
-                                  status === "available"
-                                    ? isFilterMatch
-                                      ? "bg-accent text-black"
-                                      : "border border-white/20 text-text-primary hover:border-accent hover:text-accent"
-                                    : "line-through text-text-secondary/30 cursor-not-allowed"
+                                  isPast
+                                    ? "text-text-secondary/25 cursor-not-allowed"
+                                    : isTaken
+                                      ? "line-through text-text-secondary/30 cursor-not-allowed"
+                                      : isFilterMatch
+                                        ? "bg-accent text-black"
+                                        : "border border-white/20 text-text-primary hover:border-accent hover:text-accent"
                                 }`}>
                                 {time}
                               </button>

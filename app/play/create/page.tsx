@@ -35,6 +35,24 @@ type ManualDate = {
 
 const rankLabels = ["1st choice", "2nd choice", "3rd choice"];
 
+const POLL_MONTHS: Record<string, number> = {
+  JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+  JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+};
+
+function isPollExpired(dateOptions: { date: string; time: string }[]): boolean {
+  if (!dateOptions.length) return true;
+  const times = dateOptions.map((opt) => {
+    const m = opt.date.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (!m) return Infinity;
+    const mo = POLL_MONTHS[m[2].toUpperCase()];
+    if (mo === undefined) return Infinity;
+    const [h, min] = opt.time.split(":").map(Number);
+    return new Date(Number(m[3]), mo, Number(m[1]), h, min).getTime();
+  });
+  return Math.min(...times) < Date.now();
+}
+
 
 function getDayName(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -70,7 +88,11 @@ export default function CreateMatchPage() {
   const { user } = useAuth();
 
   const [confirmedDates, setConfirmedDates] = useState<ConfirmedDate[]>([]);
-  const [manualDates, setManualDates] = useState<ManualDate[]>([{ id: "1", date: "", time: "" }]);
+  const [manualDates, setManualDates] = useState<ManualDate[]>(() => {
+    if (typeof window === "undefined") return [{ id: "1", date: "", time: "" }];
+    const saved = localStorage.getItem("unitr_manual_dates");
+    return saved ? JSON.parse(saved) : [{ id: "1", date: "", time: "" }];
+  });
   const [pitchOptions, setPitchOptions] = useState<PitchOption[]>([]);
   const [draggingPitchId, setDraggingPitchId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
@@ -79,7 +101,11 @@ export default function CreateMatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
-  const [selectedPollDates, setSelectedPollDates] = useState<string[]>([]);
+  const [selectedPollDates, setSelectedPollDates] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    const saved = localStorage.getItem("unitr_selected_poll_dates");
+    return saved ? JSON.parse(saved) : [];
+  });
 
   useEffect(() => {
     // This page only does the split/ranked-pitch flow — pin the mode so the
@@ -92,6 +118,14 @@ export default function CreateMatchPage() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem("unitr_manual_dates", JSON.stringify(manualDates));
+  }, [manualDates]);
+
+  useEffect(() => {
+    localStorage.setItem("unitr_selected_poll_dates", JSON.stringify(selectedPollDates));
+  }, [selectedPollDates]);
+
+  useEffect(() => {
     if (!user) return;
     supabase.from("teams").select("id, name, location")
       .eq("captain_id", user.id).maybeSingle()
@@ -99,18 +133,26 @@ export default function CreateMatchPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!team) return;
+    if (!team || !user) return;
     supabase.from("availability_requests").select("id, date_options")
       .eq("team_id", team.id).order("created_at", { ascending: false }).limit(1).maybeSingle()
       .then(async ({ data: req }) => {
-        setAvailabilityRequest(req ?? null);
-        if (req) {
-          const { data: resps } = await supabase.from("availability_responses")
-            .select("available_date_ids").eq("request_id", req.id);
-          setAvailabilityResponses(resps ?? []);
+        if (!req) { setAvailabilityRequest(null); return; }
+        if (isPollExpired(req.date_options)) {
+          await fetch("/api/availability/delete", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestId: req.id, captainId: user.id }),
+          });
+          setAvailabilityRequest(null);
+          return;
         }
+        setAvailabilityRequest(req);
+        const { data: resps } = await supabase.from("availability_responses")
+          .select("available_date_ids").eq("request_id", req.id);
+        setAvailabilityResponses(resps ?? []);
       });
-  }, [team]);
+  }, [team, user]);
 
   const addManualDate = () => {
     if (manualDates.length >= 5) return;
@@ -270,6 +312,8 @@ export default function CreateMatchPage() {
     localStorage.removeItem("unitr_pitch_options");
     localStorage.removeItem("unitr_posting_slots");
     localStorage.removeItem("unitr_pitch_overrides");
+    localStorage.removeItem("unitr_manual_dates");
+    localStorage.removeItem("unitr_selected_poll_dates");
     router.push("/play");
   };
 
@@ -443,7 +487,7 @@ export default function CreateMatchPage() {
                     </div>
                     <div className="w-36 flex flex-col gap-1">
                       <label className="text-xs text-text-secondary">Time</label>
-                      <TimePicker value={opt.time} onChange={(t) => updateManualDate(opt.id, "time", t)} />
+                      <TimePicker value={opt.time} selectedDate={opt.date} onChange={(t) => updateManualDate(opt.id, "time", t)} />
                     </div>
                     {manualDates.length > 1 && (
                       <div className="flex flex-col gap-1">
@@ -456,6 +500,19 @@ export default function CreateMatchPage() {
                       </div>
                     )}
                   </div>
+                  {opt.date && opt.time && (() => {
+                    const dt = new Date(opt.date + "T" + opt.time);
+                    const diff = dt.getTime() - Date.now();
+                    return diff > 0 && diff < 86400000;
+                  })() && (
+                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                      <p className="text-xs text-yellow-400">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
+                    </div>
+                  )}
                 </div>
               ))}
               {manualDates.length < 5 && (
@@ -511,7 +568,7 @@ export default function CreateMatchPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{p.name}</p>
                       <p className="text-xs text-text-secondary">
-                        {p.format} · £{p.price}/hr{pitchTime ? ` · ${pitchTime}` : ""}
+                        {p.format} · £{((p.price / 2) * 1.05).toFixed(2)}/hr each{pitchTime ? ` · ${pitchTime}` : ""}
                       </p>
                     </div>
                     {isAlt ? (

@@ -521,17 +521,14 @@ function PitchAvailabilityPanel({
               </button>
             )}
 
-            {/* Secondary: add at default posting times / remove */}
-            <button
-              onClick={onToggle}
-              disabled={!isPicked && !canAdd}
-              className={`flex-1 py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                isPicked
-                  ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                  : "bg-surface-2 border border-border text-text-primary"
-              }`}>
-              {isPicked ? "Remove" : "Add with my posting times"}
-            </button>
+            {/* Remove button — only shown once a pitch is picked */}
+            {isPicked && (
+              <button
+                onClick={onToggle}
+                className="flex-1 py-3 rounded-xl font-bold text-sm transition-colors bg-red-500/10 text-red-400 border border-red-500/20">
+                Remove
+              </button>
+            )}
           </div>
         </div>
       </div>

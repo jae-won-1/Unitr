@@ -440,7 +440,7 @@ export default function MatchHistoryPage() {
                   })()}
                 </div>
 
-                {f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
+                {isCaptainViewer && f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
                   <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
                     Submit Result
                   </a>
