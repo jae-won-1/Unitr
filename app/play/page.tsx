@@ -25,7 +25,16 @@ const ISO_MONTHS: Record<string, number> = {
   Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
 };
 function isExpired(matchDate: string, matchTime: string): boolean {
-  return new Date(`${matchDate}T${matchTime}:00`) < new Date();
+  // Compare kickoff and "now" both as Europe/London wall-clock strings so the
+  // result never depends on the viewer's device timezone. The stored kickoff is
+  // a naive "YYYY-MM-DD" + "HH:mm" with no zone; parsing it via `new Date(...)`
+  // would interpret it in the device's local tz — an iPad set to Korea time
+  // reads it ~8–9h earlier than a UK laptop and wrongly hides not-yet-started
+  // matches as "expired". "sv-SE" yields an ISO-like "YYYY-MM-DD HH:mm:ss" that
+  // sorts lexicographically against the kickoff string.
+  const kickoff = `${toISODate(matchDate)} ${matchTime.padStart(5, "0")}:00`;
+  const nowLondon = new Date().toLocaleString("sv-SE", { timeZone: "Europe/London" });
+  return kickoff < nowLondon;
 }
 function toISODate(raw: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
