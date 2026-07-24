@@ -22,15 +22,150 @@ type MatchInfo = {
   bookingId: string | null;   // pitch_bookings row
 };
 
+type SavedCard = { customerId: string; paymentMethodId: string; brand: string | null; last4: string | null };
+
+// Shared success side-effects for either payment path (saved card or manual entry).
+async function recordPaymentSuccess(matchInfo: MatchInfo, matchId: string, userId: string, paymentIntentId: string) {
+  if (matchInfo.mode === "credit" && matchInfo.paymentId) {
+    await supabase.from("player_payments")
+      .update({ status: "paid", stripe_payment_intent_id: paymentIntentId, paid_at: new Date().toISOString() })
+      .eq("id", matchInfo.paymentId);
+    await supabase.rpc("apply_replenishment", { p_payment_id: matchInfo.paymentId });
+  } else {
+    await supabase.from("player_payments").upsert({
+      booking_id: matchInfo.bookingId ?? matchId,
+      player_id: userId,
+      amount_pence: matchInfo.sharePence,
+      unitr_fee_pence: matchInfo.feePence,
+      total_pence: matchInfo.totalPence,
+      status: "paid",
+      purpose: "individual",
+      stripe_payment_intent_id: paymentIntentId,
+    }, { onConflict: "booking_id,player_id" });
+  }
+}
+
+// ── Pay instantly with the card already saved on the profile ──────────────────
+function PaySavedCard({
+  matchInfo, matchId, savedCard, onSuccess, onUseDifferentCard,
+}: {
+  matchInfo: MatchInfo; matchId: string; savedCard: SavedCard;
+  onSuccess: (paymentIntentId: string) => void;
+  onUseDifferentCard: () => void;
+}) {
+  const { user } = useAuth();
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const share = matchInfo.sharePence / 100;
+  const unitrFee = matchInfo.feePence / 100;
+  const total = matchInfo.totalPence / 100;
+
+  const handlePay = async () => {
+    if (!user) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const res = await fetch("/api/settle-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{
+            playerId: user.id,
+            customerId: savedCard.customerId,
+            paymentMethodId: savedCard.paymentMethodId,
+            amountPence: matchInfo.totalPence,
+            sharePence: matchInfo.sharePence,
+            feePence: matchInfo.feePence,
+            matchId,
+            bookingId: matchInfo.bookingId,
+          }],
+        }),
+      });
+      const data = await res.json();
+      const result = data.results?.[0];
+      if (result?.ok) {
+        await recordPaymentSuccess(matchInfo, matchId, user.id, result.paymentIntentId);
+        onSuccess(result.paymentIntentId);
+        return;
+      }
+      setPayError(result?.error ?? "Payment failed with your saved card.");
+    } catch {
+      setPayError("Could not reach the payment service.");
+    }
+    setPaying(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-2">
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Breakdown</p>
+        <div className="flex justify-between text-xs">
+          <span className="text-text-secondary">Pitch hire (1hr)</span>
+          <span className="font-semibold">£{matchInfo.pitchPrice.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-text-secondary">
+            {matchInfo.mode === "credit" ? "Your share (refills team credit)" : `Split across ${matchInfo.playerCount} players`}
+          </span>
+          <span className="font-semibold">£{share.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-text-secondary">Unitr platform fee (5%)</span>
+          <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between border-t border-border pt-2 mt-1">
+          <span className="text-sm font-bold">Your total</span>
+          <span className="text-sm font-bold text-accent">£{total.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="bg-surface-2 border border-border rounded-2xl p-4">
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
+        <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+          <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold capitalize">{savedCard.brand ?? "Card"} •••• {savedCard.last4 ?? "????"}</p>
+            <p className="text-[11px] text-accent">Saved card · no need to re-enter details</p>
+          </div>
+          <button onClick={onUseDifferentCard} className="text-xs text-text-secondary font-medium flex-shrink-0">Change</button>
+        </div>
+      </div>
+
+      {payError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-400">{payError}</p>
+        </div>
+      )}
+
+      <button
+        onClick={handlePay}
+        disabled={paying}
+        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50"
+      >
+        {paying ? "Processing…" : `Pay £${total.toFixed(2)}`}
+      </button>
+
+      <p className="text-[10px] text-text-secondary text-center">
+        Secured by Stripe · Your saved card will be charged £{total.toFixed(2)}
+      </p>
+    </div>
+  );
+}
+
 // ── Stripe checkout form (inner — must live inside <Elements>) ────────────────
 function CheckoutForm({
   matchInfo,
   matchId,
+  showSavedCardOption,
   onSuccess,
 }: {
   matchInfo: MatchInfo;
   matchId: string;
-  onSuccess: () => void;
+  showSavedCardOption: boolean;
+  onSuccess: (paymentIntentId: string) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -43,7 +178,7 @@ function CheckoutForm({
   const total = matchInfo.totalPence / 100;
 
   const handlePay = async () => {
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !user) return;
     setPaying(true);
     setPayError(null);
 
@@ -59,26 +194,8 @@ function CheckoutForm({
     }
 
     if (paymentIntent?.status === "succeeded") {
-      if (matchInfo.mode === "credit" && matchInfo.paymentId) {
-        // Mark the pre-created replenishment paid, then credit the team.
-        await supabase.from("player_payments")
-          .update({ status: "paid", stripe_payment_intent_id: paymentIntent.id, paid_at: new Date().toISOString() })
-          .eq("id", matchInfo.paymentId);
-        await supabase.rpc("apply_replenishment", { p_payment_id: matchInfo.paymentId });
-      } else if (user) {
-        // Individual mode: record a direct split payment (no credit involved).
-        await supabase.from("player_payments").upsert({
-          booking_id: matchInfo.bookingId ?? matchId,
-          player_id: user.id,
-          amount_pence: matchInfo.sharePence,
-          unitr_fee_pence: matchInfo.feePence,
-          total_pence: matchInfo.totalPence,
-          status: "paid",
-          purpose: "individual",
-          stripe_payment_intent_id: paymentIntent.id,
-        }, { onConflict: "booking_id,player_id" });
-      }
-      onSuccess();
+      await recordPaymentSuccess(matchInfo, matchId, user.id, paymentIntent.id);
+      onSuccess(paymentIntent.id);
     } else {
       setPayError("Payment did not complete. Please try again.");
       setPaying(false);
@@ -133,6 +250,14 @@ function CheckoutForm({
         />
       </div>
 
+      {!showSavedCardOption && (
+        <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
+          <p className="text-[11px] text-accent leading-relaxed">
+            We&apos;ll ask if you want to save this card after payment, so next time you can skip this step.
+          </p>
+        </div>
+      )}
+
       {/* Test card hint */}
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
         <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
@@ -158,6 +283,29 @@ function CheckoutForm({
       <p className="text-[10px] text-text-secondary text-center">
         Secured by Stripe · Your card will be charged £{total.toFixed(2)}
       </p>
+    </div>
+  );
+}
+
+// ── "Save this card for next time?" prompt shown after a manual payment ───────
+function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip: () => void; saving: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+      <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <p className="text-lg font-bold mb-2">Payment Confirmed!</p>
+      <p className="text-sm text-text-secondary mb-6 max-w-xs">
+        Save this card so your next match payment is instant — no need to fill in card details again.
+      </p>
+      <div className="flex gap-2 w-full max-w-xs">
+        <button onClick={onSkip} disabled={saving} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
+          No thanks
+        </button>
+        <button onClick={onSave} disabled={saving} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+          {saving ? "Saving…" : "Save Card"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -193,8 +341,41 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   const { user } = useAuth();
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null | undefined>(undefined);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [intentCustomerId, setIntentCustomerId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
+
+  const [savedCard, setSavedCard] = useState<SavedCard | null | undefined>(undefined);
+  const [useManualEntry, setUseManualEntry] = useState(false);
+  const [saveCardPrompt, setSaveCardPrompt] = useState<{ paymentIntentId: string } | null>(null);
+  const [savingCard, setSavingCard] = useState(false);
+
+  // Creates the Stripe Elements client secret for manual card entry. Lazy —
+  // only called when there's no saved card, or the player picks "Change".
+  const createClientSecret = async (info: MatchInfo, customerId: string | null) => {
+    try {
+      const res = await fetch("/api/create-payment-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountPence: info.totalPence,
+          bookingId: info.bookingId ?? params.matchId,
+          playerId: user!.id,
+          customerId,
+          email: user!.email,
+        }),
+      });
+      const data = await res.json();
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
+        setIntentCustomerId(data.customerId ?? null);
+      } else {
+        setLoadError("Could not set up payment. Check Stripe keys in .env.local");
+      }
+    } catch {
+      setLoadError("Failed to connect to payment service.");
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -243,6 +424,20 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         if (count && count > 0) playerCount = count;
       }
 
+      // Look up any card already saved on this player's profile.
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
+        .eq("id", user!.id)
+        .maybeSingle();
+      const hasSavedCard = !!(profile?.stripe_customer_id && profile?.stripe_payment_method_id);
+      setSavedCard(hasSavedCard ? {
+        customerId: profile!.stripe_customer_id as string,
+        paymentMethodId: profile!.stripe_payment_method_id as string,
+        brand: (profile!.card_brand as string | null) ?? null,
+        last4: (profile!.card_last4 as string | null) ?? null,
+      } : null);
+
       // Resolve THIS player's amounts.
       let sharePence: number, feePence: number, totalPence: number, paymentId: string | null = null;
 
@@ -285,32 +480,68 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       };
       setMatchInfo(info);
 
-      // Create payment intent for the exact total
-      try {
-        const res = await fetch("/api/create-payment-intent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amountPence: totalPence,
-            bookingId: bookingId ?? params.matchId,
-            playerId: user!.id,
-          }),
-        });
-        const data = await res.json();
-        if (data.clientSecret) {
-          setClientSecret(data.clientSecret);
-        } else {
-          setLoadError("Could not set up payment. Check Stripe keys in .env.local");
-        }
-      } catch {
-        setLoadError("Failed to connect to payment service.");
+      // Only pre-create a Stripe Elements payment intent when there's no saved
+      // card to pay with instantly — the saved-card path charges off-session.
+      if (!hasSavedCard) {
+        await createClientSecret(info, profile?.stripe_customer_id ?? null);
       }
     }
     load();
   }, [user, params.matchId]);
 
+  const handleUseDifferentCard = () => {
+    setUseManualEntry(true);
+    if (matchInfo && !clientSecret) createClientSecret(matchInfo, savedCard?.customerId ?? null);
+  };
+
+  const handleSavedCardSuccess = (paymentIntentId: string) => {
+    void paymentIntentId;
+    setPaid(true);
+  };
+
+  const handleManualSuccess = (paymentIntentId: string) => {
+    if (savedCard) {
+      // Already had a saved card and chose to pay a different way — nothing new to save.
+      setPaid(true);
+    } else {
+      setSaveCardPrompt({ paymentIntentId });
+    }
+  };
+
+  const handleSaveCard = async () => {
+    if (!saveCardPrompt || !user) return;
+    setSavingCard(true);
+    try {
+      // The PaymentIntent was created with setup_future_usage: "off_session" and a
+      // customer, so Stripe already attached the payment method — just look it up.
+      const piRes = await fetch(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(saveCardPrompt.paymentIntentId)}`);
+      const piData = await piRes.json();
+      if (piData.paymentMethodId && intentCustomerId) {
+        await supabase.from("profiles").update({
+          stripe_customer_id: intentCustomerId,
+          stripe_payment_method_id: piData.paymentMethodId,
+          card_brand: piData.brand ?? null,
+          card_last4: piData.last4 ?? null,
+        }).eq("id", user.id);
+      }
+    } catch {
+      // Non-fatal — the payment itself already succeeded.
+    }
+    setSavingCard(false);
+    setSaveCardPrompt(null);
+    setPaid(true);
+  };
+
+  const handleSkipSaveCard = () => {
+    setSaveCardPrompt(null);
+    setPaid(true);
+  };
+
+  const showManualEntry = useManualEntry || savedCard === null;
+  const waitingOnClientSecret = showManualEntry && !clientSecret && !loadError;
+
   // Loading
-  if (matchInfo === undefined || (matchInfo !== null && !paid && !clientSecret && !loadError)) {
+  if (matchInfo === undefined || savedCard === undefined || (matchInfo !== null && !paid && !saveCardPrompt && waitingOnClientSecret)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -329,7 +560,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   }
 
   // Stripe init / load error
-  if (loadError) {
+  if (loadError && !paid) {
     return (
       <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
         <div className="flex items-center gap-3 mb-6">
@@ -351,6 +582,15 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
             Get Test Keys →
           </a>
         </div>
+      </div>
+    );
+  }
+
+  // Save-card prompt (shown right after a successful manual payment)
+  if (saveCardPrompt) {
+    return (
+      <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
+        <SaveCardPrompt onSave={handleSaveCard} onSkip={handleSkipSaveCard} saving={savingCard} />
       </div>
     );
   }
@@ -395,8 +635,19 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         </div>
       </div>
 
-      {/* Stripe Elements */}
-      {clientSecret && (
+      {/* Saved-card instant pay path */}
+      {savedCard && !showManualEntry && (
+        <PaySavedCard
+          matchInfo={matchInfo}
+          matchId={params.matchId}
+          savedCard={savedCard}
+          onSuccess={handleSavedCardSuccess}
+          onUseDifferentCard={handleUseDifferentCard}
+        />
+      )}
+
+      {/* Manual card entry (no saved card, or player chose "Change") */}
+      {showManualEntry && clientSecret && (
         <Elements
           stripe={stripePromise}
           options={{
@@ -417,7 +668,8 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
           <CheckoutForm
             matchInfo={matchInfo}
             matchId={params.matchId}
-            onSuccess={() => setPaid(true)}
+            showSavedCardOption={!!savedCard}
+            onSuccess={handleManualSuccess}
           />
         </Elements>
       )}

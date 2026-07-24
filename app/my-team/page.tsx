@@ -1335,11 +1335,13 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [logTab, setLogTab] = useState<"deposits" | "bookings">("deposits");
+  const [logTab, setLogTab] = useState<"deposits" | "bookings" | "reimbursed">("deposits");
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [bookingsExpanded, setBookingsExpanded] = useState(false);
+  const [reimbursedExpanded, setReimbursedExpanded] = useState(false);
   const [owedByPlayer, setOwedByPlayer] = useState<Record<string, number>>({});
   const [bookingTx, setBookingTx] = useState<{ id: string; player_name: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
+  const [reimbursedTx, setReimbursedTx] = useState<{ id: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
@@ -1794,7 +1796,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setRemindedPlayers((prev) => new Set(prev).add(key));
   };
 
-  const openLog = async (startTab: "deposits" | "bookings" = "deposits") => {
+  const openLog = async (startTab: "deposits" | "bookings" | "reimbursed" = "deposits") => {
     setLogTab(startTab);
     setShowLog(true);
     if (!teamId) return;
@@ -1826,6 +1828,27 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
       player_name: t.type === "booking_capture" ? "Pitch booking" : "Match payment",
       opponent: "",
       amount_pence: Math.abs(t.amount_pence),
+      created_at: t.created_at,
+    })));
+    // Load reimbursements this team received from an opponent — e.g. when a
+    // challenger joins a secured post, they pay their half straight into the
+    // poster's credit (reimburse_secured_pitch → 'opponent_settlement', +ve).
+    const { data: reimbursed } = await supabase
+      .from("team_credit_transactions")
+      .select("id, amount_pence, created_at, related_team_id")
+      .eq("team_id", teamId)
+      .eq("type", "opponent_settlement")
+      .gt("amount_pence", 0)
+      .order("created_at", { ascending: false });
+    const oppIds = [...new Set((reimbursed ?? []).map((t) => t.related_team_id).filter(Boolean))];
+    const { data: oppTeams } = oppIds.length
+      ? await supabase.from("teams").select("id, name").in("id", oppIds)
+      : { data: [] as { id: string; name: string }[] };
+    const oppName = new Map((oppTeams ?? []).map((t) => [t.id, t.name as string]));
+    setReimbursedTx((reimbursed ?? []).map((t) => ({
+      id: t.id,
+      opponent: t.related_team_id ? (oppName.get(t.related_team_id) ?? "Opponent") : "Opponent",
+      amount_pence: t.amount_pence,
       created_at: t.created_at,
     })));
   };
@@ -1924,7 +1947,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
             {/* Tabs */}
             <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1 mb-4 flex-shrink-0">
-              {(["deposits", "bookings"] as const).map((t) => (
+              {(["deposits", "bookings", "reimbursed"] as const).map((t) => (
                 <button key={t} onClick={() => setLogTab(t)}
                   className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${logTab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
                   {t}
@@ -2000,6 +2023,39 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                         <button onClick={() => setBookingsExpanded(!bookingsExpanded)}
                           className="text-[10px] font-semibold text-text-secondary hover:text-text-primary transition-colors">
                           {bookingsExpanded ? "Show less" : "View More"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {logTab === "reimbursed" && (() => {
+                const displayed = reimbursedExpanded ? reimbursedTx : reimbursedTx.slice(0, 5);
+                if (reimbursedTx.length === 0) return <p className="text-[11px] text-text-secondary text-center py-8">No reimbursements yet.</p>;
+                return (
+                  <div className="space-y-1.5">
+                    {displayed.map((p) => {
+                      const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
+                      const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                          <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">Reimbursed by {p.opponent}</p>
+                            <p className="text-[10px] text-text-secondary">{timeAgo}</p>
+                          </div>
+                          <span className="text-xs font-bold text-green-400">+£{(p.amount_pence / 100).toFixed(2)}</span>
+                        </div>
+                      );
+                    })}
+                    {reimbursedTx.length > 5 && (
+                      <div className="flex justify-end pt-1">
+                        <button onClick={() => setReimbursedExpanded(!reimbursedExpanded)}
+                          className="text-[10px] font-semibold text-text-secondary hover:text-text-primary transition-colors">
+                          {reimbursedExpanded ? "Show less" : "View More"}
                         </button>
                       </div>
                     )}

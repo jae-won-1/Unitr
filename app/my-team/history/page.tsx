@@ -184,6 +184,21 @@ function PaymentCollectionPanel({
     setBusyPlayer(null);
   };
 
+  const handleRemove = async (playerId: string) => {
+    setBusyPlayer(playerId);
+    await supabase.from("payment_collection_status").delete().eq("match_id", matchId).eq("player_id", playerId);
+    const updatedRows = rows.filter((r) => r.player_id !== playerId);
+    setRows(updatedRows);
+    setChecked((prev) => { const next = new Set(prev); next.delete(playerId); return next; });
+
+    const allReceived = updatedRows.length > 0 && updatedRows.every((r) => r.received);
+    if (allReceived !== settled) {
+      await supabase.from("matches").update({ fees_settled: allReceived }).eq("id", matchId);
+      onSettledChange(matchId, allReceived);
+    }
+    setBusyPlayer(null);
+  };
+
   return (
     <div className="mt-3 bg-background border border-border rounded-xl p-3">
       <button type="button" onClick={() => setExpanded((e) => !e)} className="w-full flex items-center justify-between">
@@ -271,6 +286,13 @@ function PaymentCollectionPanel({
                         className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50 ${row.received ? "bg-accent/10 text-accent border border-accent/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
                         {row.received ? "Paid ✓" : "Unpaid"}
                       </button>
+                      {!row.received && (
+                        <button onClick={() => handleRemove(p.player_id)} disabled={busyPlayer === p.player_id}
+                          title="Remove from payment request"
+                          className="text-text-secondary hover:text-red-400 flex-shrink-0 disabled:opacity-50">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                      )}
                     </>
                   ) : (
                     <span className="text-[10px] font-semibold text-text-secondary bg-surface border border-border px-2 py-0.5 rounded-full flex-shrink-0">Not charged</span>
