@@ -85,7 +85,7 @@ export default function BottomNav() {
     if (role === "venue_manager" && !pathname.startsWith("/venue")) {
       const allowed = ["/login", "/register", "/forgot-password", "/reset-password", "/pitches"];
       if (!allowed.some((p) => pathname.startsWith(p))) {
-        router.replace("/venue/dashboard");
+        router.replace("/venue/calendar");
       }
     }
   }, [role, roleLoading, pathname, router]);

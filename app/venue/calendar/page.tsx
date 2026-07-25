@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { TimePicker } from "@/components/DateTimePickers";
 
 // ── Constants ─────────────────────────────────────────────────
 const SLOT_H = 52;
@@ -534,13 +535,13 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium">Start time</label>
-                  <input type="time" value={form.start_time} onChange={(e) => set("start_time", e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
+                  <TimePicker value={form.start_time} selectedDate={form.date}
+                    label="Start time" onChange={(t) => set("start_time", t)} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium">End time</label>
-                  <input type="time" value={form.end_time} onChange={(e) => set("end_time", e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 [color-scheme:dark]" />
+                  <TimePicker value={form.end_time} selectedDate={form.date}
+                    label="End time" onChange={(t) => set("end_time", t)} />
                 </div>
               </div>
 
@@ -732,7 +733,7 @@ export default function VenueCalendarPage() {
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [view, setView] = useState<"day" | "week">("day");
+  const [view, setView] = useState<"day" | "week">("week");
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [addDefaults, setAddDefaults] = useState<{ pitchId: string; date: string; startTime: string } | null>(null);

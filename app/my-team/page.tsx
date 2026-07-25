@@ -232,6 +232,7 @@ function PlayerMyTeam() {
   const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
   const [fixturesLoading, setFixturesLoading] = useState(true);
   const [fixtureView, setFixtureView] = useState<"upcoming" | "past">("upcoming");
+  const [fixturesExpanded, setFixturesExpanded] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
@@ -340,7 +341,14 @@ function PlayerMyTeam() {
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
   const today = new Date().toISOString().split("T")[0];
-  const shownFixtures = fixtures.filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today));
+  // Upcoming: nearest first. Past: most recent first, going back in time.
+  const shownFixtures = fixtures
+    .filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today))
+    .sort((a, b) => {
+      const ka = `${a.date} ${a.time}`, kb = `${b.date} ${b.time}`;
+      return fixtureView === "past" ? kb.localeCompare(ka) : ka.localeCompare(kb);
+    });
+  const visibleFixtures = fixturesExpanded ? shownFixtures : shownFixtures.slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -488,7 +496,7 @@ function PlayerMyTeam() {
           <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Fixtures</h3>
           <div className="flex bg-surface-2 border border-border rounded-lg p-0.5 gap-0.5">
             {(["upcoming", "past"] as const).map((v) => (
-              <button key={v} onClick={() => setFixtureView(v)}
+              <button key={v} onClick={() => { setFixtureView(v); setFixturesExpanded(false); }}
                 className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${fixtureView === v ? "bg-accent text-black" : "text-text-secondary"}`}>
                 {v}
               </button>
@@ -501,7 +509,7 @@ function PlayerMyTeam() {
           <p className="text-sm text-text-secondary py-2">{fixtureView === "upcoming" ? "No upcoming fixtures yet." : "No past matches yet."}</p>
         ) : (
           <div className="space-y-3">
-            {shownFixtures.map((f) => (
+            {visibleFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -531,6 +539,14 @@ function PlayerMyTeam() {
                 </div>
               </div>
             ))}
+            {shownFixtures.length > 3 && (
+              <button
+                onClick={() => setFixturesExpanded((e) => !e)}
+                className="w-full py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary"
+              >
+                {fixturesExpanded ? "See less" : `See more (${shownFixtures.length - 3})`}
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -664,6 +680,7 @@ function CaptainMyTeam() {
   const [fixtures, setFixtures] = useState<ConfirmedFixture[]>([]);
   const [fixturesLoading, setFixturesLoading] = useState(true);
   const [fixtureView, setFixtureView] = useState<"upcoming" | "past">("upcoming");
+  const [fixturesExpanded, setFixturesExpanded] = useState(false);
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[]; created_at: string } | null>(null);
   const [availabilityResponses, setAvailabilityResponses] = useState<{ available_date_ids: string[] }[]>([]);
   const [myResponse, setMyResponse] = useState<string[] | null>(null);
@@ -785,7 +802,14 @@ function CaptainMyTeam() {
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
   const today = new Date().toISOString().split("T")[0];
-  const shownFixtures = fixtures.filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today));
+  // Upcoming: nearest first. Past: most recent first, going back in time.
+  const shownFixtures = fixtures
+    .filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today))
+    .sort((a, b) => {
+      const ka = `${a.date} ${a.time}`, kb = `${b.date} ${b.time}`;
+      return fixtureView === "past" ? kb.localeCompare(ka) : ka.localeCompare(kb);
+    });
+  const visibleFixtures = fixturesExpanded ? shownFixtures : shownFixtures.slice(0, 3);
 
   return (
     <div className="space-y-5">
@@ -976,7 +1000,7 @@ function CaptainMyTeam() {
             { label: "Team Management", icon: "👥", href: "/my-team/players" },
             { label: "Post Announcement", icon: "📋", href: "/my-team/announcement/create" },
             { label: "Calendar", icon: "📅", href: "/my-team/availability" },
-            { label: "Team Settings", icon: "⚙️", href: "#" },
+            { label: "Team Profile", icon: "⚙️", href: "/my-team/team-profile" },
           ].map((a) => (
             <a key={a.label} href={a.href}
               className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-2">
@@ -1024,7 +1048,7 @@ function CaptainMyTeam() {
           <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Fixtures</h3>
           <div className="flex bg-surface-2 border border-border rounded-lg p-0.5 gap-0.5">
             {(["upcoming", "past"] as const).map((v) => (
-              <button key={v} onClick={() => setFixtureView(v)}
+              <button key={v} onClick={() => { setFixtureView(v); setFixturesExpanded(false); }}
                 className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${fixtureView === v ? "bg-accent text-black" : "text-text-secondary"}`}>
                 {v}
               </button>
@@ -1037,7 +1061,7 @@ function CaptainMyTeam() {
           <p className="text-sm text-text-secondary py-2">{fixtureView === "upcoming" ? "No upcoming fixtures yet." : "No past matches yet."}</p>
         ) : (
           <div className="space-y-2">
-            {shownFixtures.map((f) => (
+            {visibleFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
@@ -1063,10 +1087,18 @@ function CaptainMyTeam() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">Manage Match</a>
+                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">{fixtureView === "past" ? "See Details" : "Manage Match"}</a>
                 </div>
               </div>
             ))}
+            {shownFixtures.length > 3 && (
+              <button
+                onClick={() => setFixturesExpanded((e) => !e)}
+                className="w-full py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary"
+              >
+                {fixturesExpanded ? "See less" : `See more (${shownFixtures.length - 3})`}
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -1206,6 +1238,55 @@ function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "capta
 }
 
 // ── Credits checkout form (inside Stripe Elements) ────────────
+// Shared by both the card-entry (Elements) and saved-card fast-path top-up
+// flows: credit the team, then apply the payment toward a single targeted due
+// (targetPcsId) or the player's own outstanding match-fee dues oldest-game-first.
+async function applyTopUp(teamId: string, userId: string, amountPence: number, targetPcsId?: string): Promise<number | null> {
+  const { data: newBalancePence } = await supabase.rpc("add_credit", {
+    p_team_id: teamId,
+    p_amount_pence: amountPence,
+    p_player_id: userId,
+  });
+
+  if (targetPcsId) {
+    const { data: row } = await supabase.from("payment_collection_status")
+      .select("share_pence").eq("id", targetPcsId).maybeSingle();
+    await supabase.from("payment_collection_status").update({
+      credited_pence: row?.share_pence ?? amountPence,
+      received: true,
+      updated_at: new Date().toISOString(),
+    }).eq("id", targetPcsId);
+    return typeof newBalancePence === "number" ? newBalancePence : null;
+  }
+
+  let remaining = amountPence;
+  const { data: dueRowsRaw } = await supabase.from("payment_collection_status")
+    .select("id, match_id, share_pence, credited_pence").eq("player_id", userId).eq("included", true);
+  const dueMatchIds = [...new Set((dueRowsRaw ?? []).map((r) => r.match_id))];
+  const { data: dueMatches } = dueMatchIds.length > 0
+    ? await supabase.from("matches").select("id, match_date").in("id", dueMatchIds)
+    : { data: [] };
+  const matchDateById = new Map((dueMatches ?? []).map((m) => [m.id, m.match_date as string]));
+  const dueRows = [...(dueRowsRaw ?? [])].sort((a, b) =>
+    (matchDateById.get(a.match_id) ?? "").localeCompare(matchDateById.get(b.match_id) ?? "")
+  );
+  for (const row of dueRows) {
+    if (remaining <= 0) break;
+    const need = row.share_pence - (row.credited_pence ?? 0);
+    if (need <= 0) continue;
+    const applied = Math.min(remaining, need);
+    const newCredited = (row.credited_pence ?? 0) + applied;
+    await supabase.from("payment_collection_status").update({
+      credited_pence: newCredited,
+      received: newCredited >= row.share_pence,
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id);
+    remaining -= applied;
+  }
+
+  return typeof newBalancePence === "number" ? newBalancePence : null;
+}
+
 function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number;
   targetPcsId?: string;
@@ -1223,56 +1304,8 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
-      // Atomic increment (+ deposit ledger row) — avoids clobbering concurrent changes.
-      const { data: newBalancePence } = await supabase.rpc("add_credit", {
-        p_team_id: teamId,
-        p_amount_pence: Math.round(amount * 100),
-        p_player_id: userId,
-      });
+      const newBalancePence = await applyTopUp(teamId, userId, Math.round(amount * 100), targetPcsId);
       const newBalance = typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount;
-
-      // Paying a specific due (tapped from the "Payments due" list): credit
-      // exactly that row in full, not oldest-first.
-      if (targetPcsId) {
-        const { data: row } = await supabase.from("payment_collection_status")
-          .select("share_pence").eq("id", targetPcsId).maybeSingle();
-        await supabase.from("payment_collection_status").update({
-          credited_pence: row?.share_pence ?? Math.round(amount * 100),
-          received: true,
-          updated_at: new Date().toISOString(),
-        }).eq("id", targetPcsId);
-        onSuccess(newBalance);
-        return;
-      }
-
-      // Apply this top-up toward the player's own outstanding match-fee dues,
-      // oldest GAME first (by match_date, not row metadata), partially or
-      // fully paying down each row in turn.
-      let remaining = Math.round(amount * 100);
-      const { data: dueRowsRaw } = await supabase.from("payment_collection_status")
-        .select("id, match_id, share_pence, credited_pence").eq("player_id", userId).eq("included", true);
-      const dueMatchIds = [...new Set((dueRowsRaw ?? []).map((r) => r.match_id))];
-      const { data: dueMatches } = dueMatchIds.length > 0
-        ? await supabase.from("matches").select("id, match_date").in("id", dueMatchIds)
-        : { data: [] };
-      const matchDateById = new Map((dueMatches ?? []).map((m) => [m.id, m.match_date as string]));
-      const dueRows = [...(dueRowsRaw ?? [])].sort((a, b) =>
-        (matchDateById.get(a.match_id) ?? "").localeCompare(matchDateById.get(b.match_id) ?? "")
-      );
-      for (const row of dueRows) {
-        if (remaining <= 0) break;
-        const need = row.share_pence - (row.credited_pence ?? 0);
-        if (need <= 0) continue;
-        const applied = Math.min(remaining, need);
-        const newCredited = (row.credited_pence ?? 0) + applied;
-        await supabase.from("payment_collection_status").update({
-          credited_pence: newCredited,
-          received: newCredited >= row.share_pence,
-          updated_at: new Date().toISOString(),
-        }).eq("id", row.id);
-        remaining -= applied;
-      }
-
       onSuccess(newBalance);
     } else {
       setPayError("Payment did not complete. Please try again.");
@@ -1350,6 +1383,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [collectLoading, setCollectLoading] = useState(true);
   const [remindingPlayer, setRemindingPlayer] = useState<string | null>(null);
   const [remindedPlayers, setRemindedPlayers] = useState<Set<string>>(new Set());
+  const [removingPlayer, setRemovingPlayer] = useState<string | null>(null);
   const [historyAlertCount, setHistoryAlertCount] = useState(0);
   const [myOwedPence, setMyOwedPence] = useState(0);
   const [myDues, setMyDues] = useState<MyDue[]>([]);
@@ -1364,6 +1398,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [loadingIntent, setLoadingIntent] = useState(false);
   const [intentError, setIntentError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [topUpBusy, setTopUpBusy] = useState(false);
 
   // Effect 1: resolve team ID
   useEffect(() => {
@@ -1571,6 +1606,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setPayTarget(null);
     setDueError(null);
     setDuePaidFlash(null);
+    setTopUpBusy(false);
   };
 
   // Clear a paid-off due locally: refill the team's credit and mark the row.
@@ -1796,6 +1832,24 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     setRemindedPlayers((prev) => new Set(prev).add(key));
   };
 
+  // Drop a player from a match's payment request — e.g. they were added by
+  // mistake. Deletes their payment_collection_status row entirely, so they no
+  // longer owe anything for this match and won't be reminded.
+  const removePlayerFromCollection = async (match: CollectMatch, player: CollectPlayer) => {
+    const key = `${match.matchId}:${player.player_id}`;
+    setRemovingPlayer(key);
+    await supabase.from("payment_collection_status")
+      .delete().eq("match_id", match.matchId).eq("player_id", player.player_id);
+    setCollectMatches((prev) => prev
+      .map((g) => g.matchId !== match.matchId ? g : {
+        ...g,
+        players: g.players.filter((p) => p.player_id !== player.player_id),
+        totalDuePence: g.totalDuePence - player.remainingPence,
+      })
+      .filter((g) => g.players.length > 0));
+    setRemovingPlayer(null);
+  };
+
   const openLog = async (startTab: "deposits" | "bookings" | "reimbursed" = "deposits") => {
     setLogTab(startTab);
     setShowLog(true);
@@ -1871,6 +1925,43 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
       setIntentError(data.error ?? "Failed to set up payment.");
     }
     setLoadingIntent(false);
+  };
+
+  // Fast path: charge the top-up straight to the player's saved card
+  // (off-session, no card re-entry) instead of the Stripe Elements form.
+  const payTopUpWithSavedCard = async () => {
+    if (!savedCard || !teamId || !effectiveAmount || effectiveAmount < 1) return;
+    setTopUpBusy(true);
+    setIntentError(null);
+    const amountPence = Math.round(effectiveAmount * 100);
+    try {
+      const res = await fetch("/api/settle-match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{
+          playerId: userId,
+          customerId: savedCard.customerId,
+          paymentMethodId: savedCard.paymentMethodId,
+          amountPence,
+          sharePence: amountPence,
+          feePence: 0,
+        }] }),
+      });
+      const data = await res.json();
+      const r = data.results?.[0];
+      if (r?.ok) {
+        const newBalancePence = await applyTopUp(teamId, userId, amountPence, payTarget?.pcsId ?? undefined);
+        setCredits(typeof newBalancePence === "number" ? newBalancePence / 100 : (credits ?? 0) + effectiveAmount);
+        setSuccess(true);
+        loadMyOwed();
+        if (payTarget) { setMyDues((prev) => prev.filter((d) => d.pcsId !== payTarget.pcsId)); loadMyDues(teamId); }
+      } else {
+        setIntentError(r?.error ?? data.error ?? "Card was declined — try a different card below.");
+      }
+    } catch {
+      setIntentError("Payment failed. Please try again.");
+    }
+    setTopUpBusy(false);
   };
 
   if (credits === null) return null;
@@ -2101,6 +2192,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                 selected.players.map((p) => {
                   const key = `${selected.matchId}:${p.player_id}`;
                   const busy = remindingPlayer === key;
+                  const removing = removingPlayer === key;
                   const reminded = remindedPlayers.has(key);
                   return (
                     <div key={p.player_id} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
@@ -2111,10 +2203,19 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                       {p.received ? (
                         <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2.5 py-1 rounded-full flex-shrink-0">Paid ✓</span>
                       ) : (
-                        <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded}
-                          className="text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
-                          {busy ? "Sending…" : reminded ? "Reminded ✓" : "Remind"}
-                        </button>
+                        <>
+                          <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded || removing}
+                            className="text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
+                            {busy ? "Sending…" : reminded ? "Reminded ✓" : "Remind"}
+                          </button>
+                          <button onClick={() => removePlayerFromCollection(selected, p)} disabled={removing || busy}
+                            title="Remove from payment request — added by mistake"
+                            className="text-text-secondary hover:text-red-400 flex-shrink-0 disabled:opacity-50">
+                            {removing
+                              ? <div className="w-3.5 h-3.5 rounded-full border-2 border-text-secondary border-t-transparent animate-spin" />
+                              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
+                          </button>
+                        </>
                       )}
                     </div>
                   );
@@ -2291,15 +2392,36 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
 
                 {intentError && <p className="text-xs text-red-400 text-center mb-3">{intentError}</p>}
 
-                <button
-                  disabled={!effectiveAmount || effectiveAmount < 1 || loadingIntent}
-                  onClick={handleContinue}
-                  className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loadingIntent ? (
-                    <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Setting up…</>
-                  ) : effectiveAmount && effectiveAmount >= 1 ? `Continue to pay £${effectiveAmount.toFixed(2)}` : "Enter an amount"}
-                </button>
+                {savedCard ? (
+                  <>
+                    <button
+                      disabled={!effectiveAmount || effectiveAmount < 1 || topUpBusy}
+                      onClick={payTopUpWithSavedCard}
+                      className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {topUpBusy ? (
+                        <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Charging…</>
+                      ) : effectiveAmount && effectiveAmount >= 1 ? `Pay £${effectiveAmount.toFixed(2)} with •••• ${savedCard.last4 ?? "0000"}` : "Enter an amount"}
+                    </button>
+                    <button
+                      disabled={!effectiveAmount || effectiveAmount < 1 || loadingIntent || topUpBusy}
+                      onClick={handleContinue}
+                      className="w-full py-2.5 text-xs text-text-secondary disabled:opacity-50"
+                    >
+                      {loadingIntent ? "Setting up…" : "Use a different card"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    disabled={!effectiveAmount || effectiveAmount < 1 || loadingIntent}
+                    onClick={handleContinue}
+                    className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loadingIntent ? (
+                      <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Setting up…</>
+                    ) : effectiveAmount && effectiveAmount >= 1 ? `Continue to pay £${effectiveAmount.toFixed(2)}` : "Enter an amount"}
+                  </button>
+                )}
               </>
             )}
           </div>

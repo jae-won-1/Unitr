@@ -49,7 +49,10 @@
       "Bash(node -e ' *)",
       "Bash(npx --no-install kill-port 3001)",
       "Bash(powershell -Command 'Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | Select-Object -Expand OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }')",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(grep -iE \"\\\\.sql$\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(git diff *)"
     ]
   }
 }

@@ -535,6 +535,92 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         )}
       </div>
 
+      {/* ── Pre-match starting lineup board ──────────────────────
+          Captain assigns confirmed players to positions; everyone else
+          sees the captain's picks read-only. Hidden once a result exists
+          (the result view below takes over). */}
+      {!hasResult && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup</p>
+            <span className="text-[10px] text-text-secondary">{isCaptain ? "Tap a position to assign" : "Set by captain"}</span>
+          </div>
+
+          {isCaptain && (
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {Object.keys(formations).map((f) => (
+                <button key={f} type="button" onClick={() => setFormation(f)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${formation === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="relative w-full rounded-2xl overflow-hidden" style={{ paddingBottom: "130%", background: "linear-gradient(180deg,#1a5c1a 0%,#1e6b1e 25%,#1a5c1a 50%,#1e6b1e 75%,#1a5c1a 100%)" }}>
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 130" preserveAspectRatio="none">
+              <rect x="5" y="5" width="90" height="120" rx="1" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <line x1="5" y1="65" x2="95" y2="65" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <circle cx="50" cy="65" r="10" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <rect x="22" y="5" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+              <rect x="22" y="107" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5"/>
+            </svg>
+            {players.map((pos, i) => {
+              const pid = lineup[i];
+              const nm = pid ? (playerNameMap.get(pid) ?? "") : "";
+              const initials = nm ? nm.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "";
+              const firstName = nm ? nm.split(" ")[0] : "";
+              return (
+                <button key={i} type="button" disabled={!isCaptain}
+                  onClick={() => { if (isCaptain) setPickerSlot(i); }}
+                  className="absolute flex flex-col items-center gap-0.5"
+                  style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%,-50%)" }}>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg border-2 ${pid ? "bg-white border-white/80" : "bg-black/30 border-dashed border-white/50"}`}>
+                    <span className={`text-[10px] font-bold leading-none ${pid ? "text-black" : "text-white/80"}`}>{pid ? initials : pos.position}</span>
+                  </div>
+                  <span className="text-[9px] font-semibold text-white drop-shadow-md bg-black/40 rounded px-1 truncate max-w-[48px] text-center">{pid ? firstName : pos.position}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Players in the matchday squad + who's starting */}
+          <div className="mt-3 bg-surface-2 border border-border rounded-xl p-3">
+            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Players ({myParticipants.length})</p>
+            {myParticipants.length === 0 ? (
+              <p className="text-xs text-text-secondary">No players confirmed for this match yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {myParticipants.map((p) => {
+                  const inLineup = Object.values(lineup).includes(p.player_id);
+                  const init = p.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <div key={p.player_id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                        <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
+                      </div>
+                      <p className="flex-1 text-sm truncate">{p.full_name}</p>
+                      {inLineup
+                        ? <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">Starting</span>
+                        : <span className="text-[10px] font-semibold text-text-secondary">Bench</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {isCaptain ? (
+            <button type="button" onClick={handleSaveMatchTactics} disabled={savingTactics}
+              className="w-full mt-3 py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              {savingTactics ? "Saving…" : "Save Lineup"}
+            </button>
+          ) : Object.keys(lineup).length === 0 ? (
+            <p className="text-xs text-text-secondary text-center mt-3">The captain hasn&apos;t set the lineup yet.</p>
+          ) : null}
+        </div>
+      )}
+
       {myStarters.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">{myTeamName} · Starting XI</p>
@@ -623,6 +709,57 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
               })}
             </>
           )}
+        </div>
+      )}
+
+      {/* Lineup player picker (captain) */}
+      {pickerSlot !== null && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setPickerSlot(null)}>
+          <div className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <p className="font-bold text-base">Assign {players[pickerSlot]?.position}</p>
+              <button type="button" onClick={() => setPickerSlot(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="space-y-2 overflow-y-auto">
+              {lineup[pickerSlot] && (
+                <button type="button"
+                  onClick={() => { setLineup((prev) => { const n = { ...prev }; delete n[pickerSlot]; return n; }); setPickerSlot(null); }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold">
+                  Clear this position
+                </button>
+              )}
+              {myParticipants.length === 0 && <p className="text-sm text-text-secondary py-2">No confirmed players to assign.</p>}
+              {myParticipants.map((p) => {
+                const assignedEntry = Object.entries(lineup).find(([, pid]) => pid === p.player_id);
+                const here = assignedEntry !== undefined && Number(assignedEntry[0]) === pickerSlot;
+                const init = p.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                return (
+                  <button key={p.player_id} type="button"
+                    onClick={() => {
+                      setLineup((prev) => {
+                        const n = { ...prev };
+                        // One slot per player — drop any prior slot they held.
+                        for (const k of Object.keys(n)) if (n[Number(k)] === p.player_id) delete n[Number(k)];
+                        n[pickerSlot] = p.player_id;
+                        return n;
+                      });
+                      setPickerSlot(null);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left ${here ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                    <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
+                    </div>
+                    <p className="flex-1 text-sm truncate">{p.full_name}</p>
+                    {assignedEntry !== undefined && (
+                      <span className="text-[10px] text-text-secondary">{here ? "Here" : players[Number(assignedEntry[0])]?.position}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
     </div>

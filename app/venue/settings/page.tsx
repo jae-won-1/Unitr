@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { TimePicker } from "@/components/DateTimePickers";
 
 // ── Types ─────────────────────────────────────────────────────
 type DaySchedule = { day_of_week: number; open_time: string; close_time: string; is_active: boolean };
@@ -382,9 +383,9 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
               {(["open_time", "close_time"] as const).map((k) => (
                 <div key={k} className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium">{k === "open_time" ? "Opens" : "Closes"}</label>
-                  <input type="time" value={editing[k]}
-                    onChange={(e) => updateDay(editingDay, k, e.target.value)}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                  <TimePicker value={editing[k]}
+                    label={k === "open_time" ? "Opens" : "Closes"}
+                    onChange={(t) => updateDay(editingDay, k, t)} />
                 </div>
               ))}
             </div>
@@ -524,9 +525,9 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
               {(["start_time", "end_time"] as const).map((k) => (
                 <div key={k} className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium">{k === "start_time" ? "From" : "Until"}</label>
-                  <input type="time" value={newRule[k]}
-                    onChange={(e) => setNewRule((r) => ({ ...r, [k]: e.target.value }))}
-                    className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                  <TimePicker value={newRule[k]}
+                    label={k === "start_time" ? "From" : "Until"}
+                    onChange={(t) => setNewRule((r) => ({ ...r, [k]: t }))} />
                 </div>
               ))}
             </div>
@@ -672,9 +673,9 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
                   {(["start_time", "end_time"] as const).map((k) => (
                     <div key={k} className="flex flex-col gap-1.5">
                       <label className="text-xs font-medium">{k === "start_time" ? "From" : "Until"}</label>
-                      <input type="time" value={newBlock[k]}
-                        onChange={(e) => setNewBlock((b) => ({ ...b, [k]: e.target.value }))}
-                        className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                      <TimePicker value={newBlock[k]}
+                        label={k === "start_time" ? "From" : "Until"}
+                        onChange={(t) => setNewBlock((b) => ({ ...b, [k]: t }))} />
                     </div>
                   ))}
                 </div>

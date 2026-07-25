@@ -45,8 +45,13 @@ create table if not exists public.open_match_teams (
 
 alter table public.open_match_teams enable row level security;
 create policy "Anyone can view open match teams" on public.open_match_teams for select using (true);
-create policy "Captains can join open matches" on public.open_match_teams for insert with check (auth.uid() = joined_by);
-create policy "Joiner can leave" on public.open_match_teams for delete using (auth.uid() = joined_by);
+-- Open like the rest of the payment tables (team_credits, player_payments, …):
+-- the join itself is written server-side via /api/tournaments/join using
+-- adminSupabase, which falls back to the anon key in local dev (no user JWT on
+-- that client) — an auth.uid()-scoped check() would always fail there. The
+-- route enforces capacity/duplicate/credit checks instead of RLS.
+create policy "Anyone can join open matches" on public.open_match_teams for insert with check (true);
+create policy "Anyone can leave open matches" on public.open_match_teams for delete using (true);
 
 
 -- ── Mark booking_type column usage ────────────────────────────

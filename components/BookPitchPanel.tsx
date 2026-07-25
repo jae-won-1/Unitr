@@ -33,6 +33,8 @@ type Pitch = {
 type SlotStatus = "available" | "booked" | "closed";
 type DaySlot = { time: string; status: SlotStatus };
 
+type SavedCard = { customerId: string; paymentMethodId: string; brand: string | null; last4: string | null };
+
 // Display window for the day grid (matches venue portal default hours)
 const ALL_HOURS = Array.from({ length: 16 }, (_, i) => `${String(i + 7).padStart(2, "0")}:00`); // 07:00–22:00
 const DEFAULT_OPEN = 7;
@@ -105,12 +107,71 @@ function CardBookingForm({ totalPence, working, onPaid, onError }: {
   );
 }
 
+// ── Pay instantly with the card already saved on the profile ──
+function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, onUseDifferentCard }: {
+  totalPence: number; savedCard: SavedCard; working: boolean;
+  onPaid: (intentId: string) => void; onError: (msg: string) => void; onUseDifferentCard: () => void;
+}) {
+  const { user } = useAuth();
+  const [paying, setPaying] = useState(false);
+
+  const handlePay = async () => {
+    if (!user) return;
+    setPaying(true);
+    onError("");
+    try {
+      const res = await fetch("/api/settle-match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{
+            playerId: user.id,
+            customerId: savedCard.customerId,
+            paymentMethodId: savedCard.paymentMethodId,
+            amountPence: totalPence,
+            sharePence: totalPence,
+            feePence: 0,
+          }],
+        }),
+      });
+      const data = await res.json();
+      const result = data.results?.[0];
+      if (result?.ok) { onPaid(result.paymentIntentId); return; }
+      onError(result?.error ?? "Payment failed with your saved card.");
+    } catch {
+      onError("Could not reach the payment service.");
+    }
+    setPaying(false);
+  };
+
+  const busy = paying || working;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+        <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold capitalize">{savedCard.brand ?? "Card"} •••• {savedCard.last4 ?? "????"}</p>
+          <p className="text-[11px] text-accent">Saved card · no need to re-enter details</p>
+        </div>
+        <button onClick={onUseDifferentCard} disabled={busy} className="text-xs text-text-secondary font-medium flex-shrink-0">Change</button>
+      </div>
+      <button onClick={handlePay} disabled={busy}
+        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+        {busy
+          ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Processing…</>
+          : `Pay £${(totalPence / 100).toFixed(2)}`}
+      </button>
+    </div>
+  );
+}
+
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, working, error, onCancel, onPayCredit, onCardPaid, onError }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError }: {
   pitch: Pitch; date: string; time: string;
-  isCaptain: boolean; teamCreditPence: number | null;
+  isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
   working: boolean; error: string | null;
   onCancel: () => void;
   onPayCredit: () => void;
@@ -123,12 +184,15 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
   const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= cardTotalPence;
 
   const [method, setMethod] = useState<"credit" | "card">(creditOk ? "credit" : "card");
+  const [useManualEntry, setUseManualEntry] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loadingSecret, setLoadingSecret] = useState(false);
 
-  // Lazily create a PaymentIntent the first time the card method is active.
+  const showSavedCard = method === "card" && savedCard && !useManualEntry;
+
+  // Lazily create a PaymentIntent the first time manual card entry is needed.
   useEffect(() => {
-    if (method !== "card" || clientSecret || loadingSecret) return;
+    if (method !== "card" || showSavedCard || clientSecret || loadingSecret) return;
     setLoadingSecret(true);
     fetch("/api/create-payment-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -138,7 +202,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
       .then((d) => { if (d.clientSecret) setClientSecret(d.clientSecret); else onError(d.error ?? "Could not start card payment."); })
       .catch(() => onError("Could not reach the payment service."))
       .finally(() => setLoadingSecret(false));
-  }, [method, clientSecret, loadingSecret, cardTotalPence, onError]);
+  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, onError]);
 
   const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
 
@@ -205,6 +269,15 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
                 : `Pay £${(cardTotalPence / 100).toFixed(2)} with credit`}
             </button>
           </div>
+        ) : showSavedCard ? (
+          <PaySavedCardInline
+            totalPence={cardTotalPence}
+            savedCard={savedCard}
+            working={working}
+            onPaid={onCardPaid}
+            onError={onError}
+            onUseDifferentCard={() => setUseManualEntry(true)}
+          />
         ) : loadingSecret || !clientSecret ? (
           <div className="flex items-center justify-center py-8">
             <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -220,7 +293,9 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, wo
 }
 
 // ── Booking Confirmed ─────────────────────────────────────────
-function BookingConfirmed({ pitch, date, time, posted, onDone }: { pitch: Pitch; date: string; time: string; posted: boolean; onDone: () => void }) {
+function BookingConfirmed({ pitch, date, time, posted, onDone }: {
+  pitch: Pitch; date: string; time: string; posted: boolean; onDone: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
@@ -263,6 +338,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
   // Available team credit (balance − reserved), in pence. null = not loaded / no account.
   const [teamCreditPence, setTeamCreditPence] = useState<number | null>(null);
   const isCaptain = team !== null;
+  // Card already on file — lets any card payment skip manual entry.
+  const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
 
   // Filters — pre-fill from the captain's chosen posting slot when the Book tab
   // is opened via "lock in a pitch first"; otherwise default the date to today
@@ -311,12 +388,31 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
         const { data: credit } = await supabase.from("team_credits")
           .select("balance_pence, reserved_pence").eq("team_id", ownTeam.id).maybeSingle();
         setTeamCreditPence(credit ? credit.balance_pence - (credit.reserved_pence ?? 0) : 0);
-        return;
+      } else {
+        const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user!.id).maybeSingle();
+        setBookerName((profile as { full_name?: string } | null)?.full_name ?? "Session booking");
       }
-      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user!.id).maybeSingle();
-      setBookerName((profile as { full_name?: string } | null)?.full_name ?? "Session booking");
     }
     loadName();
+  }, [user]);
+
+  // Card already on file (from a previous match/booking payment) — reuse it so
+  // any card payment on this screen can skip Stripe Elements' manual entry.
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles")
+      .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
+      .eq("id", user.id).maybeSingle()
+      .then(({ data: profile }) => {
+        if (profile?.stripe_customer_id && profile?.stripe_payment_method_id) {
+          setSavedCard({
+            customerId: profile.stripe_customer_id as string,
+            paymentMethodId: profile.stripe_payment_method_id as string,
+            brand: (profile.card_brand as string | null) ?? null,
+            last4: (profile.card_last4 as string | null) ?? null,
+          });
+        }
+      });
   }, [user]);
 
   // Build the full-day slot grid per pitch for the selected date.
@@ -733,6 +829,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
           time={pendingSlot.time}
           isCaptain={isCaptain}
           teamCreditPence={teamCreditPence}
+          savedCard={savedCard}
           working={booking}
           error={error}
           onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}

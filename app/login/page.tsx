@@ -29,7 +29,7 @@ export default function LoginPage() {
       const { data: profile } = await supabase
         .from("profiles").select("account_type").eq("id", data.user.id).maybeSingle();
       setLoading(false);
-      router.push(profile?.account_type === "venue_manager" ? "/venue/dashboard" : "/");
+      router.push(profile?.account_type === "venue_manager" ? "/venue/calendar" : "/");
       return;
     }
 

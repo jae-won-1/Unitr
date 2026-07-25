@@ -12,6 +12,9 @@ type Team = {
   format: string;
   description: string;
   captain_id: string;
+  history: string | null;
+  play_style: string | null;
+  photo_url: string | null;
 };
 
 type Member = { player_id: string; full_name: string; position: string | null; isCaptain?: boolean };
@@ -92,8 +95,13 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
 
       {/* Team header */}
       <section className="flex flex-col items-center text-center mb-6">
-        <div className="w-20 h-20 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center mb-3">
-          <span className="text-xl font-bold text-accent">{initials}</span>
+        <div className="w-20 h-20 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center mb-3 overflow-hidden">
+          {team.photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={team.photo_url} alt={team.name} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-xl font-bold text-accent">{initials}</span>
+          )}
         </div>
         <h1 className="text-xl font-bold">{team.name}</h1>
         <p className="text-text-secondary text-sm mt-0.5">{team.location}</p>
@@ -104,6 +112,9 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
             : "bg-purple-500/10 text-purple-400"
           }`}>{team.level}</span>
           <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">{team.format}</span>
+          {team.play_style && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-accent/10 text-accent">{team.play_style}</span>
+          )}
         </div>
       </section>
 
@@ -112,6 +123,14 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         <section className="mb-5">
           <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">About</h3>
           <p className="text-sm text-text-secondary leading-relaxed">{team.description}</p>
+        </section>
+      )}
+
+      {/* History */}
+      {team.history && (
+        <section className="mb-5">
+          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Team History</h3>
+          <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">{team.history}</p>
         </section>
       )}
 

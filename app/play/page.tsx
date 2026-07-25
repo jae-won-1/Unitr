@@ -75,10 +75,28 @@ type MatchPost = {
   securedBookingId: string | null;
 };
 
-const tournaments = [
-  { id: "t-1", name: "East London Cup", organiser: "Unitr Official", location: "Victoria Park Arena", distance: "3.1 miles", date: "Mar 15, 2026", teams: "8/16 teams", prize: "£500", format: "11-a-side", description: "Annual knockout cup open to all competitive teams in East London." },
-  { id: "t-2", name: "Shoreditch 5s", organiser: "Powerleague", location: "Powerleague Shoreditch", distance: "4.0 miles", date: "Apr 5, 2026", teams: "12/24 teams", prize: "£200", format: "5-a-side", description: "Fast-paced 5-a-side tournament with group stages and knockout rounds." },
-];
+type Tournament = {
+  id: string;
+  title: string;
+  pitch_id: string;
+  pitch_name: string;
+  venue_address: string | null;
+  match_date: string;
+  start_time: string;
+  end_time: string;
+  format: string | null;
+  skill_level: string;
+  price_per_team_pence: number;
+  max_teams: number;
+  description: string | null;
+  status: string;
+  booking_id: string | null;
+  // Set when a team (not a venue) hosts the tournament — buy-ins reimburse them.
+  organiser_team_id: string | null;
+  organiser_team_name: string | null;
+  joinedCount: number;
+  joinedTeamIds: string[];
+};
 
 const ringerGames = [
   { id: "r-1", team: "Hackney United", format: "5-a-side", location: "Hackney Marshes", time: "Today, 6:00 PM", spotsNeeded: 2, fullPrice: 12, ringerPrice: 6, level: "Casual", description: "Missing 2 players for our regular weekly game. Come join!" },
@@ -798,29 +816,45 @@ function RingerCard({ game }: { game: typeof ringerGames[0] }) {
 }
 
 // ── Tournament Card ────────────────────────────────────────────
-function TournamentCard({ tournament: t }: { tournament: typeof tournaments[0] }) {
-  const m = t.teams.match(/(\d+)\s*\/\s*(\d+)/);
-  const joined = m ? Number(m[1]) : 0;
-  const maxTeams = m ? Number(m[2]) : 0;
-  const spotsLeft = Math.max(0, maxTeams - joined);
-  const isFull = maxTeams > 0 && spotsLeft === 0;
+function TournamentCard({
+  tournament: t,
+  myTeamId,
+  myTeamName,
+  onJoined,
+}: {
+  tournament: Tournament;
+  myTeamId: string | null;
+  myTeamName: string | null;
+  onJoined: (id: string) => void;
+}) {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const spotsLeft = Math.max(0, t.max_teams - t.joinedCount);
+  const isFull = t.status === "full" || spotsLeft === 0;
+  const alreadyIn = myTeamId ? t.joinedTeamIds.includes(myTeamId) : false;
+  const isOrganiser = myTeamId != null && t.organiser_team_id === myTeamId;
+  const hostName = t.organiser_team_name ?? t.pitch_name;
+  const buyIn = (t.price_per_team_pence / 100).toFixed(2);
 
   return (
     <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
       <div className="px-4 pt-4 pb-3">
-        <div className="flex items-start justify-between mb-2">
-          <div>
-            <p className="text-sm font-bold">{t.name}</p>
-            <p className="text-xs text-text-secondary">by {t.organiser}</p>
+        <div className="flex items-start justify-between mb-2 gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-bold truncate">{t.title}</p>
+            <p className="text-xs text-text-secondary">
+              by {hostName}
+              <span className="ml-1.5 text-[10px] font-semibold text-text-secondary/70">{t.organiser_team_name ? "· Team-hosted" : "· Venue"}</span>
+            </p>
           </div>
-          <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg flex-shrink-0">{t.prize}</span>
+          <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg flex-shrink-0">£{buyIn}/team</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-text-secondary mb-3 flex-wrap">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span>{t.date}</span>
-          <span className="w-1 h-1 rounded-full bg-border" /><span>{t.format}</span>
+          <span>{fmtPostDate(t.match_date, t.start_time)}</span>
+          {t.format && <><span className="w-1 h-1 rounded-full bg-border" /><span>{t.format}</span></>}
+          <span className="w-1 h-1 rounded-full bg-border" /><span className="capitalize">{t.skill_level}</span>
         </div>
-        <p className="text-xs text-text-secondary">{t.description}</p>
+        {t.description && <p className="text-xs text-text-secondary">{t.description}</p>}
       </div>
 
       {/* Footer: venue + teams entered */}
@@ -828,28 +862,207 @@ function TournamentCard({ tournament: t }: { tournament: typeof tournaments[0] }
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <p className="text-sm font-semibold truncate">{t.location}</p>
+            <p className="text-sm font-semibold truncate">{t.pitch_name}</p>
           </div>
-          {t.distance && <p className="text-xs text-text-secondary truncate mt-0.5">{t.distance}</p>}
+          {t.venue_address && <p className="text-xs text-text-secondary truncate mt-0.5">{t.venue_address}</p>}
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-base font-bold text-accent">{joined}/{maxTeams}</p>
+          <p className="text-base font-bold text-accent">{t.joinedCount}/{t.max_teams}</p>
           <p className="text-[10px] text-text-secondary">teams entered</p>
         </div>
       </div>
 
       {/* CTA */}
       <div className="px-4 pb-4">
-        {isFull ? (
+        {isOrganiser ? (
+          <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">You&apos;re hosting this tournament</div>
+        ) : alreadyIn ? (
+          <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
+        ) : isFull ? (
           <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
         ) : (
-          <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+          <button onClick={() => setPanelOpen(true)}
+            className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
             Enter Tournament{spotsLeft > 0 ? ` — ${spotsLeft} spot${spotsLeft !== 1 ? "s" : ""} left` : ""}
           </button>
         )}
       </div>
+
+      {panelOpen && (
+        <EnterTournamentPanel
+          tournament={t}
+          myTeamId={myTeamId}
+          myTeamName={myTeamName}
+          onClose={() => setPanelOpen(false)}
+          onJoined={() => { setPanelOpen(false); onJoined(t.id); }}
+        />
+      )}
     </div>
   );
+}
+
+// ── Enter Tournament Panel ─────────────────────────────────────
+function EnterTournamentPanel({
+  tournament: t,
+  myTeamId,
+  myTeamName,
+  onClose,
+  onJoined,
+}: {
+  tournament: Tournament;
+  myTeamId: string | null;
+  myTeamName: string | null;
+  onClose: () => void;
+  onJoined: () => void;
+}) {
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const buyIn = t.price_per_team_pence;
+
+  const handleJoin = async () => {
+    if (!user || !myTeamId) { setError("You need to be a team captain to enter a tournament."); return; }
+    setSaving(true);
+    setError(null);
+
+    const res = await fetch("/api/tournaments/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ openMatchId: t.id, teamId: myTeamId, teamName: myTeamName, userId: user.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setSaving(false);
+      setError(
+        data.error === "INSUFFICIENT_CREDIT"
+          ? `Your team needs £${(buyIn / 100).toFixed(2)} in available credit to enter. Top up team credit and try again.`
+          : (data.error ?? "Couldn't enter the tournament. Please try again.")
+      );
+      return;
+    }
+
+    // Cash side, venue-hosted only: move this team's buy-in to the venue's
+    // connected account (best-effort, mirrors match confirmation). A team-hosted
+    // tournament instead reimburses the organiser's credit server-side (handled
+    // in the join route), so no venue transfer fires. bookingId is intentionally
+    // omitted — every team shares the tournament's single reservation booking, so
+    // keying idempotency on it would collapse all buy-ins into one transfer.
+    if (buyIn > 0 && data.hostType === "venue") {
+      fetch("/api/connect/venue-transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pitchId: t.pitch_id, amountPence: buyIn }),
+      }).catch(() => {});
+    }
+
+    setSaving(false);
+    setConfirmed(true);
+  };
+
+  if (confirmed) {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onJoined}>
+        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl p-6 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <p className="text-lg font-bold mb-1">You&apos;re in!</p>
+          <p className="text-sm text-text-secondary mb-5">
+            {myTeamName} has entered <span className="font-semibold text-text-primary">{t.title}</span>. £{(buyIn / 100).toFixed(2)} was taken from your team credit and paid to {t.organiser_team_name ?? t.pitch_name}. Your squad can settle their share afterwards from Team Credits.
+          </p>
+          <button onClick={onJoined} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-bold">Enter Tournament</p>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4">
+          <p className="text-sm font-bold">{t.title}</p>
+          <p className="text-xs text-text-secondary mt-0.5">{t.pitch_name} · {fmtPostDate(t.match_date, t.start_time)}</p>
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+            <span className="text-xs text-text-secondary">Buy-in (per team)</span>
+            <span className="text-sm font-bold">£{(buyIn / 100).toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            <span className="text-xs text-text-secondary">Teams entered</span>
+            <span className="text-sm font-semibold">{t.joinedCount}/{t.max_teams}</span>
+          </div>
+        </div>
+
+        <p className="text-xs text-text-secondary mb-4">
+          The buy-in comes out of your team credit now and is paid to the venue. Your players
+          each refill their share from the tournament page afterwards.
+        </p>
+
+        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+
+        <button onClick={handleJoin} disabled={saving || !myTeamId}
+          className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+          {saving ? "Entering…" : `Pay £${(buyIn / 100).toFixed(2)} & Enter`}
+        </button>
+        {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Open tournaments hook (venue-hosted, from open_matches) ─────
+function useOpenTournaments(userId?: string) {
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
+  const [myTeamName, setMyTeamName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      if (userId) {
+        const { data: team } = await supabase
+          .from("teams").select("id, name").eq("captain_id", userId).maybeSingle();
+        setMyTeamId(team?.id ?? null);
+        setMyTeamName(team?.name ?? null);
+      }
+
+      const { data: oms } = await supabase
+        .from("open_matches")
+        .select("id, pitch_id, pitch_name, venue_address, match_date, start_time, end_time, format, skill_level, price_per_team_pence, max_teams, description, status, booking_id, organiser_team_id, organiser_team_name")
+        .eq("match_type", "tournament")
+        .neq("status", "cancelled")
+        .order("match_date", { ascending: true });
+
+      const withTeams = await Promise.all((oms ?? []).map(async (m) => {
+        const { data: teams } = await supabase
+          .from("open_match_teams").select("team_id").eq("open_match_id", m.id);
+        const joinedTeamIds = (teams ?? []).map((x) => x.team_id as string);
+        return { ...m, joinedCount: joinedTeamIds.length, joinedTeamIds } as Tournament;
+      }));
+
+      // Hide tournaments whose date has already passed.
+      const active = withTeams.filter((t) => !isExpired(t.match_date, t.start_time));
+      setTournaments(active);
+      setLoading(false);
+    }
+    load();
+  }, [userId]);
+
+  // Optimistically bump the joined count for the team that just entered.
+  const markJoined = (id: string) => setTournaments((prev) => prev.map((t) =>
+    t.id === id && myTeamId && !t.joinedTeamIds.includes(myTeamId)
+      ? { ...t, joinedCount: t.joinedCount + 1, joinedTeamIds: [...t.joinedTeamIds, myTeamId] }
+      : t
+  ));
+
+  return { tournaments, myTeamId, myTeamName, loading, markJoined };
 }
 
 // ── Hooks ─────────────────────────────────────────────────────
@@ -994,6 +1207,7 @@ function NewUserPlay() {
 function PlayerPlay() {
   const { user } = useAuth();
   const { posts, loading, removePost } = usePosts(null, user?.id);
+  const { tournaments, myTeamId, myTeamName, loading: tLoading, markJoined } = useOpenTournaments(user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
 
   useEffect(() => {
@@ -1024,7 +1238,17 @@ function PlayerPlay() {
         </div>
       )}
 
-      {tab === "tournaments" && tournaments.map((t) => <TournamentCard key={t.id} tournament={t} />)}
+      {tab === "tournaments" && (
+        tLoading ? (
+          <p className="text-sm text-text-secondary text-center py-8">Loading tournaments…</p>
+        ) : tournaments.length === 0 ? (
+          <p className="text-sm text-text-secondary text-center py-8">No tournaments right now.</p>
+        ) : (
+          tournaments.map((t) => (
+            <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
+          ))
+        )
+      )}
 
       {tab === "ringer" && ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
     </div>
@@ -1035,6 +1259,7 @@ function CaptainPlay() {
   const { user } = useAuth();
   const { posts, loading, removePost } = usePosts(user?.id ?? null, user?.id);
   const { posts: myPosts, loading: myPostsLoading, removePost: removeMyPost } = useMyPosts(user?.id);
+  const { tournaments, myTeamId, myTeamName, loading: tLoading, markJoined } = useOpenTournaments(user?.id);
   const [tab, setTab] = useState<MatchTab>("matches");
 
   useEffect(() => {
@@ -1083,7 +1308,24 @@ function CaptainPlay() {
         </div>
       )}
 
-      {tab === "tournaments" && tournaments.map((t) => <TournamentCard key={t.id} tournament={t} />)}
+      {tab === "tournaments" && (
+        <div className="space-y-4">
+          <a href="/play/create-tournament"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Host a Tournament
+          </a>
+          {tLoading ? (
+            <p className="text-sm text-text-secondary text-center py-8">Loading tournaments…</p>
+          ) : tournaments.length === 0 ? (
+            <p className="text-sm text-text-secondary text-center py-8">No tournaments right now.</p>
+          ) : (
+            tournaments.map((t) => (
+              <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
+            ))
+          )}
+        </div>
+      )}
 
       {tab === "ringer" && (
         <div className="space-y-4">

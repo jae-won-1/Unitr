@@ -57,7 +57,7 @@ export default function RegisterPage() {
     }
 
     setLoading(false);
-    router.push(accountType === "venue_manager" ? "/venue/dashboard" : "/");
+    router.push(accountType === "venue_manager" ? "/venue/calendar" : "/");
   };
 
   return (

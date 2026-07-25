@@ -108,10 +108,12 @@ export function TimePicker({
   value,
   onChange,
   selectedDate,
+  label = "Kick-off hour",
 }: {
   value: string;
   onChange: (t: string) => void;
   selectedDate?: string;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -173,7 +175,7 @@ export function TimePicker({
 
       {open && (
         <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-2xl p-4 shadow-xl w-[196px]">
-          <p className="text-xs font-semibold text-center text-text-secondary mb-3">Kick-off hour</p>
+          <p className="text-xs font-semibold text-center text-text-secondary mb-3">{label}</p>
 
           {/* Clock dial */}
           <svg width={SIZE} height={SIZE} style={{ display: "block" }}>

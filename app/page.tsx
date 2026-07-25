@@ -92,7 +92,13 @@ function useConfirmedFixtures(userId: string | undefined) {
         })
       );
 
-      setFixtures([...posterFixtures, ...challengerFixtures]);
+      // Home only surfaces upcoming, confirmed fixtures — nearest first.
+      const today = new Date().toISOString().split("T")[0];
+      const upcoming = [...posterFixtures, ...challengerFixtures]
+        .filter((f) => f.date >= today)
+        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+
+      setFixtures(upcoming);
       setLoading(false);
     }
 
@@ -100,6 +106,25 @@ function useConfirmedFixtures(userId: string | undefined) {
   }, [userId]);
 
   return { fixtures, loading };
+}
+
+// Renders a fixtures list capped at 3, expandable via See more / See less.
+function UpcomingFixturesList({ fixtures }: { fixtures: ConfirmedFixture[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? fixtures : fixtures.slice(0, 3);
+  return (
+    <div className="space-y-3">
+      {shown.map((f) => <ConfirmedFixtureCard key={f.id} fixture={f} />)}
+      {fixtures.length > 3 && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary"
+        >
+          {expanded ? "See less" : `See more (${fixtures.length - 3})`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ── Sub-components ───────────────────────────────────────────
@@ -286,9 +311,7 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
             <p className="text-xs text-text-secondary mt-1">Matches will appear here once confirmed.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {fixtures.map((f) => <ConfirmedFixtureCard key={f.id} fixture={f} />)}
-          </div>
+          <UpcomingFixturesList fixtures={fixtures} />
         )}
       </section>
 
@@ -367,9 +390,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
             <a href="/play/create" className="inline-block mt-2 text-xs text-accent font-medium">Post a match to get started →</a>
           </div>
         ) : (
-          <div className="space-y-3">
-            {fixtures.map((f) => <ConfirmedFixtureCard key={f.id} fixture={f} />)}
-          </div>
+          <UpcomingFixturesList fixtures={fixtures} />
         )}
       </section>
 
