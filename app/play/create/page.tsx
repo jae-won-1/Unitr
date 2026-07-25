@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
+import BookPitchPanel from "@/components/BookPitchPanel";
 
 type ConfirmedDate = {
   id: string;
@@ -106,6 +107,11 @@ export default function CreateMatchPage() {
     const saved = localStorage.getItem("unitr_selected_poll_dates");
     return saved ? JSON.parse(saved) : [];
   });
+  // Whether to secure a pitch up front instead of splitting with an opponent.
+  // "yes" opens the Book tab in a popup right on this page; "no" (default)
+  // continues with the ranked-pitch-options flow below.
+  const [lockInPitch, setLockInPitch] = useState<"no" | "yes">("no");
+  const [showBookModal, setShowBookModal] = useState(false);
 
   useEffect(() => {
     // This page only does the split/ranked-pitch flow — pin the mode so the
@@ -198,15 +204,12 @@ export default function CreateMatchPage() {
     router.push("/pitches?mode=select");
   };
 
-  // "Lock in a pitch first": carry the captain's chosen posting date/time over
-  // to the Book tab so it opens pre-filtered to that exact slot.
-  const handleLockInPitch = () => {
-    const params = new URLSearchParams({ view: "book", intent: "post" });
-    if (originalSlot) {
-      params.set("date", originalSlot.date);
-      if (originalSlot.time) params.set("time", originalSlot.time);
-    }
-    router.push(`/play?${params.toString()}`);
+  // "Lock in a pitch first": open the Book tab in a popup right on this page,
+  // pre-filtered to the captain's chosen posting date/time. Booking there
+  // auto-posts the slot as a secured match, superseding this ranked-pitch form.
+  const handleLockInPitch = (choice: "yes" | "no") => {
+    setLockInPitch(choice);
+    if (choice === "yes") setShowBookModal(true);
   };
 
   const removePitchOption = (id: string) => {
@@ -369,24 +372,43 @@ export default function CreateMatchPage() {
 
       <div className="flex flex-col gap-5">
 
-        {/* Mode 1 redirect: secure a pitch first via the Book tab */}
+        {/* Game type: normal match vs tournament — tournaments have their own flow */}
+        <div className="flex bg-surface-2 border border-border rounded-xl p-1">
+          <button type="button"
+            className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-black">
+            Match
+          </button>
+          <button type="button" onClick={() => router.push("/play/create-tournament")}
+            className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors text-text-secondary">
+            Tournament
+          </button>
+        </div>
+
+        {/* Lock in a pitch first? — Yes opens the Book tab as a popup right here */}
         <div className="bg-accent/5 border border-accent/20 rounded-2xl p-4">
           <div className="flex items-start gap-2.5">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
               <path d="M20 6L9 17l-5-5"/>
             </svg>
             <div className="flex-1">
-              <p className="text-sm font-semibold mb-1">Want to lock in a pitch first?</p>
-              <p className="text-xs text-text-secondary leading-relaxed mb-2.5">
-                This post splits the pitch fee with your opponent and the chosen pitch isn&apos;t reserved until a match is confirmed.
-                To <span className="text-text-primary font-medium">guarantee a pitch up front</span>, book and pay for one in the
-                Book tab and it&apos;ll be posted automatically — opponents can join instantly.
+              <p className="text-sm font-semibold mb-1">Lock in a pitch first?</p>
+              <p className="text-xs text-text-secondary leading-relaxed mb-3">
+                Choose <span className="text-text-primary font-medium">Yes</span> to book and pay for a pitch now from team credit —
+                it&apos;s reserved immediately and opponents can join instantly. Your team credit is{" "}
+                <span className="text-text-primary font-medium">reimbursed for their half</span> as soon as one joins.
+                Choose <span className="text-text-primary font-medium">No</span> and nothing is booked yet — the pitch stays
+                unreserved until an opponent joins, at which point the fee is split between both teams.
               </p>
-              <button type="button" onClick={handleLockInPitch}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent">
-                Secure a pitch in the Book tab
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => handleLockInPitch("yes")}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "yes" ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-primary"}`}>
+                  Yes, book a pitch
+                </button>
+                <button type="button" onClick={() => handleLockInPitch("no")}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "no" ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-primary"}`}>
+                  No, split with opponent
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -614,6 +636,32 @@ export default function CreateMatchPage() {
           </button>
         </div>
       </div>
+
+      {/* Book a pitch popup — "Lock in a pitch first? Yes" */}
+      {showBookModal && (
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60"
+          onClick={() => setShowBookModal(false)}>
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-1">
+              <p className="font-bold">Secure a Pitch</p>
+              <button onClick={() => setShowBookModal(false)} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <BookPitchPanel
+              initialDate={originalSlot?.date}
+              initialTime={originalSlot?.time}
+              autoPost
+              onDone={(posted) => {
+                setShowBookModal(false);
+                if (posted) router.push("/play");
+                else setLockInPitch("no");
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

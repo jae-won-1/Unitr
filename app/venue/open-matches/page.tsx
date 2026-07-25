@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import TournamentInvitePanel from "@/components/TournamentInvitePanel";
 
 // ── Types ─────────────────────────────────────────────────────
 type JoinedTeam = { team_id: string; team_name: string };
@@ -18,6 +19,8 @@ type EventRow = {
   pitch_name: string;
   max_teams: number;
   status: string;
+  price_per_team_pence: number;
+  organiser_team_id: string | null;
   joinedTeams: JoinedTeam[];
 };
 
@@ -229,6 +232,8 @@ function MatchCard({ ev }: { ev: EventRow }) {
 
 // ── Tournament / League progress panel ────────────────────────
 function CompetitionPanel({ ev }: { ev: EventRow }) {
+  const { user } = useAuth();
+  const [showInvite, setShowInvite] = useState(false);
   const standings = useMemo(() => buildStandings(ev), [ev]);
   const knockout = ev.match_type === "tournament";
   const fixtures = useMemo(
@@ -237,6 +242,8 @@ function CompetitionPanel({ ev }: { ev: EventRow }) {
   );
   const past = isPast(ev.match_date);
   const champion = standings[0]?.name;
+  // Venue-hosted (not team-hosted), still open with spots → can invite teams.
+  const canInvite = !past && ev.status !== "cancelled" && !ev.organiser_team_id && ev.joinedTeams.length < ev.max_teams;
 
   return (
     <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
@@ -251,6 +258,24 @@ function CompetitionPanel({ ev }: { ev: EventRow }) {
           </div>
           <StatusPill ev={ev} />
         </div>
+        {canInvite && user && (
+          <button onClick={() => setShowInvite(true)}
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
+            Invite teams (discounted)
+          </button>
+        )}
+        {showInvite && user && (
+          <TournamentInvitePanel
+            openMatchId={ev.id}
+            tournamentTitle={ev.title}
+            buyInPence={ev.price_per_team_pence}
+            inviterUserId={user.id}
+            inviterKind="venue"
+            inviterName={ev.pitch_name}
+            onClose={() => setShowInvite(false)}
+          />
+        )}
         {knockout && past && champion && (
           <div className="mt-3 flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
@@ -352,7 +377,7 @@ export default function VenueProgressPage() {
       setHasPitches((ps ?? []).length > 0);
 
       const { data: oms } = await supabase.from("open_matches")
-        .select("id, title, match_type, format, skill_level, match_date, start_time, end_time, pitch_name, max_teams, status")
+        .select("id, title, match_type, format, skill_level, match_date, start_time, end_time, pitch_name, max_teams, status, price_per_team_pence, organiser_team_id")
         .eq("venue_owner_id", user!.id)
         .order("match_date", { ascending: false });
 

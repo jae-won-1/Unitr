@@ -96,6 +96,8 @@ type Tournament = {
   organiser_team_name: string | null;
   joinedCount: number;
   joinedTeamIds: string[];
+  // Pending-invitation discount off the buy-in for the viewing captain's team (0 if none).
+  inviteDiscountPence: number;
 };
 
 const ringerGames = [
@@ -833,6 +835,8 @@ function TournamentCard({
   const alreadyIn = myTeamId ? t.joinedTeamIds.includes(myTeamId) : false;
   const isOrganiser = myTeamId != null && t.organiser_team_id === myTeamId;
   const hostName = t.organiser_team_name ?? t.pitch_name;
+  const isInvited = !alreadyIn && !isOrganiser && t.inviteDiscountPence > 0;
+  const effectivePence = Math.max(0, t.price_per_team_pence - t.inviteDiscountPence);
   const buyIn = (t.price_per_team_pence / 100).toFixed(2);
 
   return (
@@ -846,8 +850,21 @@ function TournamentCard({
               <span className="ml-1.5 text-[10px] font-semibold text-text-secondary/70">{t.organiser_team_name ? "· Team-hosted" : "· Venue"}</span>
             </p>
           </div>
-          <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg flex-shrink-0">£{buyIn}/team</span>
+          {isInvited ? (
+            <span className="text-right flex-shrink-0">
+              <span className="text-[10px] text-text-secondary line-through block">£{buyIn}</span>
+              <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-lg">£{(effectivePence / 100).toFixed(2)}/team</span>
+            </span>
+          ) : (
+            <span className="text-xs font-bold text-accent bg-accent/10 border border-accent/30 px-2 py-1 rounded-lg flex-shrink-0">£{buyIn}/team</span>
+          )}
         </div>
+        {isInvited && (
+          <div className="inline-flex items-center gap-1.5 bg-accent/10 border border-accent/30 rounded-full px-2.5 py-1 mb-2">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            <span className="text-[10px] font-bold text-accent">Invited · £{(t.inviteDiscountPence / 100).toFixed(2)} off</span>
+          </div>
+        )}
         <div className="flex items-center gap-2 text-xs text-text-secondary mb-3 flex-wrap">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           <span>{fmtPostDate(t.match_date, t.start_time)}</span>
@@ -873,7 +890,7 @@ function TournamentCard({
       </div>
 
       {/* CTA */}
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 space-y-2">
         {isOrganiser ? (
           <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">You&apos;re hosting this tournament</div>
         ) : alreadyIn ? (
@@ -883,9 +900,14 @@ function TournamentCard({
         ) : (
           <button onClick={() => setPanelOpen(true)}
             className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-            Enter Tournament{spotsLeft > 0 ? ` — ${spotsLeft} spot${spotsLeft !== 1 ? "s" : ""} left` : ""}
+            {isInvited ? `Accept invitation — £${(effectivePence / 100).toFixed(2)}` : `Enter Tournament${spotsLeft > 0 ? ` — ${spotsLeft} spot${spotsLeft !== 1 ? "s" : ""} left` : ""}`}
           </button>
         )}
+        <a href={`/play/tournament/${t.id}`}
+          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-surface border border-border text-sm font-semibold text-text-primary">
+          {isOrganiser ? "Manage schedule & referees" : "View schedule & referees"}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
       </div>
 
       {panelOpen && (
@@ -919,7 +941,9 @@ function EnterTournamentPanel({
   const [saving, setSaving] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const buyIn = t.price_per_team_pence;
+  // Effective buy-in after any pending-invitation discount (the join route
+  // re-applies the discount authoritatively; this keeps the UI in sync).
+  const buyIn = Math.max(0, t.price_per_team_pence - t.inviteDiscountPence);
 
   const handleJoin = async () => {
     if (!user || !myTeamId) { setError("You need to be a team captain to enter a tournament."); return; }
@@ -992,8 +1016,17 @@ function EnterTournamentPanel({
           <p className="text-xs text-text-secondary mt-0.5">{t.pitch_name} · {fmtPostDate(t.match_date, t.start_time)}</p>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
             <span className="text-xs text-text-secondary">Buy-in (per team)</span>
-            <span className="text-sm font-bold">£{(buyIn / 100).toFixed(2)}</span>
+            <span className="text-sm font-bold">
+              {t.inviteDiscountPence > 0 && <span className="text-[11px] text-text-secondary line-through mr-1.5">£{(t.price_per_team_pence / 100).toFixed(2)}</span>}
+              £{(buyIn / 100).toFixed(2)}
+            </span>
           </div>
+          {t.inviteDiscountPence > 0 && (
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-xs text-accent">Invitation discount</span>
+              <span className="text-xs font-semibold text-accent">−£{(t.inviteDiscountPence / 100).toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between mt-1.5">
             <span className="text-xs text-text-secondary">Teams entered</span>
             <span className="text-sm font-semibold">{t.joinedCount}/{t.max_teams}</span>
@@ -1026,10 +1059,12 @@ function useOpenTournaments(userId?: string) {
 
   useEffect(() => {
     async function load() {
+      let teamId: string | null = null;
       if (userId) {
         const { data: team } = await supabase
           .from("teams").select("id, name").eq("captain_id", userId).maybeSingle();
-        setMyTeamId(team?.id ?? null);
+        teamId = team?.id ?? null;
+        setMyTeamId(teamId);
         setMyTeamName(team?.name ?? null);
       }
 
@@ -1040,11 +1075,21 @@ function useOpenTournaments(userId?: string) {
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });
 
+      // Pending invitations for the viewer's team → discount per tournament.
+      const discountByTournament = new Map<string, number>();
+      if (teamId) {
+        const { data: invites } = await supabase
+          .from("tournament_invitations")
+          .select("open_match_id, discount_pence, status")
+          .eq("team_id", teamId).eq("status", "pending");
+        for (const inv of invites ?? []) discountByTournament.set(inv.open_match_id as string, inv.discount_pence ?? 0);
+      }
+
       const withTeams = await Promise.all((oms ?? []).map(async (m) => {
         const { data: teams } = await supabase
           .from("open_match_teams").select("team_id").eq("open_match_id", m.id);
         const joinedTeamIds = (teams ?? []).map((x) => x.team_id as string);
-        return { ...m, joinedCount: joinedTeamIds.length, joinedTeamIds } as Tournament;
+        return { ...m, joinedCount: joinedTeamIds.length, joinedTeamIds, inviteDiscountPence: discountByTournament.get(m.id) ?? 0 } as Tournament;
       }));
 
       // Hide tournaments whose date has already passed.

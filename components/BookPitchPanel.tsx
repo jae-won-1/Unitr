@@ -324,7 +324,14 @@ function BookingConfirmed({ pitch, date, time, posted, onDone }: {
 }
 
 // ── Main Content ──────────────────────────────────────────────
-export default function BookPitchPanel({ initialDate, initialTime, autoPost }: { initialDate?: string; initialTime?: string; autoPost?: boolean } = {}) {
+// onDone: fires when the user dismisses the post-booking confirmation screen
+// (posted = true if it was auto-posted as a secured match). Lets an embedding
+// parent (e.g. a modal on the Create Match page) close itself and navigate.
+// onSelectSlot: when provided, the panel becomes a pure picker — tapping an
+// available slot hands (pitchId, date, time) back instead of running the
+// booking/payment flow. Used by the tournament creator to pick a pitch + slot
+// with the same discovery UI, then book a multi-hour block itself.
+export default function BookPitchPanel({ initialDate, initialTime, autoPost, onDone, onSelectSlot }: { initialDate?: string; initialTime?: string; autoPost?: boolean; onDone?: (posted: boolean) => void; onSelectSlot?: (pitchId: string, date: string, time: string) => void } = {}) {
   const { user } = useAuth();
 
   const [pitches, setPitches] = useState<Pitch[]>([]);
@@ -720,7 +727,10 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
             pickedPitches={[]}
             onSelect={(p) => {
               const free = (slotMap[p.id] ?? []).find((s) => s.status === "available");
-              if (free) setPendingSlot({ pitch: p, date: filterDate, time: filterHour && isAvailableAt(p.id, filterHour) ? filterHour : free.time });
+              if (!free) return;
+              const time = filterHour && isAvailableAt(p.id, filterHour) ? filterHour : free.time;
+              if (onSelectSlot) onSelectSlot(p.id, filterDate, time);
+              else setPendingSlot({ pitch: p, date: filterDate, time });
             }}
             selectMode={false}
           />
@@ -789,7 +799,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
                             return (
                               <button key={time}
                                 disabled={isDisabled}
-                                onClick={() => setPendingSlot({ pitch, date: filterDate, time })}
+                                onClick={() => onSelectSlot ? onSelectSlot(pitch.id, filterDate, time) : setPendingSlot({ pitch, date: filterDate, time })}
                                 className={`py-2 rounded-lg text-[12px] font-medium transition-colors ${
                                   isPast
                                     ? "text-text-secondary/25 cursor-not-allowed"
@@ -846,7 +856,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost }: {
           date={bookedInfo.date}
           time={bookedInfo.time}
           posted={bookedInfo.posted}
-          onDone={() => setBookedInfo(null)}
+          onDone={() => { const posted = bookedInfo.posted; setBookedInfo(null); onDone?.(posted); }}
         />
       )}
     </div>

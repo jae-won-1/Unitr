@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { DatePicker, TimePicker } from "@/components/DateTimePickers";
+import BookPitchPanel from "@/components/BookPitchPanel";
 
 // Captain-hosted tournament creation.
 //   1. The captain books & pays for a multi-hour pitch block upfront from team
@@ -33,6 +33,11 @@ function addHours(time: string, hours: number): string {
   return `${String(Math.min((h || 0) + hours, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
 }
 
+function fmtDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 export default function CreateTournamentPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -52,6 +57,7 @@ export default function CreateTournamentPage() {
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [hours, setHours] = useState(MIN_HOURS);
+  const [showPicker, setShowPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +210,18 @@ export default function CreateTournamentPage() {
         </div>
       </div>
 
+      {/* Game type: normal match vs tournament — Match goes back to the ranked-pitch flow */}
+      <div className="flex bg-surface-2 border border-border rounded-xl p-1 mb-5">
+        <button type="button" onClick={() => router.push("/play/create")}
+          className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors text-text-secondary">
+          Match
+        </button>
+        <button type="button"
+          className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-black">
+          Tournament
+        </button>
+      </div>
+
       {team === null ? (
         <div className="bg-surface-2 border border-border rounded-2xl px-4 py-10 text-center">
           <p className="text-sm font-semibold mb-1">Captains only</p>
@@ -266,24 +284,24 @@ export default function CreateTournamentPage() {
           {/* Pitch + slot */}
           <section className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-4">
             <p className="text-sm font-semibold">Pitch & slot</p>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium">Pitch</label>
-              <select value={pitchId} onChange={(e) => setPitchId(e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
-                <option value="">{loadingPitches ? "Loading pitches…" : "Choose a pitch"}</option>
-                {pitches.map((p) => <option key={p.id} value={p.id}>{p.name} — £{p.price_per_hour}/hr</option>)}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium">Date</label>
-                <DatePicker value={date} onChange={setDate} />
+            {pitch && date && startTime ? (
+              <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
+                <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">{pitch.name}</p>
+                  <p className="text-[11px] text-text-secondary">{fmtDate(date)} · {startTime}–{endTime} · £{pitch.price_per_hour}/hr</p>
+                </div>
+                <button type="button" onClick={() => setShowPicker(true)} className="text-xs text-accent font-semibold flex-shrink-0">Change</button>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium">Start time</label>
-                <TimePicker value={startTime} selectedDate={date} label="Start time" onChange={setStartTime} />
-              </div>
-            </div>
+            ) : (
+              <button type="button" onClick={() => setShowPicker(true)}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-border text-sm text-text-secondary">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                {loadingPitches ? "Loading pitches…" : "Choose a pitch & start time"}
+              </button>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium">Duration (min {MIN_HOURS} hours)</label>
               <div className="flex gap-2 flex-wrap">
@@ -316,6 +334,35 @@ export default function CreateTournamentPage() {
                 <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
               ) : totalPence > 0 ? `Book & Host — £${(totalPence / 100).toFixed(2)}` : "Book & Host Tournament"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pick a pitch & start time using the same Book tab discovery UI */}
+      {showPicker && (
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60"
+          onClick={() => setShowPicker(false)}>
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-1">
+              <div>
+                <p className="font-bold">Choose a pitch</p>
+                <p className="text-[11px] text-text-secondary">Pick a start slot — you&apos;ll book {hours} consecutive hours</p>
+              </div>
+              <button onClick={() => setShowPicker(false)} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <BookPitchPanel
+              initialDate={date || undefined}
+              initialTime={startTime || undefined}
+              onSelectSlot={(pid, d, t) => {
+                setPitchId(pid);
+                setDate(d);
+                setStartTime(t);
+                setShowPicker(false);
+              }}
+            />
           </div>
         </div>
       )}

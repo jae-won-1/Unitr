@@ -43,7 +43,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "This tournament is full." }, { status: 409 });
     }
 
-    const buyIn = Math.round(om.price_per_team_pence ?? 0);
+    // Apply a pending invitation's discount, if this team was invited. The
+    // discount is authoritative here (client only displays it).
+    const { data: invite } = await adminSupabase
+      .from("tournament_invitations")
+      .select("id, discount_pence, status")
+      .eq("open_match_id", openMatchId)
+      .eq("team_id", teamId)
+      .maybeSingle();
+    const discount = invite && invite.status === "pending" ? Math.round(invite.discount_pence ?? 0) : 0;
+    const buyIn = Math.max(0, Math.round(om.price_per_team_pence ?? 0) - discount);
 
     // 3) Credit check + guarded debit (buy-in comes out of the team pot).
     if (buyIn > 0) {
@@ -112,6 +121,11 @@ export async function POST(req: NextRequest) {
     // 6) Mark the tournament full if this was the last spot.
     if (joinedTeams.length + 1 >= om.max_teams) {
       await adminSupabase.from("open_matches").update({ status: "full" }).eq("id", openMatchId);
+    }
+
+    // Mark a pending invitation accepted so its discount can't be reused.
+    if (invite && invite.status === "pending") {
+      await adminSupabase.from("tournament_invitations").update({ status: "accepted" }).eq("id", invite.id);
     }
 
     // 7) Pre-create pending replenishments for the joining squad (best-effort — the

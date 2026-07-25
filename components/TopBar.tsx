@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -21,6 +21,10 @@ export default function TopBar() {
   const [openPosts, setOpenPosts] = useState(0);
   const [matchDues, setMatchDues] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
+
+  // Feed notifications (referee assignments etc.) from the notifications table.
+  type NotifRow = { id: string; type: string; title: string; body: string | null; link: string | null; read: boolean; created_at: string };
+  const [notifs, setNotifs] = useState<NotifRow[]>([]);
 
   useEffect(() => {
     if (!user) { setInitials("?"); return; }
@@ -95,6 +99,28 @@ export default function TopBar() {
       .then(({ count }) => setUnreadMessages(count ?? 0));
   }, [user]);
 
+  // Feed notifications (referee assignments, etc.) — newest first, unread lead.
+  const loadNotifs = useCallback(() => {
+    if (!user) { setNotifs([]); return; }
+    supabase.from("notifications")
+      .select("id, type, title, body, link, read, created_at")
+      .eq("user_id", user.id)
+      .order("read", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(15)
+      .then(({ data }) => setNotifs((data ?? []) as NotifRow[]));
+  }, [user]);
+  useEffect(() => { loadNotifs(); }, [loadNotifs]);
+
+  const openNotif = async (n: NotifRow) => {
+    setNotifOpen(false);
+    if (!n.read) {
+      setNotifs((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x));
+      await supabase.from("notifications").update({ read: true }).eq("id", n.id);
+    }
+    if (n.link) window.location.href = n.link;
+  };
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
@@ -107,7 +133,8 @@ export default function TopBar() {
   if (pathname.startsWith("/venue")) return null;
   if (HIDDEN_PATHS.some((p) => pathname.startsWith(p))) return null;
 
-  const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0) + (matchDues > 0 ? 1 : 0);
+  const unreadNotifs = notifs.filter((n) => !n.read).length;
+  const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0) + (matchDues > 0 ? 1 : 0) + unreadNotifs;
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 h-16 w-full bg-background flex items-center justify-between gap-2 px-4">
@@ -141,6 +168,23 @@ export default function TopBar() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="text-sm font-bold">Notifications</p>
             </div>
+
+            {/* Feed notifications (referee assignments, etc.) — newest first */}
+            {notifs.map((n) => (
+              <button key={n.id} onClick={() => openNotif(n)}
+                className={`w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border ${!n.read ? "bg-accent/[0.04]" : ""}`}>
+                <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold truncate">{n.title}</p>
+                    {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />}
+                  </div>
+                  {n.body && <p className="text-[11px] text-text-secondary mt-0.5">{n.body}</p>}
+                </div>
+              </button>
+            ))}
 
             {/* Pay your share: outstanding dues for matches already played */}
             {matchDues > 0 && (

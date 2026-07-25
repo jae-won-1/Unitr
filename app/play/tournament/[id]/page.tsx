@@ -1,0 +1,384 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import TournamentInvitePanel from "@/components/TournamentInvitePanel";
+
+// Tournament detail + management. The organiser (the hosting team's captain, or
+// the venue owner for venue-hosted tournaments) can generate a schedule of
+// fixtures between the joined teams — manually or randomly. Every fixture is
+// assigned a referee: a randomly chosen player from a team NOT in that fixture,
+// who is notified. Everyone can view the schedule, results and referees.
+
+type Tournament = {
+  id: string;
+  title: string;
+  pitch_name: string;
+  match_date: string;
+  start_time: string;
+  end_time: string;
+  format: string | null;
+  skill_level: string;
+  max_teams: number;
+  price_per_team_pence: number;
+  status: string;
+  organiser_team_id: string | null;
+  organiser_team_name: string | null;
+  venue_owner_id: string;
+};
+
+type JoinedTeam = { team_id: string; team_name: string };
+type RosterPlayer = { player_id: string; name: string; team_id: string; team_name: string };
+type Fixture = {
+  id: string;
+  slot_index: number;
+  scheduled_time: string | null;
+  home_team_id: string | null;
+  home_team_name: string | null;
+  away_team_id: string | null;
+  away_team_name: string | null;
+  referee_player_id: string | null;
+  referee_name: string | null;
+  referee_team_name: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: string;
+};
+
+const timeToMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+const minToTime = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function fmtDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function TournamentDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const [t, setT] = useState<Tournament | null | undefined>(undefined);
+  const [teams, setTeams] = useState<JoinedTeam[]>([]);
+  const [roster, setRoster] = useState<RosterPlayer[]>([]);
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showInvite, setShowInvite] = useState(false);
+
+  // Manual-fixture form
+  const [mHome, setMHome] = useState("");
+  const [mAway, setMAway] = useState("");
+  const [mTime, setMTime] = useState("");
+
+  const load = useCallback(async () => {
+    const { data: om } = await supabase.from("open_matches")
+      .select("id, title, pitch_name, match_date, start_time, end_time, format, skill_level, max_teams, price_per_team_pence, status, organiser_team_id, organiser_team_name, venue_owner_id")
+      .eq("id", params.id).maybeSingle();
+    if (!om) { setT(null); return; }
+    setT(om as Tournament);
+
+    const { data: jt } = await supabase.from("open_match_teams")
+      .select("team_id, team_name").eq("open_match_id", params.id);
+    const joined = (jt ?? []) as JoinedTeam[];
+    setTeams(joined);
+
+    // Build the referee pool: approved members + captain of every joined team.
+    const teamIds = joined.map((x) => x.team_id);
+    const nameByTeam = new Map(joined.map((x) => [x.team_id, x.team_name]));
+    const pool: RosterPlayer[] = [];
+    if (teamIds.length) {
+      const [{ data: members }, { data: teamRows }] = await Promise.all([
+        supabase.from("team_members").select("player_id, team_id, profiles(full_name)").in("team_id", teamIds).eq("status", "approved"),
+        supabase.from("teams").select("id, captain_id").in("id", teamIds),
+      ]);
+      const capIds = (teamRows ?? []).map((r) => r.captain_id).filter(Boolean);
+      const { data: capProfiles } = capIds.length
+        ? await supabase.from("profiles").select("id, full_name").in("id", capIds)
+        : { data: [] as { id: string; full_name: string }[] };
+      const capName = new Map((capProfiles ?? []).map((p) => [p.id, p.full_name as string]));
+      for (const m of members ?? []) {
+        pool.push({
+          player_id: m.player_id as string,
+          name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player",
+          team_id: m.team_id as string,
+          team_name: nameByTeam.get(m.team_id as string) ?? "",
+        });
+      }
+      for (const r of teamRows ?? []) {
+        if (r.captain_id && !pool.some((p) => p.player_id === r.captain_id)) {
+          pool.push({ player_id: r.captain_id, name: capName.get(r.captain_id) ?? "Captain", team_id: r.id, team_name: nameByTeam.get(r.id) ?? "" });
+        }
+      }
+    }
+    setRoster(pool);
+
+    const { data: fx } = await supabase.from("tournament_matches")
+      .select("id, slot_index, scheduled_time, home_team_id, home_team_name, away_team_id, away_team_name, referee_player_id, referee_name, referee_team_name, home_score, away_score, status")
+      .eq("open_match_id", params.id).order("slot_index", { ascending: true });
+    setFixtures((fx ?? []) as Fixture[]);
+  }, [params.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("teams").select("id").eq("captain_id", user.id).maybeSingle()
+      .then(({ data }) => setMyTeamId(data?.id ?? null));
+  }, [user]);
+
+  const canManage = Boolean(t && user && (
+    (t.organiser_team_id && t.organiser_team_id === myTeamId) || t.venue_owner_id === user.id
+  ));
+
+  // Pick a random referee from a team not playing in this fixture.
+  const pickReferee = (homeId: string, awayId: string): RosterPlayer | null => {
+    const eligible = roster.filter((p) => p.team_id !== homeId && p.team_id !== awayId);
+    if (eligible.length === 0) return null;
+    return eligible[Math.floor(Math.random() * eligible.length)];
+  };
+
+  const notifyReferee = (ref: RosterPlayer, home: string, away: string, time: string | null) => ({
+    user_id: ref.player_id,
+    type: "referee_assignment",
+    title: "You're refereeing a tournament game",
+    body: `${home} vs ${away}${time ? ` at ${time}` : ""} · ${t?.title ?? "Tournament"}`,
+    link: `/play/tournament/${params.id}`,
+  });
+
+  // Random round-robin: every team plays every other once, in a shuffled order,
+  // spread evenly across the booked block, each with a random referee.
+  const generateRandom = async () => {
+    if (!t || teams.length < 2) return;
+    setBusy(true); setError(null);
+
+    const pairs: [JoinedTeam, JoinedTeam][] = [];
+    for (let i = 0; i < teams.length; i++)
+      for (let j = i + 1; j < teams.length; j++)
+        pairs.push([teams[i], teams[j]]);
+    const order = shuffle(pairs);
+
+    const startMin = timeToMin(t.start_time);
+    const endMin = timeToMin(t.end_time);
+    const slot = order.length > 0 ? Math.max(15, Math.floor((endMin - startMin) / order.length)) : 30;
+
+    const rows = order.map(([home, away], i) => {
+      const ref = pickReferee(home.team_id, away.team_id);
+      return {
+        open_match_id: t.id,
+        round_label: "Group",
+        slot_index: i,
+        scheduled_time: minToTime(startMin + i * slot),
+        home_team_id: home.team_id, home_team_name: home.team_name,
+        away_team_id: away.team_id, away_team_name: away.team_name,
+        referee_player_id: ref?.player_id ?? null,
+        referee_name: ref?.name ?? null,
+        referee_team_id: ref?.team_id ?? null,
+        referee_team_name: ref?.team_name ?? null,
+        status: "scheduled",
+      };
+    });
+
+    // Replace any existing schedule.
+    await supabase.from("tournament_matches").delete().eq("open_match_id", t.id);
+    const { error: insErr } = await supabase.from("tournament_matches").insert(rows);
+    if (insErr) { setBusy(false); setError(insErr.code === "42P01" ? "Run supabase_tournament_schedule.sql in Supabase first." : insErr.message); return; }
+
+    // Notify every assigned referee.
+    const notifs = rows.filter((r) => r.referee_player_id)
+      .map((r) => notifyReferee(
+        { player_id: r.referee_player_id!, name: r.referee_name!, team_id: r.referee_team_id!, team_name: r.referee_team_name! },
+        r.home_team_name, r.away_team_name, r.scheduled_time
+      ));
+    if (notifs.length) await supabase.from("notifications").insert(notifs);
+
+    await load();
+    setBusy(false);
+  };
+
+  const addManualFixture = async () => {
+    if (!t) return;
+    if (!mHome || !mAway || mHome === mAway) { setError("Pick two different teams."); return; }
+    setBusy(true); setError(null);
+    const home = teams.find((x) => x.team_id === mHome)!;
+    const away = teams.find((x) => x.team_id === mAway)!;
+    const ref = pickReferee(home.team_id, away.team_id);
+    const slot_index = fixtures.length;
+    const { error: insErr } = await supabase.from("tournament_matches").insert({
+      open_match_id: t.id, round_label: "Group", slot_index,
+      scheduled_time: mTime || null,
+      home_team_id: home.team_id, home_team_name: home.team_name,
+      away_team_id: away.team_id, away_team_name: away.team_name,
+      referee_player_id: ref?.player_id ?? null, referee_name: ref?.name ?? null,
+      referee_team_id: ref?.team_id ?? null, referee_team_name: ref?.team_name ?? null,
+      status: "scheduled",
+    });
+    if (insErr) { setBusy(false); setError(insErr.code === "42P01" ? "Run supabase_tournament_schedule.sql in Supabase first." : insErr.message); return; }
+    if (ref) await supabase.from("notifications").insert(notifyReferee(ref, home.team_name, away.team_name, mTime || null));
+    setMHome(""); setMAway(""); setMTime("");
+    await load();
+    setBusy(false);
+  };
+
+  // Re-roll the referee for one fixture (organiser tweak).
+  const reshuffleReferee = async (fx: Fixture) => {
+    if (!fx.home_team_id || !fx.away_team_id) return;
+    const ref = pickReferee(fx.home_team_id, fx.away_team_id);
+    if (!ref) return;
+    await supabase.from("tournament_matches").update({
+      referee_player_id: ref.player_id, referee_name: ref.name, referee_team_id: ref.team_id, referee_team_name: ref.team_name,
+    }).eq("id", fx.id);
+    await supabase.from("notifications").insert(notifyReferee(ref, fx.home_team_name ?? "", fx.away_team_name ?? "", fx.scheduled_time));
+    await load();
+  };
+
+  const clearSchedule = async () => {
+    if (!t) return;
+    setBusy(true);
+    await supabase.from("tournament_matches").delete().eq("open_match_id", t.id);
+    await load();
+    setBusy(false);
+  };
+
+  if (t === undefined) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
+  if (!t) return <div className="flex items-center justify-center min-h-screen px-4"><p className="text-text-secondary">Tournament not found.</p></div>;
+
+  return (
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={() => router.back()}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold truncate">{t.title}</h1>
+          <p className="text-xs text-text-secondary">{t.pitch_name} · {fmtDate(t.match_date)} · {t.start_time}–{t.end_time}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        {/* Teams entered */}
+        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold">Teams</p>
+            <span className="text-xs text-text-secondary">{teams.length}/{t.max_teams}</span>
+          </div>
+          {teams.length === 0 ? (
+            <p className="text-xs text-text-secondary">No teams have joined yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {teams.map((tm) => (
+                <span key={tm.team_id} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${tm.team_id === t.organiser_team_id ? "bg-accent/10 border-accent/30 text-accent" : "bg-background border-border text-text-primary"}`}>
+                  {tm.team_name}{tm.team_id === t.organiser_team_id ? " · host" : ""}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-400">{error}</p></div>}
+
+        {/* Organiser: invite good-fit teams */}
+        {canManage && t.status !== "full" && teams.length < t.max_teams && (
+          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Invite teams</p>
+              <p className="text-[11px] text-text-secondary">Invite good-fit teams{t.venue_owner_id === user?.id ? " with an optional discount" : ""} to fill the {Math.max(0, t.max_teams - teams.length)} open spot{t.max_teams - teams.length !== 1 ? "s" : ""}.</p>
+            </div>
+            <button onClick={() => setShowInvite(true)}
+              className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex-shrink-0">Invite</button>
+          </section>
+        )}
+
+        {/* Organiser scheduling controls */}
+        {canManage && (
+          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">Schedule</p>
+              {fixtures.length > 0 && (
+                <button onClick={clearSchedule} disabled={busy} className="text-xs text-red-400 font-semibold disabled:opacity-50">Clear</button>
+              )}
+            </div>
+
+            <button onClick={generateRandom} disabled={busy || teams.length < 2}
+              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              {busy ? <><svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Working…</> : "Generate random schedule"}
+            </button>
+            <p className="text-[11px] text-text-secondary -mt-2">Round-robin — every team plays each other once. Referees are drawn randomly from teams sitting out each game and notified.</p>
+
+            {/* Manual add */}
+            <div className="border-t border-border pt-3">
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Add a fixture manually</p>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <select value={mHome} onChange={(e) => setMHome(e.target.value)} className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                  <option value="">Home team</option>
+                  {teams.map((tm) => <option key={tm.team_id} value={tm.team_id}>{tm.team_name}</option>)}
+                </select>
+                <select value={mAway} onChange={(e) => setMAway(e.target.value)} className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
+                  <option value="">Away team</option>
+                  {teams.filter((tm) => tm.team_id !== mHome).map((tm) => <option key={tm.team_id} value={tm.team_id}>{tm.team_name}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <input type="time" value={mTime} onChange={(e) => setMTime(e.target.value)}
+                  className="flex-1 bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                <button onClick={addManualFixture} disabled={busy || !mHome || !mAway}
+                  className="px-4 py-2.5 rounded-xl bg-surface border border-border text-sm font-semibold disabled:opacity-50">Add</button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Schedule / fixtures */}
+        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+          <p className="text-sm font-semibold mb-3">Fixtures</p>
+          {fixtures.length === 0 ? (
+            <p className="text-xs text-text-secondary text-center py-6">No fixtures scheduled yet{canManage ? " — generate a schedule above." : "."}</p>
+          ) : (
+            <div className="space-y-2">
+              {fixtures.map((fx, i) => (
+                <div key={fx.id} className="bg-background border border-border rounded-xl px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-text-secondary w-12 flex-shrink-0">{fx.scheduled_time ?? `#${i + 1}`}</span>
+                    <span className="flex-1 text-right text-sm font-semibold truncate">{fx.home_team_name}</span>
+                    <span className="text-xs font-bold text-text-secondary px-2">vs</span>
+                    <span className="flex-1 text-left text-sm font-semibold truncate">{fx.away_team_name}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5 pl-14">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
+                    <span className="text-[11px] text-text-secondary">
+                      Ref: {fx.referee_name ? <span className="text-text-primary font-medium">{fx.referee_name}</span> : "unassigned"}
+                      {fx.referee_team_name ? ` (${fx.referee_team_name})` : ""}
+                    </span>
+                    {canManage && (
+                      <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent font-semibold">Reshuffle</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {showInvite && user && (
+        <TournamentInvitePanel
+          openMatchId={t.id}
+          tournamentTitle={t.title}
+          buyInPence={t.price_per_team_pence}
+          inviterUserId={user.id}
+          inviterKind={t.venue_owner_id === user.id ? "venue" : "team"}
+          inviterName={t.organiser_team_name ?? t.pitch_name}
+          onClose={() => setShowInvite(false)}
+          onSent={load}
+        />
+      )}
+    </div>
+  );
+}
