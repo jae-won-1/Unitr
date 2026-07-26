@@ -20,6 +20,24 @@ const COLORS = [
   { bg: "#14B8A6", text: "#fff" },
 ];
 
+// Booking colour is driven by what kind of booking it is, not which pitch it's
+// on — venues need to eyeball Unitr vs manual vs tournament slots at a glance.
+type BookingCategory = "unitr" | "manual" | "tournament" | "league" | "match";
+const CATEGORY_COLORS: Record<BookingCategory, { bg: string; text: string }> = {
+  unitr: { bg: "#00E676", text: "#000" },       // green — booked via Unitr (platform)
+  manual: { bg: "#3B82F6", text: "#fff" },      // blue — manual / external entry
+  tournament: { bg: "#A855F7", text: "#fff" },  // purple
+  league: { bg: "#F97316", text: "#fff" },      // orange
+  match: { bg: "#EC4899", text: "#fff" },       // pink — open match listing
+};
+const CATEGORY_LABELS: Record<BookingCategory, string> = {
+  unitr: "Unitr booking",
+  manual: "Manual",
+  tournament: "Tournament",
+  league: "League",
+  match: "Open match",
+};
+
 // ── Types ─────────────────────────────────────────────────────
 type Pitch = { id: string; name: string; price_per_hour: number };
 type Booking = {
@@ -37,7 +55,19 @@ type Booking = {
   total_price_pence?: number;
   per_player_pence?: number;
   player_count?: number;
+  category?: BookingCategory;
 };
+
+function categoryFor(booking: Booking, matchTypeByBooking: Map<string, string>): BookingCategory {
+  if (booking.booking_type === "manual") return "manual";
+  if (booking.booking_type === "open_match") {
+    const mt = matchTypeByBooking.get(booking.id);
+    if (mt === "tournament") return "tournament";
+    if (mt === "league") return "league";
+    return "match";
+  }
+  return "unitr"; // "platform" — booked by a team via the Unitr Book flow
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 function timeToSlot(t: string): number {
@@ -112,11 +142,11 @@ for (let h = START_H; h < END_H; h++) {
 }
 
 // ── Booking block ─────────────────────────────────────────────
-function BookingBlock({ booking, color, onClick }: {
+function BookingBlock({ booking, onClick }: {
   booking: Booking;
-  color: typeof COLORS[0];
   onClick: () => void;
 }) {
+  const color = CATEGORY_COLORS[booking.category ?? "unitr"];
   const startSlot = Math.max(0, timeToSlot(booking.start_time));
   const endTime = booking.end_time ?? addOneHour(booking.start_time);
   const endSlot = Math.min(TOTAL_SLOTS, timeToSlot(endTime));
@@ -192,7 +222,7 @@ function DayView({ pitches, bookings, onCellClick, onBookingClick }: {
                     />
                   ))}
                   {pitchBookings.map((b) => (
-                    <BookingBlock key={b.id} booking={b} color={color} onClick={() => onBookingClick(b)} />
+                    <BookingBlock key={b.id} booking={b} onClick={() => onBookingClick(b)} />
                   ))}
                 </div>
               </div>
@@ -254,13 +284,9 @@ function WeekView({ pitches, bookings, weekDates, onCellClick, onBookingClick }:
                       onClick={() => onCellClick(pitches[0]?.id ?? "", date, slotToTime(i))}
                     />
                   ))}
-                  {dayBookings.map((b) => {
-                    const pi = pitches.findIndex((p) => p.id === b.pitch_id);
-                    const color = COLORS[Math.max(0, pi) % COLORS.length];
-                    return (
-                      <BookingBlock key={b.id} booking={b} color={color} onClick={() => onBookingClick(b)} />
-                    );
-                  })}
+                  {dayBookings.map((b) => (
+                    <BookingBlock key={b.id} booking={b} onClick={() => onBookingClick(b)} />
+                  ))}
                 </div>
               </div>
             );
@@ -755,14 +781,25 @@ export default function VenueCalendarPage() {
         .in("pitch_id", ps.map((p) => p.id))
         .neq("status", "cancelled");
 
+      const rows = bks ?? [];
+      const openMatchIds = rows.filter((b) => b.booking_type === "open_match").map((b) => b.id);
+      const { data: oms } = openMatchIds.length
+        ? await supabase.from("open_matches").select("booking_id, match_type").in("booking_id", openMatchIds)
+        : { data: [] as { booking_id: string; match_type: string }[] };
+      const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));
+
       // Enrich platform bookings with profile names
-      const enriched = await Promise.all((bks ?? []).map(async (b) => {
-        if (b.booker_name) return b;
-        const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
-        return { ...b, booker_name: prof?.full_name ?? "Unitr Booking" };
+      const enriched = await Promise.all(rows.map(async (b) => {
+        let booker_name = b.booker_name;
+        if (!booker_name) {
+          const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
+          booker_name = prof?.full_name ?? "Unitr Booking";
+        }
+        const withName = { ...b, booker_name } as Booking;
+        return { ...withName, category: categoryFor(withName, matchTypeByBooking) };
       }));
 
-      setBookings((enriched as Booking[]).map(b => ({ ...b, match_date: normalizeMatchDate(b.match_date) })));
+      setBookings(enriched.map(b => ({ ...b, match_date: normalizeMatchDate(b.match_date) })));
       setLoading(false);
     }
     load();
@@ -857,12 +894,24 @@ export default function VenueCalendarPage() {
           </button>
         </div>
 
-        {/* Pitch legend (day view, multiple pitches) */}
+        {/* Booking type legend */}
+        <div className="flex gap-3 flex-wrap">
+          {(Object.keys(CATEGORY_COLORS) as BookingCategory[])
+            .filter((c) => bookings.some((b) => b.category === c))
+            .map((c) => (
+              <div key={c} className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[c].bg }} />
+                <span className="text-xs text-text-secondary">{CATEGORY_LABELS[c]}</span>
+              </div>
+            ))}
+        </div>
+
+        {/* Pitch legend (week view, multiple pitches) — column colours only */}
         {view === "week" && pitches.length > 1 && (
           <div className="flex gap-3 flex-wrap">
             {pitches.map((p, i) => (
               <div key={p.id} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length].bg }} />
+                <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length].bg }} />
                 <span className="text-xs text-text-secondary">{p.name}</span>
               </div>
             ))}
