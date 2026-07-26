@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
+import TopUpModal from "@/components/TopUpModal";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -169,7 +170,7 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
   pitch: Pitch; date: string; time: string;
   isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
   working: boolean; error: string | null;
@@ -177,11 +178,13 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
   onPayCredit: () => void;
   onCardPaid: (intentId: string) => void;
   onError: (msg: string) => void;
+  onTopUp: (shortfallPence: number) => void;
 }) {
   const pitchFeePence = Math.round(pitch.price_per_hour * 100);
   const unitrFeePence = Math.round(pitchFeePence * 0.05);
   const cardTotalPence = pitchFeePence + unitrFeePence;
   const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= cardTotalPence;
+  const shortfallPence = Math.max(0, cardTotalPence - (teamCreditPence ?? 0));
 
   const [method, setMethod] = useState<"credit" | "card">(creditOk ? "credit" : "card");
   const [useManualEntry, setUseManualEntry] = useState(false);
@@ -228,16 +231,16 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
           <div className="mb-4">
             <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Pay with</p>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => creditOk && setMethod("credit")} disabled={!creditOk}
+              <button onClick={() => setMethod("credit")}
                 className={`rounded-xl border p-3 text-left transition-colors ${
                   method === "credit" ? "border-accent bg-accent/10" : "border-border bg-surface-2"
-                } ${!creditOk ? "opacity-50 cursor-not-allowed" : ""}`}>
+                }`}>
                 <p className="text-sm font-semibold">Team credit</p>
                 <p className="text-[10px] text-text-secondary mt-0.5">
                   {teamCreditPence === null ? "—" : `£${(teamCreditPence / 100).toFixed(2)} available`}
                 </p>
                 {!creditOk && teamCreditPence !== null && (
-                  <p className="text-[10px] text-red-400 mt-0.5">Need £{(cardTotalPence / 100).toFixed(2)} — top up in My Team</p>
+                  <p className="text-[10px] text-red-400 mt-0.5">£{(shortfallPence / 100).toFixed(2)} short</p>
                 )}
               </button>
               <button onClick={() => setMethod("card")}
@@ -259,10 +262,24 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
         {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
 
         {/* Payment action */}
-        {method === "credit" ? (
+        {method === "credit" && !creditOk ? (
+          <div>
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5 mb-3">
+              <p className="text-xs font-semibold text-yellow-400 mb-0.5">Not enough team credit</p>
+              <p className="text-[11px] text-yellow-200">
+                This booking costs £{(cardTotalPence / 100).toFixed(2)} but your team only has £{((teamCreditPence ?? 0) / 100).toFixed(2)}.
+                Top up £{(shortfallPence / 100).toFixed(2)} to pay with credit?
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setMethod("card")} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Pay by card</button>
+              <button onClick={() => onTopUp(shortfallPence)} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm">Top up now</button>
+            </div>
+          </div>
+        ) : method === "credit" ? (
           <div className="flex gap-3">
             <button onClick={onCancel} disabled={working} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">Cancel</button>
-            <button onClick={onPayCredit} disabled={working || !creditOk}
+            <button onClick={onPayCredit} disabled={working}
               className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {working
                 ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
@@ -365,6 +382,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   const [booking, setBooking] = useState(false);
   const [bookedInfo, setBookedInfo] = useState<{ pitch: Pitch; date: string; time: string; posted: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Shortfall to top up, set when a captain opts to top up from the payment modal.
+  const [topUpShortfall, setTopUpShortfall] = useState<number | null>(null);
 
   const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
   // Compare on the hour since slots are hourly (TimePicker can return :15/:30/:45)
@@ -846,6 +865,25 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           onPayCredit={() => completeBooking("credit")}
           onCardPaid={(intentId) => completeBooking("card", intentId)}
           onError={(msg) => setError(msg || null)}
+          onTopUp={(shortfallPence) => setTopUpShortfall(shortfallPence)}
+        />
+      )}
+
+      {/* Top up team credit mid-booking — the payment modal stays mounted behind
+          it so the captain lands back on Confirm & pay with the new balance. */}
+      {topUpShortfall !== null && team && user && (
+        <TopUpModal
+          teamId={team.id}
+          userId={user.id}
+          currentPence={teamCreditPence ?? 0}
+          suggestedPence={topUpShortfall}
+          onClose={() => setTopUpShortfall(null)}
+          onSuccess={async () => {
+            const { data: credit } = await supabase.from("team_credits")
+              .select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
+            setTeamCreditPence(credit ? credit.balance_pence - (credit.reserved_pence ?? 0) : 0);
+            setTopUpShortfall(null);
+          }}
         />
       )}
 

@@ -817,6 +817,35 @@ function RingerCard({ game }: { game: typeof ringerGames[0] }) {
   );
 }
 
+// ── Tournament list — hosted-by-you first, under its own heading ──
+function TournamentList({ tournaments, myTeamId, myTeamName, onJoined }: {
+  tournaments: Tournament[]; myTeamId: string | null; myTeamName: string | null; onJoined: (id: string) => void;
+}) {
+  const mine = myTeamId ? tournaments.filter((t) => t.organiser_team_id === myTeamId) : [];
+  const others = myTeamId ? tournaments.filter((t) => t.organiser_team_id !== myTeamId) : tournaments;
+
+  return (
+    <div className="space-y-4">
+      {mine.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Hosted by you</p>
+          {mine.map((t) => (
+            <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={onJoined} />
+          ))}
+        </div>
+      )}
+      {others.length > 0 && (
+        <div className="space-y-3">
+          {mine.length > 0 && <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Other tournaments</p>}
+          {others.map((t) => (
+            <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={onJoined} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tournament Card ────────────────────────────────────────────
 function TournamentCard({
   tournament: t,
@@ -840,11 +869,16 @@ function TournamentCard({
   const buyIn = (t.price_per_team_pence / 100).toFixed(2);
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+    <div className={`bg-surface-2 border rounded-2xl overflow-hidden ${isOrganiser ? "border-accent/50" : "border-border"}`}>
       <div className="px-4 pt-4 pb-3">
         <div className="flex items-start justify-between mb-2 gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-bold truncate">{t.title}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-bold truncate">{t.title}</p>
+              {isOrganiser && (
+                <span className="flex-shrink-0 text-[10px] font-bold text-accent bg-accent/10 border border-accent/30 px-1.5 py-0.5 rounded-full">Hosted by you</span>
+              )}
+            </div>
             <p className="text-xs text-text-secondary">
               by {hostName}
               <span className="ml-1.5 text-[10px] font-semibold text-text-secondary/70">{t.organiser_team_name ? "· Team-hosted" : "· Venue"}</span>
@@ -1289,9 +1323,7 @@ function PlayerPlay() {
         ) : tournaments.length === 0 ? (
           <p className="text-sm text-text-secondary text-center py-8">No tournaments right now.</p>
         ) : (
-          tournaments.map((t) => (
-            <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
-          ))
+          <TournamentList tournaments={tournaments} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
         )
       )}
 
@@ -1365,9 +1397,7 @@ function CaptainPlay() {
           ) : tournaments.length === 0 ? (
             <p className="text-sm text-text-secondary text-center py-8">No tournaments right now.</p>
           ) : (
-            tournaments.map((t) => (
-              <TournamentCard key={t.id} tournament={t} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
-            ))
+            <TournamentList tournaments={tournaments} myTeamId={myTeamId} myTeamName={myTeamName} onJoined={markJoined} />
           )}
         </div>
       )}

@@ -196,6 +196,48 @@ type ConfirmedFixture = {
   paymentStatus: "paid" | "unpaid";
 };
 
+type HostedTournament = {
+  id: string;
+  title: string;
+  match_date: string;
+  start_time: string;
+  pitch_name: string;
+  status: string;
+  joinedCount: number;
+  max_teams: number;
+};
+
+// Tournaments this team's captain has posted (organiser_team_id = own team),
+// so the captain can jump straight to the existing manage page for each one.
+function useHostedTournaments(teamId?: string) {
+  const [tournaments, setTournaments] = useState<HostedTournament[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!teamId) { setTournaments([]); setLoading(false); return; }
+    async function load() {
+      const { data: oms } = await supabase
+        .from("open_matches")
+        .select("id, title, match_date, start_time, pitch_name, status, max_teams")
+        .eq("match_type", "tournament")
+        .eq("organiser_team_id", teamId)
+        .neq("status", "cancelled")
+        .order("match_date", { ascending: true });
+
+      const withCounts = await Promise.all((oms ?? []).map(async (m) => {
+        const { count } = await supabase
+          .from("open_match_teams").select("id", { count: "exact", head: true }).eq("open_match_id", m.id);
+        return { ...m, joinedCount: count ?? 0 } as HostedTournament;
+      }));
+      setTournaments(withCounts);
+      setLoading(false);
+    }
+    load();
+  }, [teamId]);
+
+  return { tournaments, loading };
+}
+
 // match_posts/challenges only carry the post id — Manage Match needs the matches.id row instead.
 async function attachMatchRowIds<T extends { postId: string }>(fixtures: T[]): Promise<(T & { matchRowId: string | null })[]> {
   if (fixtures.length === 0) return [];
@@ -689,6 +731,7 @@ function CaptainMyTeam() {
   const [submittingVote, setSubmittingVote] = useState(false);
   const [deletingPoll, setDeletingPoll] = useState(false);
   const [confirmDeletePoll, setConfirmDeletePoll] = useState(false);
+  const { tournaments: hostedTournaments, loading: hostedTournamentsLoading } = useHostedTournaments(myTeam?.id);
 
   useEffect(() => {
     if (!user) return;
@@ -1102,6 +1145,41 @@ function CaptainMyTeam() {
           </div>
         )}
       </section>
+
+      {/* Tournaments this team is hosting — jump straight to the manage page */}
+      {(hostedTournamentsLoading || hostedTournaments.length > 0) && (
+        <section>
+          <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Tournaments You&apos;re Hosting</h3>
+          {hostedTournamentsLoading ? (
+            <div className="py-4 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
+          ) : (
+            <div className="space-y-2">
+              {hostedTournaments.map((t) => (
+                <div key={t.id} className="bg-surface-2 border border-border rounded-2xl p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{t.title}</p>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        {t.match_date} · {t.start_time}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary truncate">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        {t.pitch_name}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-accent">{t.joinedCount}/{t.max_teams}</p>
+                      <p className="text-[10px] text-text-secondary">teams</p>
+                    </div>
+                  </div>
+                  <a href={`/play/tournament/${t.id}`} className="block w-full py-2 rounded-xl border border-accent/40 text-accent text-xs font-semibold text-center mt-3">Manage tournament</a>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
