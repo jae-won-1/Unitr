@@ -48,11 +48,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Credit changed, please retry." }, { status: 409 });
     }
 
-    // Audit row — signed ledger entry. No match/post for a direct booking.
+    // Audit row — signed ledger entry. No match/post for a direct booking;
+    // booking_id lets the Team Credits log show which pitch this paid for.
     await adminSupabase.from("team_credit_transactions").insert({
       team_id: teamId,
       type: "booking_capture",
       amount_pence: -amount,
+      booking_id: bookingId ?? null,
     });
 
     // Best-effort: stamp the booking so it reflects the credit payment.

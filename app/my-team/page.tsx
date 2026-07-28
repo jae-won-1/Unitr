@@ -1451,7 +1451,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const [bookingsExpanded, setBookingsExpanded] = useState(false);
   const [reimbursedExpanded, setReimbursedExpanded] = useState(false);
   const [owedByPlayer, setOwedByPlayer] = useState<Record<string, number>>({});
-  const [bookingTx, setBookingTx] = useState<{ id: string; player_name: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
+  const [bookingTx, setBookingTx] = useState<{ id: string; label: string; detail: string; amount_pence: number; created_at: string }[]>([]);
   const [reimbursedTx, setReimbursedTx] = useState<{ id: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
@@ -1949,19 +1949,54 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     });
     setOwedByPlayer(owedMap);
     // Load outgoing credit transactions (pitch bookings, match captures, etc.)
+    // and resolve each to what it actually paid for — a direct pitch booking,
+    // a tournament buy-in, or a matched game against a specific opponent —
+    // instead of a generic "Pitch booking" label.
     const { data: outgoing } = await supabase
       .from("team_credit_transactions")
-      .select("id, amount_pence, created_at, type")
+      .select("id, amount_pence, created_at, type, match_id, related_team_id, booking_id, open_match_id")
       .eq("team_id", teamId)
       .lt("amount_pence", 0)
       .order("created_at", { ascending: false });
-    setBookingTx((outgoing ?? []).map((t) => ({
-      id: t.id,
-      player_name: t.type === "booking_capture" ? "Pitch booking" : "Match payment",
-      opponent: "",
-      amount_pence: Math.abs(t.amount_pence),
-      created_at: t.created_at,
-    })));
+    const rows = outgoing ?? [];
+
+    const oppTeamIds = [...new Set(rows.map((r) => r.related_team_id).filter(Boolean))];
+    const bookingIds = [...new Set(rows.map((r) => r.booking_id).filter(Boolean))];
+    const openMatchIds = [...new Set(rows.map((r) => r.open_match_id).filter(Boolean))];
+
+    const { data: bookingOppTeams } = oppTeamIds.length
+      ? await supabase.from("teams").select("id, name").in("id", oppTeamIds)
+      : { data: [] as { id: string; name: string }[] };
+    const { data: bookings } = bookingIds.length
+      ? await supabase.from("pitch_bookings").select("id, pitch_id, match_date, start_time").in("id", bookingIds)
+      : { data: [] as { id: string; pitch_id: string; match_date: string; start_time: string }[] };
+    const { data: tournaments } = openMatchIds.length
+      ? await supabase.from("open_matches").select("id, title, pitch_name").in("id", openMatchIds)
+      : { data: [] as { id: string; title: string; pitch_name: string }[] };
+    const bookingOppName = new Map((bookingOppTeams ?? []).map((t) => [t.id, t.name as string]));
+    const pitchIds = [...new Set((bookings ?? []).map((b) => b.pitch_id).filter(Boolean))];
+    const { data: pitches } = pitchIds.length
+      ? await supabase.from("pitches").select("id, name").in("id", pitchIds)
+      : { data: [] as { id: string; name: string }[] };
+    const pitchName = new Map((pitches ?? []).map((p) => [p.id, p.name as string]));
+    const bookingById = new Map((bookings ?? []).map((b) => [b.id, b]));
+    const tournamentById = new Map((tournaments ?? []).map((t) => [t.id, t]));
+
+    setBookingTx(rows.map((t) => {
+      if (t.open_match_id && tournamentById.has(t.open_match_id)) {
+        const tour = tournamentById.get(t.open_match_id)!;
+        return { id: t.id, label: `Tournament entry — ${tour.title}`, detail: tour.pitch_name, amount_pence: Math.abs(t.amount_pence), created_at: t.created_at };
+      }
+      if (t.booking_id && bookingById.has(t.booking_id)) {
+        const b = bookingById.get(t.booking_id)!;
+        return { id: t.id, label: "Pitch booking", detail: `${pitchName.get(b.pitch_id) ?? "Pitch"} · ${b.match_date}`, amount_pence: Math.abs(t.amount_pence), created_at: t.created_at };
+      }
+      if (t.match_id) {
+        const opponent = t.related_team_id ? (bookingOppName.get(t.related_team_id) ?? "Opponent") : "Opponent";
+        return { id: t.id, label: "Pitch booking — matched game", detail: `vs ${opponent}`, amount_pence: Math.abs(t.amount_pence), created_at: t.created_at };
+      }
+      return { id: t.id, label: t.type === "booking_capture" ? "Pitch booking" : "Match payment", detail: "", amount_pence: Math.abs(t.amount_pence), created_at: t.created_at };
+    }));
     // Load reimbursements this team received from an opponent — e.g. when a
     // challenger joins a secured post, they pay their half straight into the
     // poster's credit (reimburse_secured_pitch → 'opponent_settlement', +ve).
@@ -2171,7 +2206,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                 return (
                   <div className="space-y-1.5">
                     {displayed.map((p) => {
-                      const initials = p.player_name.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+                      const initials = p.label.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
                       const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
                       const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
                       return (
@@ -2180,10 +2215,10 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                             <span className="text-[9px] font-bold text-text-secondary">{initials}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{p.player_name}</p>
-                            <p className="text-[10px] text-text-secondary">{p.opponent ? `vs ${p.opponent} · ` : ""}{timeAgo}</p>
+                            <p className="text-xs font-medium truncate">{p.label}</p>
+                            <p className="text-[10px] text-text-secondary truncate">{p.detail ? `${p.detail} · ` : ""}{timeAgo}</p>
                           </div>
-                          <span className="text-xs font-bold text-red-400">-£{(p.amount_pence / 100).toFixed(2)}</span>
+                          <span className="text-xs font-bold text-red-400 flex-shrink-0">-£{(p.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
                     })}

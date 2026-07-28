@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
         team_id: teamId,
         type: "booking_capture",
         amount_pence: -buyIn,
+        open_match_id: openMatchId,
       });
     }
 

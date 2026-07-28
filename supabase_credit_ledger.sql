@@ -94,6 +94,17 @@ begin
     where table_schema='public' and table_name='team_credit_transactions' and column_name='related_team_id') then
     alter table public.team_credit_transactions add column related_team_id uuid references public.teams(id);
   end if;
+  -- Links so the Team Credits log can label an outgoing charge with what it
+  -- actually paid for (direct pitch booking vs. tournament buy-in) instead of
+  -- a generic "Pitch booking" string.
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='team_credit_transactions' and column_name='booking_id') then
+    alter table public.team_credit_transactions add column booking_id uuid references public.pitch_bookings(id);
+  end if;
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='team_credit_transactions' and column_name='open_match_id') then
+    alter table public.team_credit_transactions add column open_match_id uuid references public.open_matches(id);
+  end if;
 end $$;
 
 -- Note on reconciliation: balance_pence is the source of truth. Summing
