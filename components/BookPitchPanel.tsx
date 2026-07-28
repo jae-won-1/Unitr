@@ -781,7 +781,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                   <div className="flex items-start justify-between mb-1">
                     <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                     <div className="text-right flex-shrink-0">
-                      <span className="text-lg font-bold text-accent">£{pitch.price_per_hour}</span>
+                      <span className="text-lg font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span>
                       <p className="text-[10px] text-text-secondary">per hour</p>
                     </div>
                   </div>

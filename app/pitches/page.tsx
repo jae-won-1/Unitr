@@ -94,7 +94,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>(FALLBACK_SLOTS);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const perPlayer = (pitch.price_per_hour / 22).toFixed(2);
+  const perPlayer = (pitch.price_per_hour * 1.05 / 22).toFixed(2);
 
   // Generate next 14 days
   const days = Array.from({ length: 14 }, (_, i) => {
@@ -160,7 +160,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-lg font-bold text-accent">£{pitch.price_per_hour}/hr</p>
+              <p className="text-lg font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-1">✕ close</button>
             </div>
           </div>
@@ -355,7 +355,7 @@ function PitchAvailabilityPanel({
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-base font-bold text-accent">£{pitch.price_per_hour}/hr</p>
+              <p className="text-base font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-0.5">✕ close</button>
             </div>
           </div>
@@ -828,7 +828,7 @@ function PitchesContent() {
                       <div className="flex items-start justify-between mb-1">
                         <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                         <div className="text-right flex-shrink-0">
-                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-400" : "text-accent"}`}>£{pitch.price_per_hour}</span>
+                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-400" : "text-accent"}`}>£{(pitch.price_per_hour * 1.05).toFixed(2)}</span>
                           <p className="text-[10px] text-text-secondary">per hour</p>
                         </div>
                       </div>
