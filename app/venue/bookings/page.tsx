@@ -3,19 +3,12 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { toDateKey } from "@/lib/match-dates";
 
-const MONTHS: Record<string, number> = {
-  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-};
+// Legacy dates are stored uppercase ("Wed, 03 JUN 2026"), which the previous
+// case-sensitive month lookup here missed — toDateKey is case-insensitive.
 function normalizeMatchDate(raw: string): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const m = raw.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
-  if (m && MONTHS[m[2]] !== undefined) {
-    const d = new Date(Number(m[3]), MONTHS[m[2]], Number(m[1]));
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
-  return raw;
+  return toDateKey(raw) || raw;
 }
 function formatMatchDate(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -131,7 +124,14 @@ export default function VenueBookingsPage() {
           ? supabase.from("player_payments").select("booking_id, status").in("booking_id", bookingIds)
           : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
         bookingIds.length
+          // team_id comes from supabase_venue_payouts.sql; without that migration
+          // this select errors and would wipe out the whole payment picture, so
+          // fall back to the columns that always exist.
           ? supabase.from("venue_transfers").select("booking_id, status, team_id").in("booking_id", bookingIds)
+              .then(async (r) => r.error
+                ? { data: ((await supabase.from("venue_transfers").select("booking_id, status").in("booking_id", bookingIds)).data ?? [])
+                    .map((t) => ({ ...t, team_id: null })) }
+                : r)
           : Promise.resolve({ data: [] as { booking_id: string; status: string; team_id: string | null }[] }),
       ]);
       const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));

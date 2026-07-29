@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isUpcomingDate } from "@/lib/match-dates";
 
 export type TournamentFixture = {
   id: string;
@@ -37,6 +38,5 @@ export async function loadUpcomingTournamentFixtures(teamId: string | null | und
     byId.set(t.id, { id: t.id, title: t.title, date: t.match_date, time: t.start_time, pitch: t.pitch_name });
   }
 
-  const today = new Date().toISOString().split("T")[0];
-  return Array.from(byId.values()).filter((t) => t.date >= today);
+  return Array.from(byId.values()).filter((t) => isUpcomingDate(t.date));
 }

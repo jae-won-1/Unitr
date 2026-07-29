@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
+import { isUpcomingDate, sortKey } from "@/lib/match-dates";
 
 // Highlights "@Full Name" mentions in announcement text for display.
 // Validity (matching a real squad member) is enforced at creation time via
@@ -401,12 +402,13 @@ function PlayerMyTeam() {
   }
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
-  const today = new Date().toISOString().split("T")[0];
   // Upcoming: nearest first. Past: most recent first, going back in time.
+  // Dates are normalised first — legacy rows store "Wed, 03 JUN 2026", which
+  // compares greater than any ISO date and would never leave Upcoming.
   const shownFixtures = fixtures
-    .filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today))
+    .filter((f) => (fixtureView === "past" ? !isUpcomingDate(f.date) : isUpcomingDate(f.date)))
     .sort((a, b) => {
-      const ka = `${a.date} ${a.time}`, kb = `${b.date} ${b.time}`;
+      const ka = sortKey(a.date, a.time), kb = sortKey(b.date, b.time);
       return fixtureView === "past" ? kb.localeCompare(ka) : ka.localeCompare(kb);
     });
   const visibleFixtures = fixturesExpanded ? shownFixtures : shownFixtures.slice(0, 3);
@@ -883,12 +885,13 @@ function CaptainMyTeam() {
   }
 
   const initials = myTeam.name.split(" ").map((w: string) => w[0]).join("").slice(0,2);
-  const today = new Date().toISOString().split("T")[0];
   // Upcoming: nearest first. Past: most recent first, going back in time.
+  // Dates are normalised first — legacy rows store "Wed, 03 JUN 2026", which
+  // compares greater than any ISO date and would never leave Upcoming.
   const shownFixtures = fixtures
-    .filter((f) => (fixtureView === "past" ? f.date < today : f.date >= today))
+    .filter((f) => (fixtureView === "past" ? !isUpcomingDate(f.date) : isUpcomingDate(f.date)))
     .sort((a, b) => {
-      const ka = `${a.date} ${a.time}`, kb = `${b.date} ${b.time}`;
+      const ka = sortKey(a.date, a.time), kb = sortKey(b.date, b.time);
       return fixtureView === "past" ? kb.localeCompare(ka) : ka.localeCompare(kb);
     });
   const visibleFixtures = fixturesExpanded ? shownFixtures : shownFixtures.slice(0, 3);
@@ -1466,12 +1469,18 @@ type DueGroup = { matchId: string; bookingId: string | null; opponent: string; d
 // an outstanding fee lists its charged players + individual pay status, and
 // the captain can remind any unpaid player.
 type CollectPlayer = { player_id: string; name: string; sharePence: number; remainingPence: number; received: boolean };
-type CollectMatch = { matchId: string; opponent: string; date: string; players: CollectPlayer[]; totalDuePence: number; paidCount: number };
+// `matchId` holds whichever id the charge targets — a matches row for a game,
+// an open_matches row for a tournament entry. `kind` says which, so writes go
+// to the right column.
+type CollectMatch = { matchId: string; kind: "match" | "tournament"; opponent: string; date: string; players: CollectPlayer[]; totalDuePence: number; paidCount: number };
 
 // A single match fee the logged-in player still owes (from a captain's
 // "Collect Payment" request) — drives the Top Up notification badge + the
 // itemised "Payments due" list the player pays from.
-type MyDue = { pcsId: string; matchId: string; opponent: string; date: string; remainingPence: number; sharePence: number };
+// `matchId` is the id of whatever the charge targets — a matches row for a
+// game, an open_matches row for a tournament entry (kind says which). It is
+// used as a React key and as Stripe metadata, never to join blindly.
+type MyDue = { pcsId: string; matchId: string; kind: "match" | "tournament"; opponent: string; date: string; remainingPence: number; sharePence: number };
 type SavedCard = { customerId: string; paymentMethodId: string; last4: string | null };
 
 type CreditTransaction = {
@@ -1583,17 +1592,27 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   // and the Top Up modal can list "which match + fee" to pay individually.
   const loadMyDues = async (tid: string) => {
     const { data: rows } = await supabase.from("payment_collection_status")
-      .select("id, match_id, share_pence, credited_pence")
+      .select("id, match_id, open_match_id, share_pence, credited_pence")
       .eq("player_id", userId).eq("included", true).eq("received", false);
     const pending = (rows ?? [])
       .map((r) => ({ ...r, remaining: r.share_pence - (r.credited_pence ?? 0) }))
       .filter((r) => r.remaining > 0);
     if (pending.length === 0) { setMyDues([]); setMyOwedPence(0); return; }
 
-    const matchIds = [...new Set(pending.map((r) => r.match_id))];
-    const { data: ms } = await supabase.from("matches")
-      .select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds);
+    // A charge targets a match OR a tournament entry — resolve each set of
+    // labels from its own table rather than assuming match_id is present.
+    const matchIds = [...new Set(pending.map((r) => r.match_id).filter(Boolean))] as string[];
+    const omIds = [...new Set(pending.map((r) => r.open_match_id).filter(Boolean))] as string[];
+    const [{ data: ms }, { data: oms }] = await Promise.all([
+      matchIds.length
+        ? supabase.from("matches").select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds)
+        : Promise.resolve({ data: [] as { id: string; posting_team_id: string; challenging_team_id: string; match_date: string }[] }),
+      omIds.length
+        ? supabase.from("open_matches").select("id, title, match_date").in("id", omIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; match_date: string }[] }),
+    ]);
     const matchById = new Map((ms ?? []).map((m) => [m.id, m]));
+    const omById = new Map((oms ?? []).map((o) => [o.id, o]));
     const oppIds = [...new Set((ms ?? []).map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
     const { data: teamsData } = oppIds.length
       ? await supabase.from("teams").select("id, name").in("id", oppIds)
@@ -1601,11 +1620,24 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     const teamName = new Map((teamsData ?? []).map((t) => [t.id, t.name as string]));
 
     const dues: MyDue[] = pending.map((r) => {
+      if (r.open_match_id) {
+        const t = omById.get(r.open_match_id);
+        return {
+          pcsId: r.id,
+          matchId: r.open_match_id,
+          kind: "tournament" as const,
+          opponent: t?.title || "Tournament",
+          date: t?.match_date ?? "",
+          remainingPence: r.remaining,
+          sharePence: r.share_pence,
+        };
+      }
       const m = matchById.get(r.match_id);
       const oppId = m ? (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id) : null;
       return {
         pcsId: r.id,
         matchId: r.match_id,
+        kind: "match" as const,
         opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
         date: m?.match_date ?? "",
         remainingPence: r.remaining,
@@ -1761,7 +1793,9 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
           amountPence: due.remainingPence,
           sharePence: due.remainingPence,
           feePence: 0,
-          matchId: due.matchId,
+          // Stripe metadata only — a tournament due carries its open_match id.
+          matchId: due.kind === "match" ? due.matchId : undefined,
+          openMatchId: due.kind === "tournament" ? due.matchId : undefined,
         }] }),
       });
       const data = await res.json();
@@ -1885,29 +1919,49 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     // in the select makes the entire query fail (PGRST200). Fetch names separately.
     const { data: rows } = await supabase
       .from("payment_collection_status")
-      .select("match_id, player_id, share_pence, credited_pence, received")
+      .select("match_id, open_match_id, player_id, share_pence, credited_pence, received")
       .eq("team_id", tid).eq("included", true);
 
     if (!rows || rows.length === 0) { setCollectMatches([]); setCollectLoading(false); return; }
 
-    const matchIds = [...new Set(rows.map((r) => r.match_id))];
+    // A row targets a match OR a tournament entry; group by whichever it is.
+    const targetIdOf = (r: { match_id: string | null; open_match_id: string | null }) =>
+      (r.open_match_id ?? r.match_id) as string;
+
+    const matchIds = [...new Set(rows.map((r) => r.match_id).filter(Boolean))] as string[];
+    const omIds = [...new Set(rows.map((r) => r.open_match_id).filter(Boolean))] as string[];
     const playerIds = [...new Set(rows.map((r) => r.player_id))];
-    const [{ data: ms }, { data: profilesData }] = await Promise.all([
-      supabase.from("matches").select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds),
+    const [{ data: ms }, { data: oms }, { data: profilesData }] = await Promise.all([
+      matchIds.length
+        ? supabase.from("matches").select("id, posting_team_id, challenging_team_id, match_date").in("id", matchIds)
+        : Promise.resolve({ data: [] as { id: string; posting_team_id: string; challenging_team_id: string; match_date: string }[] }),
+      omIds.length
+        ? supabase.from("open_matches").select("id, title, match_date").in("id", omIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; match_date: string }[] }),
       supabase.from("profiles").select("id, full_name").in("id", playerIds),
     ]);
     const oppIds = [...new Set((ms ?? []).map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
-    const { data: teamsData } = await supabase.from("teams").select("id, name").in("id", oppIds);
+    const { data: teamsData } = oppIds.length
+      ? await supabase.from("teams").select("id, name").in("id", oppIds)
+      : { data: [] as { id: string; name: string }[] };
     const teamName = new Map((teamsData ?? []).map((t) => [t.id, t.name as string]));
     const matchById = new Map((ms ?? []).map((m) => [m.id, m]));
+    const omById = new Map((oms ?? []).map((o) => [o.id, o]));
     const profileName = new Map((profilesData ?? []).map((p) => [p.id, p.full_name as string]));
 
     const byMatch = new Map<string, CollectMatch>();
     for (const r of rows) {
+      const targetId = targetIdOf(r);
+      if (!targetId) continue;
+      const isTournament = Boolean(r.open_match_id);
       const remainingPence = Math.max(0, r.share_pence - (r.credited_pence ?? 0));
       const paid = r.received || remainingPence === 0;
-      const m = matchById.get(r.match_id);
+      const m = r.match_id ? matchById.get(r.match_id) : undefined;
+      const t = r.open_match_id ? omById.get(r.open_match_id) : undefined;
       const oppId = m ? (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id) : null;
+      const label = isTournament
+        ? (t?.title || "Tournament")
+        : (oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent");
       const player: CollectPlayer = {
         player_id: r.player_id,
         name: profileName.get(r.player_id) ?? "Player",
@@ -1915,16 +1969,17 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
         remainingPence,
         received: paid,
       };
-      const existing = byMatch.get(r.match_id);
+      const existing = byMatch.get(targetId);
       if (existing) {
         existing.players.push(player);
         existing.totalDuePence += remainingPence;
         if (paid) existing.paidCount += 1;
       } else {
-        byMatch.set(r.match_id, {
-          matchId: r.match_id,
-          opponent: oppId ? (teamName.get(oppId) ?? "Opponent") : "Opponent",
-          date: m?.match_date ?? "",
+        byMatch.set(targetId, {
+          matchId: targetId,
+          kind: isTournament ? "tournament" : "match",
+          opponent: label,
+          date: (isTournament ? t?.match_date : m?.match_date) ?? "",
           players: [player],
           totalDuePence: remainingPence,
           paidCount: paid ? 1 : 0,
@@ -1943,12 +1998,14 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
   const remindPlayer = async (match: CollectMatch, player: CollectPlayer) => {
     const key = `${match.matchId}:${player.player_id}`;
     setRemindingPlayer(key);
+    const targetCol = match.kind === "tournament" ? "open_match_id" : "match_id";
+    const what = match.kind === "tournament" ? `entering ${match.opponent}` : `the match vs ${match.opponent}`;
     await supabase.from("messages").insert({
       sender_id: userId,
       receiver_id: player.player_id,
       type: "payment_reminder",
-      match_id: match.matchId,
-      body: `Reminder: you owe £${(player.remainingPence / 100).toFixed(2)} for the match vs ${match.opponent} (${match.date}). Please pay from the Top Up tab.`,
+      [targetCol]: match.matchId,
+      body: `Reminder: you owe £${(player.remainingPence / 100).toFixed(2)} for ${what} (${match.date}). Please pay from the Top Up tab.`,
     });
     setRemindingPlayer(null);
     setRemindedPlayers((prev) => new Set(prev).add(key));
@@ -1961,7 +2018,9 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
     const key = `${match.matchId}:${player.player_id}`;
     setRemovingPlayer(key);
     await supabase.from("payment_collection_status")
-      .delete().eq("match_id", match.matchId).eq("player_id", player.player_id);
+      .delete()
+      .eq(match.kind === "tournament" ? "open_match_id" : "match_id", match.matchId)
+      .eq("player_id", player.player_id);
     setCollectMatches((prev) => prev
       .map((g) => g.matchId !== match.matchId ? g : {
         ...g,
@@ -2330,7 +2389,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                   </button>
                 )}
                 <div className="min-w-0">
-                  <p className="font-bold text-base truncate">{selected ? `vs ${selected.opponent}` : "Collect Payment"}</p>
+                  <p className="font-bold text-base truncate">{selected ? (selected.kind === "tournament" ? selected.opponent : `vs ${selected.opponent}`) : "Collect Payment"}</p>
                   <p className="text-xs text-text-secondary truncate">
                     {selected ? `${selected.date} · tap Remind to notify a player` : "Recent matches with payments due"}
                   </p>
@@ -2387,7 +2446,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                     <button key={g.matchId} onClick={() => { setSelectedCollectMatch(g.matchId); }}
                       className="w-full bg-surface-2 border border-border rounded-xl p-3 text-left">
                       <div className="flex items-center gap-2">
-                        <p className="flex-1 min-w-0 text-sm font-semibold truncate">vs {g.opponent}</p>
+                        <p className="flex-1 min-w-0 text-sm font-semibold truncate">{g.kind === "tournament" ? g.opponent : `vs ${g.opponent}`}</p>
                         <span className="text-sm font-bold text-red-400 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                       </div>
@@ -2473,7 +2532,7 @@ function TeamCreditsBar({ userId, role }: { userId: string; role: "captain" | "p
                         return (
                           <div key={due.pcsId} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate">vs {due.opponent}</p>
+                              <p className="text-sm font-semibold truncate">{due.kind === "tournament" ? due.opponent : `vs ${due.opponent}`}</p>
                               <p className="text-[10px] text-text-secondary">{due.date} · £{(due.remainingPence / 100).toFixed(2)} share</p>
                             </div>
                             <button

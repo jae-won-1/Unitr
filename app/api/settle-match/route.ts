@@ -9,6 +9,7 @@ type SettleItem = {
   sharePence: number;    // the pitch share portion (refills team credit)
   feePence: number;      // the 5% Unitr fee portion
   matchId?: string;
+  openMatchId?: string;   // set instead of matchId for a tournament entry fee
   bookingId?: string | null;
 };
 
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
             type: "match_settlement",
             playerId: it.playerId,
             matchId: it.matchId ?? "",
+            openMatchId: it.openMatchId ?? "",
             bookingId: it.bookingId ?? "",
             pitchShare: it.sharePence,
             unitrFee: it.feePence,

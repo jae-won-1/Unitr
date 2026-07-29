@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import HomeSearchBar from "@/components/HomeSearchBar";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
+import { isUpcomingDate, sortKey } from "@/lib/match-dates";
 
 type ConfirmedFixture = {
   id: string;
@@ -119,10 +120,11 @@ function useConfirmedFixtures(userId: string | undefined) {
       }));
 
       // Home only surfaces upcoming, confirmed fixtures — nearest first.
-      const today = new Date().toISOString().split("T")[0];
+      // Dates are normalised first: legacy rows store "Wed, 03 JUN 2026", which
+      // compares greater than any ISO date and would never leave Upcoming.
       const upcoming = [...posterFixtures, ...challengerFixtures, ...tournamentFixtures]
-        .filter((f) => f.date >= today)
-        .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+        .filter((f) => isUpcomingDate(f.date))
+        .sort((a, b) => sortKey(a.date, a.time).localeCompare(sortKey(b.date, b.time)));
 
       setFixtures(upcoming);
       setLoading(false);

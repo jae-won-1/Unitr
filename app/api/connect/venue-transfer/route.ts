@@ -44,13 +44,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ transferId: existing.stripe_transfer_id, alreadyPaid: true });
       }
     } else if (openMatchId && teamId) {
-      const { data: existing } = await adminSupabase
+      const { data: existing, error: dedupeErr } = await adminSupabase
         .from("venue_transfers")
         .select("id, status, stripe_transfer_id")
         .eq("open_match_id", openMatchId)
         .eq("team_id", teamId)
         .eq("status", "paid")
         .maybeSingle();
+      // Without the open_match_id/team_id columns this query errors and the
+      // guard silently disappears — refuse rather than risk a double payout.
+      if (dedupeErr) {
+        console.error("venue-transfer: tournament dedupe unavailable:", dedupeErr.message);
+        return NextResponse.json(
+          { error: "Payout ledger is out of date — run supabase_venue_payouts.sql before taking tournament payments." },
+          { status: 503 }
+        );
+      }
       if (existing) {
         return NextResponse.json({ transferId: existing.stripe_transfer_id, alreadyPaid: true });
       }
@@ -76,7 +85,12 @@ export async function POST(req: NextRequest) {
       failureReason = e.message ?? "Transfer failed";
     }
 
-    await adminSupabase.from("venue_transfers").insert({
+    // Record the ledger row. The money has ALREADY left Stripe at this point, so
+    // a failed insert must never be silent — that is exactly how a payout ends up
+    // visible in Stripe but missing from the venue's Reports. If the columns
+    // added by supabase_venue_payouts.sql aren't in the DB yet, retry without
+    // them so the payout is at least recorded, and say so in the response.
+    const row = {
       pitch_id: pitch.id,
       booking_id: bookingId ?? null,
       match_id: matchId ?? null,
@@ -87,12 +101,27 @@ export async function POST(req: NextRequest) {
       amount_pence: amount,
       status,
       failure_reason: failureReason,
-    });
+    };
+    let recorded = true;
+    let recordWarning: string | null = null;
+    const { error: insErr } = await adminSupabase.from("venue_transfers").insert(row);
+    if (insErr) {
+      const { team_id, open_match_id, ...legacyRow } = row;
+      const { error: legacyErr } = await adminSupabase.from("venue_transfers").insert(legacyRow);
+      if (legacyErr) {
+        recorded = false;
+        recordWarning = insErr.message;
+        console.error("venue-transfer: could not record transfer", transferId, insErr.message, legacyErr.message);
+      } else {
+        recordWarning = `Recorded without team attribution — run supabase_venue_payouts.sql (${insErr.message})`;
+        console.warn("venue-transfer:", recordWarning);
+      }
+    }
 
     if (status === "failed") {
-      return NextResponse.json({ error: failureReason, status }, { status: 502 });
+      return NextResponse.json({ error: failureReason, status, recorded, recordWarning }, { status: 502 });
     }
-    return NextResponse.json({ transferId, status });
+    return NextResponse.json({ transferId, status, recorded, recordWarning });
   } catch (err) {
     console.error("Connect venue-transfer error:", err);
     return NextResponse.json({ error: "Venue transfer failed" }, { status: 500 });

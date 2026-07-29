@@ -36,8 +36,22 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 type VenuePitch = { id: string; name: string; stripe_account_id: string | null; payouts_enabled: boolean };
 type Transfer = {
   id: string; pitch_id: string | null; amount_pence: number; status: string; created_at: string;
-  stripe_transfer_id: string | null; team_id: string | null; booking_id: string | null; payerLabel: string;
+  stripe_transfer_id: string | null; failure_reason: string | null;
+  team_id: string | null; booking_id: string | null; open_match_id: string | null;
+  payerLabel: string;   // which team's money this is
+  purpose: string;      // what it was for — "Tournament · Test tournament"
+  eventDate: string | null;
 };
+
+// Columns added by the team-attribution block in supabase_venue_payouts.sql.
+// If that migration hasn't been run, selecting them errors and the whole
+// payout picture silently disappears — so we detect it and fall back.
+const TRANSFER_COLS = "id, pitch_id, amount_pence, status, created_at, stripe_transfer_id, failure_reason, team_id, booking_id, open_match_id";
+const TRANSFER_COLS_LEGACY = "id, pitch_id, amount_pence, status, created_at, stripe_transfer_id, failure_reason, booking_id";
+
+function titleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export default function VenueReportsPage() {
   const { user } = useAuth();
@@ -46,6 +60,9 @@ export default function VenueReportsPage() {
   const [hasPitches, setHasPitches] = useState(true);
   const [pitches, setPitches] = useState<VenuePitch[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [schemaOutdated, setSchemaOutdated] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [openRow, setOpenRow] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -56,36 +73,62 @@ export default function VenueReportsPage() {
       setPitches(ps as VenuePitch[]);
 
       const pitchIds = ps.map((p) => p.id);
-      const [{ data: bks }, { data: trs }] = await Promise.all([
+      const transferQuery = (cols: string) => supabase.from("venue_transfers")
+        .select(cols).in("pitch_id", pitchIds).order("created_at", { ascending: false }).limit(100);
+
+      const [{ data: bks }, first] = await Promise.all([
         supabase.from("pitch_bookings")
           .select("pitch_id, match_date, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status")
           .in("pitch_id", pitchIds),
-        supabase.from("venue_transfers")
-          .select("id, pitch_id, amount_pence, status, created_at, stripe_transfer_id, team_id, booking_id")
-          .in("pitch_id", pitchIds).order("created_at", { ascending: false }).limit(25),
+        transferQuery(TRANSFER_COLS),
       ]);
       setBookings((bks ?? []) as Booking[]);
 
-      // Resolve a paying-team label per transfer: prefer the direct team_id
-      // link, falling back to the booking's booker_name for legacy rows
-      // written before that column existed (for a matched game that string
-      // is already "Team A vs Team B" — see app/play/page.tsx).
-      const rows = trs ?? [];
+      let rows = (first.data ?? []) as unknown as Transfer[];
+      if (first.error) {
+        setSchemaOutdated(true);
+        const legacy = await transferQuery(TRANSFER_COLS_LEGACY);
+        rows = ((legacy.data ?? []) as unknown as Transfer[]).map((t) => ({ ...t, team_id: null, open_match_id: null }));
+      }
+
+      // Batch-resolve the three things a payment row needs a name for: the
+      // paying team, the tournament it bought into, and the booking it covers.
       const teamIds = [...new Set(rows.map((t) => t.team_id).filter(Boolean))] as string[];
       const bookingIds = [...new Set(rows.map((t) => t.booking_id).filter(Boolean))] as string[];
-      const [{ data: teams }, { data: legacyBookings }] = await Promise.all([
+      const omIds = [...new Set(rows.map((t) => t.open_match_id).filter(Boolean))] as string[];
+      const [{ data: teams }, { data: bookingRows }, { data: omRows }, { data: omByBooking }] = await Promise.all([
         teamIds.length ? supabase.from("teams").select("id, name").in("id", teamIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-        bookingIds.length ? supabase.from("pitch_bookings").select("id, booker_name").in("id", bookingIds) : Promise.resolve({ data: [] as { id: string; booker_name: string | null }[] }),
+        bookingIds.length ? supabase.from("pitch_bookings").select("id, booker_name, match_date, booking_type").in("id", bookingIds) : Promise.resolve({ data: [] as { id: string; booker_name: string | null; match_date: string; booking_type: string }[] }),
+        omIds.length ? supabase.from("open_matches").select("id, title, match_type, match_date").in("id", omIds) : Promise.resolve({ data: [] as { id: string; title: string; match_type: string; match_date: string }[] }),
+        // A transfer may point only at a booking that happens to BE a
+        // tournament reservation — resolve those for a proper title too.
+        bookingIds.length ? supabase.from("open_matches").select("id, booking_id, title, match_type, match_date").in("booking_id", bookingIds) : Promise.resolve({ data: [] as { id: string; booking_id: string; title: string; match_type: string; match_date: string }[] }),
       ]);
       const teamName = new Map((teams ?? []).map((t) => [t.id, t.name as string]));
-      const bookerName = new Map((legacyBookings ?? []).map((b) => [b.id, b.booker_name as string | null]));
+      const booking = new Map((bookingRows ?? []).map((b) => [b.id, b]));
+      const om = new Map((omRows ?? []).map((o) => [o.id, o]));
+      const omForBooking = new Map((omByBooking ?? []).map((o) => [o.booking_id, o]));
 
-      setTransfers(rows.map((t) => ({
-        ...t,
-        payerLabel: t.team_id
+      setTransfers(rows.map((t) => {
+        const b = t.booking_id ? booking.get(t.booking_id) : undefined;
+        const listing = (t.open_match_id ? om.get(t.open_match_id) : undefined)
+          ?? (t.booking_id ? omForBooking.get(t.booking_id) : undefined);
+
+        // What the money was for.
+        let purpose: string;
+        if (listing) purpose = `${titleCase(listing.match_type)} · ${listing.title || "Untitled"}`;
+        else if (b) purpose = `${b.booking_type === "platform" ? "Match" : "Booking"} · ${b.booker_name ?? "Unknown"}`;
+        else purpose = "Pitch booking";
+
+        // Who paid: the direct team link, else the booking's booker_name —
+        // for a matched game that string is already "Team A vs Team B"
+        // (written in app/play/page.tsx).
+        const payerLabel = t.team_id
           ? (teamName.get(t.team_id) ?? "Unknown team")
-          : (t.booking_id ? (bookerName.get(t.booking_id) ?? null) : null) ?? "—",
-      })) as Transfer[]);
+          : (b?.booker_name ?? "—");
+
+        return { ...t, payerLabel, purpose, eventDate: listing?.match_date ?? b?.match_date ?? null };
+      }));
       setLoading(false);
     }
     load();
@@ -100,11 +143,13 @@ export default function VenueReportsPage() {
     </div>
   );
 
+  const paidTransfers = transfers.filter((t) => t.status === "paid");
+  const failedTransfers = transfers.filter((t) => t.status === "failed");
   const active = bookings.filter((b) => b.status !== "cancelled");
   const confirmed = bookings.filter((b) => b.status === "confirmed");
   const revenue = confirmed.reduce((s, b) => s + priceOf(b), 0);
   const payoutsEnabled = pitches.some((p) => p.payouts_enabled);
-  const payoutTotal = transfers.filter((t) => t.status === "paid").reduce((s, t) => s + t.amount_pence, 0) / 100;
+  const payoutTotal = paidTransfers.reduce((s, t) => s + t.amount_pence, 0) / 100;
 
   // Per-pitch breakdown: the venue has ONE payout account, but revenue and
   // payouts are still attributed to the individual pitch they came from.
@@ -144,6 +189,16 @@ export default function VenueReportsPage() {
         <p className="text-xs text-text-secondary mt-0.5">Performance across all your pitches.</p>
       </div>
 
+      {schemaOutdated && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl px-4 py-3">
+          <p className="text-xs font-semibold text-yellow-400">Payout ledger is out of date</p>
+          <p className="text-[11px] text-text-secondary mt-0.5">
+            Payments are shown without the paying team&apos;s name, and new tournament payments cannot be
+            recorded. Run <span className="font-mono">supabase_venue_payouts.sql</span> in the Supabase SQL editor to fix.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total bookings" value={String(bookings.length)} sub="all time" />
         <StatCard label="Confirmed" value={String(confirmed.length)} sub={`${cancelRate}% cancel rate`} />
@@ -164,34 +219,94 @@ export default function VenueReportsPage() {
             </a>
           )}
         </div>
-        <p className="text-xs text-text-secondary mb-3">
+        <p className="text-xs text-text-secondary">
           When a booking is paid on one of your pitches, the pitch fee is transferred from Unitr to your
-          venue&apos;s payout account. Manage the account in Settings → Payouts.
+          venue&apos;s payout account. Manage the account in Settings → Payouts, and see every individual
+          payment in Payment history below.
         </p>
+      </div>
 
-        {/* Recent transfers */}
-        {transfers.length === 0 ? (
-          <p className="text-xs text-text-secondary">No transfers yet — confirm a match on your pitch to see one here.</p>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Recent payouts</p>
-            {transfers.map((t) => (
-              <div key={t.id} className="flex items-center justify-between bg-background border border-border rounded-xl px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">£{(t.amount_pence / 100).toFixed(2)} <span className="text-xs font-normal text-text-secondary">from {t.payerLabel}</span></p>
-                  <p className="text-[10px] text-text-secondary truncate">
-                    {new Date(t.created_at).toLocaleDateString()}
-                    {" · "}{pitches.find((p) => p.id === t.pitch_id)?.name ?? "—"}
-                    {" · "}{t.stripe_transfer_id ?? "—"}
-                  </p>
-                </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                  t.status === "paid" ? "bg-accent/10 text-accent border border-accent/30"
-                  : t.status === "failed" ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                  : "bg-surface border border-border text-text-secondary"
-                }`}>{t.status}</span>
+      {/* ── Payment history — every payment received, newest first ────────── */}
+      <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+        <button
+          onClick={() => setHistoryOpen((o) => !o)}
+          className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Payment history</p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {transfers.length === 0
+                ? "No payments received yet"
+                : `${paidTransfers.length} received · £${payoutTotal.toFixed(2)}${failedTransfers.length ? ` · ${failedTransfers.length} failed` : ""}`}
+            </p>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            className={`flex-shrink-0 text-text-secondary transition-transform ${historyOpen ? "rotate-180" : ""}`}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {historyOpen && (
+          <div className="border-t border-border px-5 py-4">
+            {transfers.length === 0 ? (
+              <p className="text-xs text-text-secondary">
+                Nothing yet — when a team pays for a match or enters a tournament on one of your pitches,
+                the payment appears here.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {transfers.map((t) => {
+                  const expanded = openRow === t.id;
+                  return (
+                    <div key={t.id} className="bg-background border border-border rounded-xl">
+                      <button
+                        onClick={() => setOpenRow(expanded ? null : t.id)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">
+                            {t.payerLabel}
+                            <span className="text-text-secondary font-normal"> paid </span>
+                            £{(t.amount_pence / 100).toFixed(2)}
+                          </p>
+                          <p className="text-[11px] text-text-secondary truncate">{t.purpose}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[10px] text-text-secondary hidden sm:block">
+                            {new Date(t.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            t.status === "paid" ? "bg-accent/10 text-accent border border-accent/30"
+                            : t.status === "failed" ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                            : "bg-surface border border-border text-text-secondary"
+                          }`}>{t.status}</span>
+                        </div>
+                      </button>
+
+                      {expanded && (
+                        <div className="border-t border-border px-3 py-2.5 space-y-1">
+                          {[
+                            ["Pitch", pitches.find((p) => p.id === t.pitch_id)?.name ?? "—"],
+                            ["Played on", t.eventDate ?? "—"],
+                            ["Received", new Date(t.created_at).toLocaleString("en-GB")],
+                            ["Stripe transfer", t.stripe_transfer_id ?? "—"],
+                          ].map(([k, v]) => (
+                            <div key={k} className="flex justify-between gap-3 text-[11px]">
+                              <span className="text-text-secondary flex-shrink-0">{k}</span>
+                              <span className="font-medium text-right break-all">{v}</span>
+                            </div>
+                          ))}
+                          {t.failure_reason && (
+                            <p className="text-[11px] text-red-400 pt-1">{t.failure_reason}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
         )}
       </div>

@@ -3,11 +3,25 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
+
+// A history row is either a matched game (match_posts → matches) or a
+// tournament this team entered (open_matches → open_match_teams). They settle
+// the same way but hang off different tables, so `target` carries the identity
+// and everything downstream keys off it rather than off a match id.
+type CollectTarget =
+  | { kind: "match"; matchId: string }
+  | { kind: "tournament"; openMatchId: string };
 
 type HistoryFixture = {
-  postId: string;
-  matchRowId: string | null;
-  opponent: string;
+  key: string;                  // stable React key + settle-state key
+  kind: "match" | "tournament";
+  postId: string | null;        // matches only
+  matchRowId: string | null;    // matches only
+  openMatchId: string | null;   // tournaments only
+  label: string;                // opponent name, or tournament title
+  teamPoolPence: number;        // what THIS team owes in total
+  settled: boolean;
   date: string;
   time: string;
   pitch: string;
@@ -49,13 +63,76 @@ function parseOptionDate(dateStr: string): string | null {
   return `${year}-${mm}-${day.padStart(2, "0")}`;
 }
 
-// ── Captain's per-match payment collection panel ──────────────────────────
+// ── Tournaments this team entered, as settleable history rows ─────────────
+// The amount owed is what the team ACTUALLY paid, read off the credit debit
+// written when they joined (tournaments/join/route.ts) — that already has any
+// invite discount applied. price_per_team_pence is the list price and only
+// serves as a fallback when no debit row exists (e.g. a free entry).
+async function loadTournamentEntries(teamId: string): Promise<HistoryFixture[]> {
+  const { data: entries } = await supabase.from("open_match_teams")
+    .select("open_match_id, fees_settled").eq("team_id", teamId);
+  const ids = (entries ?? []).map((e) => e.open_match_id).filter(Boolean) as string[];
+  if (ids.length === 0) return [];
+
+  const { data: oms } = await supabase.from("open_matches")
+    .select("id, title, match_date, start_time, pitch_name, price_per_team_pence, status, booking_id, organiser_team_id")
+    .in("id", ids).eq("match_type", "tournament").neq("status", "cancelled");
+
+  // Two debit shapes, because the two ways to be in a tournament cost
+  // different amounts: a team that JOINED paid the buy-in (recorded against
+  // open_match_id by tournaments/join), while the team that HOSTED paid the
+  // whole pitch block up front via /api/book/pay-credit (recorded against the
+  // reservation's booking_id). Look up both.
+  const bookingIds = (oms ?? []).map((t) => t.booking_id).filter(Boolean) as string[];
+  const [{ data: buyIns }, { data: hostPayments }] = await Promise.all([
+    supabase.from("team_credit_transactions")
+      .select("open_match_id, amount_pence").eq("team_id", teamId).in("open_match_id", ids),
+    bookingIds.length
+      ? supabase.from("team_credit_transactions")
+          .select("booking_id, amount_pence").eq("team_id", teamId).in("booking_id", bookingIds)
+      : Promise.resolve({ data: [] as { booking_id: string; amount_pence: number }[] }),
+  ]);
+
+  const paidByOm = new Map<string, number>();
+  for (const d of buyIns ?? []) {
+    if (d.amount_pence >= 0) continue;   // credits/reimbursements, not a payment out
+    paidByOm.set(d.open_match_id, (paidByOm.get(d.open_match_id) ?? 0) + Math.abs(d.amount_pence));
+  }
+  const paidByBooking = new Map<string, number>();
+  for (const d of hostPayments ?? []) {
+    if (d.amount_pence >= 0) continue;
+    paidByBooking.set(d.booking_id, (paidByBooking.get(d.booking_id) ?? 0) + Math.abs(d.amount_pence));
+  }
+  const settledByOm = new Map((entries ?? []).map((e) => [e.open_match_id, Boolean(e.fees_settled)]));
+
+  return (oms ?? []).map((t) => ({
+    key: `tournament:${t.id}`,
+    kind: "tournament" as const,
+    postId: null,
+    matchRowId: null,
+    openMatchId: t.id,
+    label: t.title || "Tournament",
+    teamPoolPence: paidByOm.get(t.id)
+      ?? (t.organiser_team_id === teamId && t.booking_id ? paidByBooking.get(t.booking_id) : undefined)
+      ?? Math.round(t.price_per_team_pence ?? 0),
+    settled: settledByOm.get(t.id) ?? false,
+    date: toDateKey(t.match_date),
+    time: t.start_time ?? "",
+    pitch: t.pitch_name ?? "TBC",
+    isUpcoming: isUpcomingDate(t.match_date),
+  })).filter((t) => t.date !== "");
+}
+
+// ── Captain's per-fixture payment collection panel ────────────────────────
+// Works for a matched game or a tournament entry: `target` decides which
+// column the payment_collection_status rows key off and where the "everyone
+// has paid" flag is stored.
 function PaymentCollectionPanel({
-  matchId, teamId, isPoster, pitchPricePence, opponent, date, settled, onSettledChange,
+  target, fixtureKey, teamId, teamPoolPence, label, date, settled, onSettledChange,
 }: {
-  matchId: string; teamId: string; isPoster: boolean; pitchPricePence: number;
-  opponent: string; date: string; settled: boolean;
-  onSettledChange: (matchId: string, settled: boolean) => void;
+  target: CollectTarget; fixtureKey: string; teamId: string; teamPoolPence: number;
+  label: string; date: string; settled: boolean;
+  onSettledChange: (fixtureKey: string, settled: boolean) => void;
 }) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
@@ -67,10 +144,12 @@ function PaymentCollectionPanel({
   const [sending, setSending] = useState(false);
   const [busyPlayer, setBusyPlayer] = useState<string | null>(null);
 
-  const feePence = Math.round(pitchPricePence);
-  const half = Math.floor(feePence / 2);
-  const teamPool = isPoster ? feePence - half : half;
-  const totalWithFee = Math.round(teamPool * 1.05);
+  // Which column identifies this charge, and what value it holds.
+  const targetCol = target.kind === "match" ? "match_id" : "open_match_id";
+  const targetId = target.kind === "match" ? target.matchId : target.openMatchId;
+  const isTournament = target.kind === "tournament";
+
+  const totalWithFee = Math.round(teamPoolPence * 1.05);
 
   useEffect(() => {
     async function load() {
@@ -80,8 +159,11 @@ function PaymentCollectionPanel({
       const [{ data: members }, { data: team }, { data: confs }, { data: statusRows }, { data: polls }] = await Promise.all([
         supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", teamId).eq("status", "approved"),
         supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle(),
-        supabase.from("match_confirmations").select("player_id, status").eq("match_id", matchId).eq("team_id", teamId),
-        supabase.from("payment_collection_status").select("player_id, share_pence, received").eq("match_id", matchId).eq("team_id", teamId),
+        // match_confirmations only exist for matched games.
+        target.kind === "match"
+          ? supabase.from("match_confirmations").select("player_id, status").eq("match_id", target.matchId).eq("team_id", teamId)
+          : Promise.resolve({ data: [] as { player_id: string; status: string }[] }),
+        supabase.from("payment_collection_status").select("player_id, share_pence, received").eq(targetCol, targetId).eq("team_id", teamId),
         supabase.from("availability_requests").select("id, date_options").eq("team_id", teamId),
       ]);
       const { data: captainProfile } = team?.captain_id
@@ -120,6 +202,12 @@ function PaymentCollectionPanel({
       if (participants.size === 0) {
         for (const c of (confs ?? []).filter((c) => c.status === "confirmed")) participants.add(c.player_id);
       }
+      // A tournament entry is bought by the team as a whole rather than by a
+      // confirmed line-up, so with nothing else to go on the whole squad
+      // shares it — the captain can still untick anyone who didn't travel.
+      if (participants.size === 0 && isTournament) {
+        for (const p of rosterList) participants.add(p.player_id);
+      }
       const participantsInRoster = new Set(rosterList.filter((p) => participants.has(p.player_id)).map((p) => p.player_id));
       setParticipantIds(participantsInRoster);
       if (!statusRows || statusRows.length === 0) {
@@ -128,7 +216,7 @@ function PaymentCollectionPanel({
       setLoading(false);
     }
     load();
-  }, [matchId, teamId]);
+  }, [targetCol, targetId, teamId]);
 
   const requestSent = rows.length > 0;
 
@@ -147,21 +235,33 @@ function PaymentCollectionPanel({
     }));
 
     await supabase.from("payment_collection_status").insert(
-      newRows.map((r) => ({ match_id: matchId, team_id: teamId, player_id: r.player_id, included: true, share_pence: r.share_pence, received: false }))
+      newRows.map((r) => ({ [targetCol]: targetId, team_id: teamId, player_id: r.player_id, included: true, share_pence: r.share_pence, received: false }))
     );
 
+    const what = isTournament ? `entering ${label}` : `the match vs ${label}`;
     await supabase.from("messages").insert(
       newRows.map((r) => ({
         sender_id: user.id,
         receiver_id: r.player_id,
         type: "payment_reminder",
-        match_id: matchId,
-        body: `You owe £${(r.share_pence / 100).toFixed(2)} for the match vs ${opponent} (${fmtDate(date)}). Please pay your captain.`,
+        [targetCol]: targetId,
+        body: `You owe £${(r.share_pence / 100).toFixed(2)} for ${what} (${fmtDate(date)}). Please pay your captain.`,
       }))
     );
 
     setRows(newRows);
     setSending(false);
+  };
+
+  // "Everyone has paid" lives on matches.fees_settled for a game, and per
+  // entered team on open_match_teams.fees_settled for a tournament.
+  const writeSettled = async (value: boolean) => {
+    if (target.kind === "match") {
+      await supabase.from("matches").update({ fees_settled: value }).eq("id", target.matchId);
+    } else {
+      await supabase.from("open_match_teams").update({ fees_settled: value })
+        .eq("open_match_id", target.openMatchId).eq("team_id", teamId);
+    }
   };
 
   const toggleReceived = async (playerId: string) => {
@@ -175,27 +275,27 @@ function PaymentCollectionPanel({
     // "amount owed" total (derived from credited_pence) stays accurate.
     await supabase.from("payment_collection_status")
       .update({ received: next, credited_pence: next ? row.share_pence : 0, updated_at: new Date().toISOString() })
-      .eq("match_id", matchId).eq("player_id", playerId);
+      .eq(targetCol, targetId).eq("player_id", playerId);
 
     const allReceived = updatedRows.every((r) => r.received);
     if (allReceived !== settled) {
-      await supabase.from("matches").update({ fees_settled: allReceived }).eq("id", matchId);
-      onSettledChange(matchId, allReceived);
+      await writeSettled(allReceived);
+      onSettledChange(fixtureKey, allReceived);
     }
     setBusyPlayer(null);
   };
 
   const handleRemove = async (playerId: string) => {
     setBusyPlayer(playerId);
-    await supabase.from("payment_collection_status").delete().eq("match_id", matchId).eq("player_id", playerId);
+    await supabase.from("payment_collection_status").delete().eq(targetCol, targetId).eq("player_id", playerId);
     const updatedRows = rows.filter((r) => r.player_id !== playerId);
     setRows(updatedRows);
     setChecked((prev) => { const next = new Set(prev); next.delete(playerId); return next; });
 
     const allReceived = updatedRows.length > 0 && updatedRows.every((r) => r.received);
     if (allReceived !== settled) {
-      await supabase.from("matches").update({ fees_settled: allReceived }).eq("id", matchId);
-      onSettledChange(matchId, allReceived);
+      await writeSettled(allReceived);
+      onSettledChange(fixtureKey, allReceived);
     }
     setBusyPlayer(null);
   };
@@ -227,7 +327,7 @@ function PaymentCollectionPanel({
         ) : !requestSent ? (
           <div className="mt-3">
             <p className="text-[11px] text-text-secondary mb-3">
-              Total owed (booking + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
+              Total owed ({isTournament ? "entry fee" : "booking"} + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
               {checked.size > 0 && <> · £{(totalWithFee / checked.size / 100).toFixed(2)}/player</>}
             </p>
             {(() => {
@@ -376,10 +476,12 @@ export default function MatchHistoryPage() {
       // Match History now shows both past fixtures and upcoming ones (marked
       // "Upcoming" so a captain can still issue payment requests ahead of the
       // game, just not submit a result before it's played).
-      const today = new Date().toISOString().split("T")[0];
+      // Normalise the date rather than requiring ISO: legacy rows store
+      // "Wed, 03 JUN 2026", and dropping them hid played fixtures from history
+      // entirely while the same string kept them pinned in Upcoming elsewhere.
       const all = [...posterFixtures, ...challengerFixtures]
-        .filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.date))
-        .map((f) => ({ ...f, isUpcoming: f.date >= today }));
+        .map((f) => ({ ...f, date: toDateKey(f.date), isUpcoming: isUpcomingDate(f.date) }))
+        .filter((f) => f.date !== "");
 
       const { data: rows } = all.length > 0
         ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", all.map((f) => f.postId))
@@ -398,11 +500,28 @@ export default function MatchHistoryPage() {
         setMatchResults(Object.fromEntries(myResults.map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
       }
 
-      const withRows: HistoryFixture[] = all
-        .map((f) => ({
+      const matchById = new Map((rows ?? []).map((r) => [r.id, r]));
+      const matchFixtures: HistoryFixture[] = all.map((f) => {
+        const matchRowId = byPostId.get(f.postId) ?? null;
+        const m = matchRowId ? matchById.get(matchRowId) : undefined;
+        // Each team covers 50% of the pitch fee; the poster carries the odd penny.
+        const feePence = Math.round(((m?.confirmed_pitch as { price?: number } | null)?.price ?? 0) * 100);
+        const half = Math.floor(feePence / 2);
+        return {
           ...f,
-          matchRowId: byPostId.get(f.postId) ?? null,
-        }))
+          key: `match:${f.postId}`,
+          kind: "match" as const,
+          matchRowId,
+          openMatchId: null,
+          label: f.opponent,
+          teamPoolPence: m?.posting_team_id === tid ? feePence - half : half,
+          settled: Boolean(m?.fees_settled),
+        };
+      });
+
+      const tournamentFixtures = await loadTournamentEntries(tid!);
+
+      const withRows = [...matchFixtures, ...tournamentFixtures]
         // Soonest upcoming first, then most recent past first.
         .sort((a, b) => {
           if (a.isUpcoming !== b.isUpcoming) return a.isUpcoming ? -1 : 1;
@@ -415,8 +534,8 @@ export default function MatchHistoryPage() {
     load();
   }, [user]);
 
-  const handleSettledChange = (matchId: string, settled: boolean) => {
-    setMatchRows((prev) => ({ ...prev, [matchId]: { ...prev[matchId], fees_settled: settled } }));
+  const handleSettledChange = (fixtureKey: string, settled: boolean) => {
+    setFixtures((prev) => prev.map((f) => f.key === fixtureKey ? { ...f, settled } : f));
   };
 
   return (
@@ -446,10 +565,15 @@ export default function MatchHistoryPage() {
           {fixtures.map((f) => {
             const m = f.matchRowId ? matchRows[f.matchRowId] : undefined;
             return (
-              <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
+              <div key={f.key} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2 gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm truncate">{f.kind === "tournament" ? f.label : `vs ${f.label}`}</p>
+                      {f.kind === "tournament" && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider bg-surface border border-border text-text-secondary px-1.5 py-0.5 rounded flex-shrink-0">Tournament</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                       {fmtDate(f.date)} · {f.time}
@@ -475,21 +599,28 @@ export default function MatchHistoryPage() {
                   <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
                     Submit Result
                   </a>
-                ) : f.matchRowId && (
+                ) : f.matchRowId ? (
                   <a href={`/my-team/match/${f.matchRowId}`} className="block w-full mt-3 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">
                     View Details
                   </a>
+                ) : f.openMatchId && (
+                  <a href={`/play/tournament/${f.openMatchId}`} className="block w-full mt-3 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">
+                    View Tournament
+                  </a>
                 )}
 
-                {isCaptainViewer && f.matchRowId && teamId && m?.confirmed_pitch?.price && !m.fees_settled && (
+                {isCaptainViewer && teamId && f.teamPoolPence > 0 && !f.settled
+                  && (f.kind === "match" ? f.matchRowId : f.openMatchId) && (
                   <PaymentCollectionPanel
-                    matchId={f.matchRowId}
+                    target={f.kind === "match"
+                      ? { kind: "match", matchId: f.matchRowId! }
+                      : { kind: "tournament", openMatchId: f.openMatchId! }}
+                    fixtureKey={f.key}
                     teamId={teamId}
-                    isPoster={m.posting_team_id === teamId}
-                    pitchPricePence={Math.round((m.confirmed_pitch.price ?? 0) * 100)}
-                    opponent={f.opponent}
+                    teamPoolPence={f.teamPoolPence}
+                    label={f.label}
                     date={f.date}
-                    settled={m.fees_settled}
+                    settled={f.settled}
                     onSettledChange={handleSettledChange}
                   />
                 )}
