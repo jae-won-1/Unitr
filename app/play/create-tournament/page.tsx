@@ -191,7 +191,7 @@ export default function CreateTournamentPage() {
     // 6) Cash side: pay the venue the pitch fee (Stripe Connect, test mode).
     fetch("/api/connect/venue-transfer", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pitchId: pitch.id, bookingId: booking.id, amountPence: pitchFeePence }),
+      body: JSON.stringify({ pitchId: pitch.id, bookingId: booking.id, teamId: team.id, openMatchId: om.id, amountPence: pitchFeePence }),
     }).catch(() => {});
 
     setSaving(false);

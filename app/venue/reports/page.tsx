@@ -34,7 +34,10 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type VenuePitch = { id: string; name: string; stripe_account_id: string | null; payouts_enabled: boolean };
-type Transfer = { id: string; pitch_id: string | null; amount_pence: number; status: string; created_at: string; stripe_transfer_id: string | null };
+type Transfer = {
+  id: string; pitch_id: string | null; amount_pence: number; status: string; created_at: string;
+  stripe_transfer_id: string | null; team_id: string | null; booking_id: string | null; payerLabel: string;
+};
 
 export default function VenueReportsPage() {
   const { user } = useAuth();
@@ -58,11 +61,31 @@ export default function VenueReportsPage() {
           .select("pitch_id, match_date, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status")
           .in("pitch_id", pitchIds),
         supabase.from("venue_transfers")
-          .select("id, pitch_id, amount_pence, status, created_at, stripe_transfer_id")
+          .select("id, pitch_id, amount_pence, status, created_at, stripe_transfer_id, team_id, booking_id")
           .in("pitch_id", pitchIds).order("created_at", { ascending: false }).limit(25),
       ]);
       setBookings((bks ?? []) as Booking[]);
-      setTransfers((trs ?? []) as Transfer[]);
+
+      // Resolve a paying-team label per transfer: prefer the direct team_id
+      // link, falling back to the booking's booker_name for legacy rows
+      // written before that column existed (for a matched game that string
+      // is already "Team A vs Team B" — see app/play/page.tsx).
+      const rows = trs ?? [];
+      const teamIds = [...new Set(rows.map((t) => t.team_id).filter(Boolean))] as string[];
+      const bookingIds = [...new Set(rows.map((t) => t.booking_id).filter(Boolean))] as string[];
+      const [{ data: teams }, { data: legacyBookings }] = await Promise.all([
+        teamIds.length ? supabase.from("teams").select("id, name").in("id", teamIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        bookingIds.length ? supabase.from("pitch_bookings").select("id, booker_name").in("id", bookingIds) : Promise.resolve({ data: [] as { id: string; booker_name: string | null }[] }),
+      ]);
+      const teamName = new Map((teams ?? []).map((t) => [t.id, t.name as string]));
+      const bookerName = new Map((legacyBookings ?? []).map((b) => [b.id, b.booker_name as string | null]));
+
+      setTransfers(rows.map((t) => ({
+        ...t,
+        payerLabel: t.team_id
+          ? (teamName.get(t.team_id) ?? "Unknown team")
+          : (t.booking_id ? (bookerName.get(t.booking_id) ?? null) : null) ?? "—",
+      })) as Transfer[]);
       setLoading(false);
     }
     load();
@@ -155,7 +178,7 @@ export default function VenueReportsPage() {
             {transfers.map((t) => (
               <div key={t.id} className="flex items-center justify-between bg-background border border-border rounded-xl px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">£{(t.amount_pence / 100).toFixed(2)}</p>
+                  <p className="text-sm font-semibold">£{(t.amount_pence / 100).toFixed(2)} <span className="text-xs font-normal text-text-secondary">from {t.payerLabel}</span></p>
                   <p className="text-[10px] text-text-secondary truncate">
                     {new Date(t.created_at).toLocaleDateString()}
                     {" · "}{pitches.find((p) => p.id === t.pitch_id)?.name ?? "—"}

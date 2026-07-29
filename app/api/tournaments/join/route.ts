@@ -4,10 +4,14 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
 // money goes then depends on who hosts the tournament:
-//   - Venue-hosted (organiser_team_id null): the client fires /api/connect/venue-transfer
-//     to move the buy-in to the venue's Stripe account (hostType 'venue').
-//   - Team-hosted (organiser_team_id set): the buy-in reimburses the ORGANISER team's
-//     credit here, server-side, since they fronted the whole pitch fee (hostType 'team').
+//   - Venue-hosted (organiser_team_id null): this route calls /api/connect/venue-transfer
+//     itself, server-side, to move the buy-in to the venue's Stripe account (hostType
+//     'venue'). Kept server-side (rather than a client fire-and-forget) so the transfer
+//     can't be skipped by a user navigating away, and its outcome is returned to the caller.
+//   - Team-hosted (organiser_team_id set, and it isn't the joining team itself): the
+//     buy-in reimburses the ORGANISER team's credit here (hostType 'team'). If the
+//     organiser is joining its OWN tournament, no payout and no reimbursement happen —
+//     they already paid the venue in full when they created it.
 //
 // After the debit we pre-create pending 'replenish' player_payments for the joining
 // team's squad so each player later refills their team's credit off their saved card —
@@ -104,10 +108,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Couldn't enter the tournament: ${joinErr.message}` }, { status: 500 });
     }
 
-    // 5) Team-hosted: reimburse the organiser team's credit with this buy-in
-    //    (they fronted the whole pitch fee). Venue-hosted tournaments skip this —
-    //    the client sends the buy-in to the venue via /api/connect/venue-transfer.
-    const isTeamHosted = Boolean(om.organiser_team_id) && om.organiser_team_id !== teamId;
+    // 5) Team-hosted (and not the organiser joining their own tournament):
+    //    reimburse the organiser team's credit with this buy-in, since they
+    //    fronted the whole pitch fee. An organiser entering their own
+    //    tournament gets neither this reimbursement nor a venue payout below —
+    //    they already paid the venue in full at creation time.
+    const isOrganiserSelfJoin = Boolean(om.organiser_team_id) && om.organiser_team_id === teamId;
+    const isTeamHosted = Boolean(om.organiser_team_id) && !isOrganiserSelfJoin;
     if (buyIn > 0 && isTeamHosted) {
       const { error: reimburseErr } = await adminSupabase.rpc("reimburse_team", {
         p_team_id: om.organiser_team_id,
@@ -117,6 +124,39 @@ export async function POST(req: NextRequest) {
       // Don't fail the join if reimbursement can't be applied (e.g. migration not
       // run yet) — the joiner is already entered and paid. Surface it in logs.
       if (reimburseErr) console.error("reimburse_team failed:", reimburseErr.message);
+    }
+
+    // Venue-hosted: pay the venue directly, server-side, so the transfer can't
+    // be skipped by the client and its (potentially failed, e.g. insufficient
+    // test-mode balance) outcome is reported back to the caller. Never fires
+    // for an organiser joining their own tournament — that pitch fee was
+    // already paid to the venue when the tournament was created.
+    let transferStatus: "paid" | "failed" | "skipped" = "skipped";
+    let transferError: string | null = null;
+    if (buyIn > 0 && !om.organiser_team_id) {
+      try {
+        const transferRes = await fetch(new URL("/api/connect/venue-transfer", req.url), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pitchId: om.pitch_id,
+            teamId,
+            openMatchId,
+            amountPence: buyIn,
+          }),
+        });
+        const transferData = await transferRes.json().catch(() => ({}));
+        if (transferRes.ok) {
+          transferStatus = "paid";
+        } else {
+          transferStatus = "failed";
+          transferError = transferData.error ?? "Venue transfer failed";
+        }
+      } catch (err) {
+        transferStatus = "failed";
+        transferError = (err as { message?: string }).message ?? "Venue transfer failed";
+        console.error("tournaments/join venue-transfer error:", err);
+      }
     }
 
     // 6) Mark the tournament full if this was the last spot.
@@ -164,7 +204,9 @@ export async function POST(req: NextRequest) {
       buyInPence: buyIn,
       pitchId: om.pitch_id,
       bookingId: om.booking_id,
-      hostType: isTeamHosted ? "team" : "venue",
+      hostType: isOrganiserSelfJoin ? "organiser" : isTeamHosted ? "team" : "venue",
+      transferStatus,
+      transferError,
     });
   } catch (err) {
     console.error("tournaments/join error:", err);

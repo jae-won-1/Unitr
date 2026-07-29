@@ -598,6 +598,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       body: JSON.stringify({
         pitchId: pitch.id,
         bookingId: bookingRow.id,
+        teamId: team?.id ?? null,
         amountPence: pitchFeePence,
       }),
     }).catch(() => {});

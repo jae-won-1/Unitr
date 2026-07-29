@@ -42,3 +42,22 @@ create policy "System can write venue transfers" on public.venue_transfers for a
 
 create index if not exists venue_transfers_pitch_idx   on public.venue_transfers(pitch_id);
 create index if not exists venue_transfers_booking_idx on public.venue_transfers(booking_id);
+
+-- ── Team attribution: which team's payment this transfer covers ──────────
+-- venue_transfers had no team link, so a tournament buy-in (many teams
+-- sharing one open_match, no individual booking_id) couldn't be attributed
+-- to a paying team in Reports/Bookings. Add both a direct team_id and the
+-- open_match_id so a tournament transfer can also list every entered team.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='venue_transfers' and column_name='team_id') then
+    alter table public.venue_transfers add column team_id uuid references public.teams(id);
+  end if;
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='venue_transfers' and column_name='open_match_id') then
+    alter table public.venue_transfers add column open_match_id uuid references public.open_matches(id);
+  end if;
+end $$;
+
+create index if not exists venue_transfers_open_match_idx on public.venue_transfers(open_match_id, team_id);

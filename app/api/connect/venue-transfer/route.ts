@@ -13,7 +13,7 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // rather than throwing — the demo still shows the intended money movement.
 export async function POST(req: NextRequest) {
   try {
-    const { pitchId, bookingId, matchId, amountPence } = await req.json();
+    const { pitchId, bookingId, matchId, teamId, openMatchId, amountPence } = await req.json();
     if (!pitchId || !amountPence || amountPence < 1) {
       return NextResponse.json({ error: "Missing pitchId or amount" }, { status: 400 });
     }
@@ -30,12 +30,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Idempotency: don't pay the same booking twice.
+    // Idempotency: don't pay the same booking twice. Tournament buy-ins have
+    // no individual booking (every team shares the tournament's one
+    // reservation), so dedupe those on (openMatchId, teamId) instead.
     if (bookingId) {
       const { data: existing } = await adminSupabase
         .from("venue_transfers")
         .select("id, status, stripe_transfer_id")
         .eq("booking_id", bookingId)
+        .eq("status", "paid")
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ transferId: existing.stripe_transfer_id, alreadyPaid: true });
+      }
+    } else if (openMatchId && teamId) {
+      const { data: existing } = await adminSupabase
+        .from("venue_transfers")
+        .select("id, status, stripe_transfer_id")
+        .eq("open_match_id", openMatchId)
+        .eq("team_id", teamId)
         .eq("status", "paid")
         .maybeSingle();
       if (existing) {
@@ -54,7 +67,7 @@ export async function POST(req: NextRequest) {
         currency: "gbp",
         destination: pitch.stripe_account_id,
         description: `Unitr pitch payout — ${pitch.name}`,
-        metadata: { pitchId: pitch.id, bookingId: bookingId ?? "", matchId: matchId ?? "" },
+        metadata: { pitchId: pitch.id, bookingId: bookingId ?? "", matchId: matchId ?? "", teamId: teamId ?? "", openMatchId: openMatchId ?? "" },
       });
       transferId = transfer.id;
     } catch (err) {
@@ -67,6 +80,8 @@ export async function POST(req: NextRequest) {
       pitch_id: pitch.id,
       booking_id: bookingId ?? null,
       match_id: matchId ?? null,
+      team_id: teamId ?? null,
+      open_match_id: openMatchId ?? null,
       stripe_account_id: pitch.stripe_account_id,
       stripe_transfer_id: transferId,
       amount_pence: amount,
