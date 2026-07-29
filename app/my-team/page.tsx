@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
+import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 
 // Highlights "@Full Name" mentions in announcement text for display.
 // Validity (matching a real squad member) is enforced at creation time via
@@ -194,6 +195,8 @@ type ConfirmedFixture = {
   time: string;
   pitch: string;
   paymentStatus: "paid" | "unpaid";
+  kind: "match" | "tournament";
+  title?: string;
 };
 
 type HostedTournament = {
@@ -361,7 +364,23 @@ function PlayerMyTeam() {
         .in("booking_id", allFixtures.map((f) => f.postId));
       const paidIds = new Set((payments ?? []).map((p) => p.booking_id));
 
-      setFixtures(allFixtures.map((f) => ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid" }) as ConfirmedFixture));
+      const matchFixtures: ConfirmedFixture[] = allFixtures.map((f) =>
+        ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid", kind: "match" }) as ConfirmedFixture);
+
+      const tournaments = await loadUpcomingTournamentFixtures(myTeam!.id);
+      const tournamentFixtures: ConfirmedFixture[] = tournaments.map((t) => ({
+        postId: t.id,
+        matchRowId: null,
+        opponent: "",
+        date: t.date,
+        time: t.time,
+        pitch: t.pitch,
+        paymentStatus: "paid",
+        kind: "tournament",
+        title: t.title,
+      }));
+
+      setFixtures([...matchFixtures, ...tournamentFixtures]);
       setFixturesLoading(false);
     }
     loadFixtures();
@@ -554,8 +573,8 @@ function PlayerMyTeam() {
             {visibleFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{f.kind === "tournament" ? f.title : `vs ${f.opponent}`}</p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                       {f.date} · {f.time}
@@ -566,18 +585,21 @@ function PlayerMyTeam() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    {fixtureView === "past"
-                      ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
-                      : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
-                    {f.paymentStatus === "paid"
+                    {f.kind === "tournament"
+                      ? <span className="text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full">Tournament</span>
+                      : fixtureView === "past"
+                        ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
+                        : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
+                    {f.kind !== "tournament" && (f.paymentStatus === "paid"
                       ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
                       : fixtureView === "past"
                         ? <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Share due</span>
-                        : null}
+                        : null)}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
+                  <a href={f.kind === "tournament" ? `/play/tournament/${f.postId}` : `/my-team/match/${f.matchRowId ?? f.postId}`}
+                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">View Details</a>
                 </div>
               </div>
             ))}
@@ -815,7 +837,24 @@ function CaptainMyTeam() {
         .in("booking_id", allFixtures.map((f) => f.postId));
       const paidIds = new Set((payments ?? []).map((p) => p.booking_id));
 
-      setFixtures(allFixtures.map((f) => ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid" }) as ConfirmedFixture));
+      const matchFixtures: ConfirmedFixture[] = allFixtures.map((f) =>
+        ({ ...f, paymentStatus: paidIds.has(f.postId) ? "paid" : "unpaid", kind: "match" }) as ConfirmedFixture);
+
+      const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
+      const tournaments = await loadUpcomingTournamentFixtures(ownTeam?.id);
+      const tournamentFixtures: ConfirmedFixture[] = tournaments.map((t) => ({
+        postId: t.id,
+        matchRowId: null,
+        opponent: "",
+        date: t.date,
+        time: t.time,
+        pitch: t.pitch,
+        paymentStatus: "paid",
+        kind: "tournament",
+        title: t.title,
+      }));
+
+      setFixtures([...matchFixtures, ...tournamentFixtures]);
       setFixturesLoading(false);
     }
     loadFixtures();
@@ -1107,8 +1146,8 @@ function CaptainMyTeam() {
             {visibleFixtures.map((f) => (
               <div key={f.postId} className="bg-surface-2 border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="font-semibold text-sm">vs {f.opponent}</p>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{f.kind === "tournament" ? f.title : `vs ${f.opponent}`}</p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                       {f.date} · {f.time}
@@ -1119,18 +1158,23 @@ function CaptainMyTeam() {
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    {fixtureView === "past"
-                      ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
-                      : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
-                    {f.paymentStatus === "paid"
+                    {f.kind === "tournament"
+                      ? <span className="text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full">Tournament</span>
+                      : fixtureView === "past"
+                        ? <span className="text-[10px] font-semibold bg-surface text-text-secondary border border-border px-2 py-0.5 rounded-full">Played</span>
+                        : <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Confirmed</span>}
+                    {f.kind !== "tournament" && (f.paymentStatus === "paid"
                       ? <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
                       : fixtureView === "past"
                         ? <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">Dues open</span>
-                        : null}
+                        : null)}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <a href={`/my-team/match/${f.matchRowId ?? f.postId}`} className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">{fixtureView === "past" ? "See Details" : "Manage Match"}</a>
+                  <a href={f.kind === "tournament" ? `/play/tournament/${f.postId}` : `/my-team/match/${f.matchRowId ?? f.postId}`}
+                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary text-center">
+                    {f.kind === "tournament" ? "Manage Tournament" : fixtureView === "past" ? "See Details" : "Manage Match"}
+                  </a>
                 </div>
               </div>
             ))}

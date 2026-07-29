@@ -405,6 +405,7 @@ function ChallengePanel({
               pitchId: pitch.id,
               bookingId: pitchBookingId,
               matchId: matchRecord.id,
+              teamId: post.team_id,
               amountPence: feePence,
             }),
           }).catch(() => {});
@@ -975,6 +976,7 @@ function EnterTournamentPanel({
   const [saving, setSaving] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transferFailed, setTransferFailed] = useState(false);
   // Effective buy-in after any pending-invitation discount (the join route
   // re-applies the discount authoritatively; this keeps the UI in sync).
   const buyIn = Math.max(0, t.price_per_team_pence - t.inviteDiscountPence);
@@ -1000,19 +1002,11 @@ function EnterTournamentPanel({
       return;
     }
 
-    // Cash side, venue-hosted only: move this team's buy-in to the venue's
-    // connected account (best-effort, mirrors match confirmation). A team-hosted
-    // tournament instead reimburses the organiser's credit server-side (handled
-    // in the join route), so no venue transfer fires. bookingId is intentionally
-    // omitted — every team shares the tournament's single reservation booking, so
-    // keying idempotency on it would collapse all buy-ins into one transfer.
-    if (buyIn > 0 && data.hostType === "venue") {
-      fetch("/api/connect/venue-transfer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pitchId: t.pitch_id, amountPence: buyIn }),
-      }).catch(() => {});
-    }
+    // The venue payout (venue-hosted tournaments only) now happens server-side
+    // in the join route itself, so it can't be skipped by navigating away.
+    // Surface a non-blocking warning if it failed — the team is still entered
+    // and their credit was already debited; only the venue's payout is outstanding.
+    setTransferFailed(data.transferStatus === "failed");
 
     setSaving(false);
     setConfirmed(true);
@@ -1029,6 +1023,11 @@ function EnterTournamentPanel({
           <p className="text-sm text-text-secondary mb-5">
             {myTeamName} has entered <span className="font-semibold text-text-primary">{t.title}</span>. £{(buyIn / 100).toFixed(2)} was taken from your team credit and paid to {t.organiser_team_name ?? t.pitch_name}. Your squad can settle their share afterwards from Team Credits.
           </p>
+          {transferFailed && (
+            <p className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2 mb-5 text-left">
+              Your entry is confirmed and your credit was charged, but the payout to the venue didn&apos;t go through (likely a test-mode balance issue). It&apos;ll show as failed in the venue&apos;s reports.
+            </p>
+          )}
           <button onClick={onJoined} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
         </div>
       </div>
@@ -1104,7 +1103,7 @@ function useOpenTournaments(userId?: string) {
 
       const { data: oms } = await supabase
         .from("open_matches")
-        .select("id, pitch_id, pitch_name, venue_address, match_date, start_time, end_time, format, skill_level, price_per_team_pence, max_teams, description, status, booking_id, organiser_team_id, organiser_team_name")
+        .select("id, title, pitch_id, pitch_name, venue_address, match_date, start_time, end_time, format, skill_level, price_per_team_pence, max_teams, description, status, booking_id, organiser_team_id, organiser_team_name")
         .eq("match_type", "tournament")
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });

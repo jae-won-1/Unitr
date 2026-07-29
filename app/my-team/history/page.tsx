@@ -11,6 +11,7 @@ type HistoryFixture = {
   date: string;
   time: string;
   pitch: string;
+  isUpcoming: boolean;
 };
 
 type MatchRow = {
@@ -372,19 +373,21 @@ export default function MatchHistoryPage() {
         })
       );
 
-      const all = [...posterFixtures, ...challengerFixtures];
-
-      // Only matches that have already kicked off belong in history.
+      // Match History now shows both past fixtures and upcoming ones (marked
+      // "Upcoming" so a captain can still issue payment requests ahead of the
+      // game, just not submit a result before it's played).
       const today = new Date().toISOString().split("T")[0];
-      const past = all.filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.date) && f.date < today);
+      const all = [...posterFixtures, ...challengerFixtures]
+        .filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f.date))
+        .map((f) => ({ ...f, isUpcoming: f.date >= today }));
 
-      const { data: rows } = past.length > 0
-        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", past.map((f) => f.postId))
+      const { data: rows } = all.length > 0
+        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", all.map((f) => f.postId))
         : { data: [] };
       const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
       setMatchRows(Object.fromEntries((rows ?? []).map((r) => [r.id, r as unknown as MatchRow])));
 
-      // Fetch all match_results for past matches, then filter client-side to the
+      // Fetch all match_results for these matches, then filter client-side to the
       // current team only. Consistent with match detail page which uses the same
       // pattern — server-side eq("team_id") can return opponent rows unexpectedly.
       const allMatchIds = (rows ?? []).map((r) => r.id);
@@ -395,12 +398,16 @@ export default function MatchHistoryPage() {
         setMatchResults(Object.fromEntries(myResults.map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
       }
 
-      const withRows: HistoryFixture[] = past
+      const withRows: HistoryFixture[] = all
         .map((f) => ({
           ...f,
           matchRowId: byPostId.get(f.postId) ?? null,
         }))
-        .sort((a, b) => b.date.localeCompare(a.date));
+        // Soonest upcoming first, then most recent past first.
+        .sort((a, b) => {
+          if (a.isUpcoming !== b.isUpcoming) return a.isUpcoming ? -1 : 1;
+          return a.isUpcoming ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
+        });
 
       setFixtures(withRows);
       setLoading(false);
@@ -420,7 +427,7 @@ export default function MatchHistoryPage() {
         </a>
         <div>
           <h1 className="text-xl font-bold">Match History</h1>
-          <p className="text-xs text-text-secondary">Past fixtures for your team</p>
+          <p className="text-xs text-text-secondary">Upcoming and past fixtures for your team</p>
         </div>
       </div>
 
@@ -432,7 +439,7 @@ export default function MatchHistoryPage() {
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           </div>
           <p className="font-semibold">No match history yet</p>
-          <p className="text-sm text-text-secondary max-w-[240px]">Played fixtures will show up here once a confirmed match date has passed.</p>
+          <p className="text-sm text-text-secondary max-w-[240px]">Confirmed fixtures — upcoming and played — will show up here.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -452,7 +459,9 @@ export default function MatchHistoryPage() {
                       {f.pitch}
                     </div>
                   </div>
-                  {f.matchRowId && m?.result_verified && matchResults[f.matchRowId] && (() => {
+                  {f.isUpcoming ? (
+                    <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Upcoming</span>
+                  ) : f.matchRowId && m?.result_verified && matchResults[f.matchRowId] && (() => {
                     const r = matchResults[f.matchRowId];
                     const outcome = r.teamScore > r.opponentScore ? "won" : r.teamScore < r.opponentScore ? "lost" : "drew";
                     const colorClass = outcome === "won" ? "text-accent" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
@@ -462,7 +471,7 @@ export default function MatchHistoryPage() {
                   })()}
                 </div>
 
-                {isCaptainViewer && f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
+                {!f.isUpcoming && isCaptainViewer && f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
                   <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
                     Submit Result
                   </a>

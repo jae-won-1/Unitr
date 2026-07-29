@@ -5,6 +5,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import HomeSearchBar from "@/components/HomeSearchBar";
+import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 
 type ConfirmedFixture = {
   id: string;
@@ -13,6 +14,8 @@ type ConfirmedFixture = {
   time: string;
   pitch: string;
   side: "poster" | "challenger";
+  kind: "match" | "tournament";
+  title?: string;
 };
 
 // ── Shared data ──────────────────────────────────────────────
@@ -63,6 +66,7 @@ function useConfirmedFixtures(userId: string | undefined) {
             time: post.match_time,
             pitch: ((challenge as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
             side: "poster" as const,
+            kind: "match" as const,
           };
         })
       );
@@ -88,13 +92,35 @@ function useConfirmedFixtures(userId: string | undefined) {
             time: (post as { match_time: string } | null)?.match_time ?? "",
             pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
             side: "challenger" as const,
+            kind: "match" as const,
           };
         })
       );
 
+      // Resolve this user's team (captain or approved member) to pull in
+      // tournament fixtures — entered or hosted — alongside matches.
+      const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
+      let teamId: string | null = ownTeam?.id ?? null;
+      if (!teamId) {
+        const { data: membership } = await supabase.from("team_members")
+          .select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
+        teamId = membership?.team_id ?? null;
+      }
+      const tournaments = await loadUpcomingTournamentFixtures(teamId);
+      const tournamentFixtures: ConfirmedFixture[] = tournaments.map((t) => ({
+        id: t.id,
+        opponent: "",
+        date: t.date,
+        time: t.time,
+        pitch: t.pitch,
+        side: "poster" as const,
+        kind: "tournament" as const,
+        title: t.title,
+      }));
+
       // Home only surfaces upcoming, confirmed fixtures — nearest first.
       const today = new Date().toISOString().split("T")[0];
-      const upcoming = [...posterFixtures, ...challengerFixtures]
+      const upcoming = [...posterFixtures, ...challengerFixtures, ...tournamentFixtures]
         .filter((f) => f.date >= today)
         .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
 
@@ -149,17 +175,24 @@ function TeamCard({ team }: { team: NearbyTeam }) {
 }
 
 function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
+  const isTournament = fixture.kind === "tournament";
+  const Wrapper = isTournament ? "a" : "div";
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <Wrapper {...(isTournament ? { href: `/play/tournament/${fixture.id}` } : {})}
+      className="block bg-surface-2 border border-border rounded-2xl p-4">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm">vs {fixture.opponent}</p>
-          <p className="text-xs text-text-secondary mt-0.5">{fixture.side === "poster" ? "You posted · they challenged" : "You challenged"}</p>
+          <p className="font-semibold text-sm truncate">{isTournament ? fixture.title : `vs ${fixture.opponent}`}</p>
+          <p className="text-xs text-text-secondary mt-0.5">
+            {isTournament ? "Tournament" : fixture.side === "poster" ? "You posted · they challenged" : "You challenged"}
+          </p>
         </div>
-        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Confirmed</span>
+        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
+          {isTournament ? "Tournament" : "Confirmed"}
+        </span>
       </div>
       <div className="space-y-1">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
@@ -171,7 +204,7 @@ function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
           {fixture.pitch}
         </div>
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
