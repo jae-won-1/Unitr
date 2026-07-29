@@ -38,6 +38,7 @@ type Booking = {
   payment_status: string;
   booker_name: string;
   category: Category;
+  payerLabel: string | null;
 };
 
 const STATUS_FILTERS = ["All", "Confirmed", "Pending", "Cancelled"] as const;
@@ -124,18 +125,40 @@ export default function VenueBookingsPage() {
       //    credit- and card-paid Unitr bookings, so we reconcile against it.
       const [{ data: oms }, { data: pays }, { data: transfers }] = await Promise.all([
         bookingIds.length
-          ? supabase.from("open_matches").select("booking_id, match_type").in("booking_id", bookingIds)
-          : Promise.resolve({ data: [] as { booking_id: string; match_type: string }[] }),
+          ? supabase.from("open_matches").select("id, booking_id, match_type").in("booking_id", bookingIds)
+          : Promise.resolve({ data: [] as { id: string; booking_id: string; match_type: string }[] }),
         bookingIds.length
           ? supabase.from("player_payments").select("booking_id, status").in("booking_id", bookingIds)
           : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
         bookingIds.length
-          ? supabase.from("venue_transfers").select("booking_id, status").in("booking_id", bookingIds)
-          : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
+          ? supabase.from("venue_transfers").select("booking_id, status, team_id").in("booking_id", bookingIds)
+          : Promise.resolve({ data: [] as { booking_id: string; status: string; team_id: string | null }[] }),
       ]);
       const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));
       const paidBookingIds = new Set((pays ?? []).filter((p) => p.status === "paid").map((p) => p.booking_id));
       const paidOutBookingIds = new Set((transfers ?? []).filter((t) => t.status === "paid" && t.booking_id).map((t) => t.booking_id));
+
+      // Which team paid: for a single-team booking (match/direct), read the
+      // team_id off its venue_transfers row. For a tournament, many teams
+      // share one booking — list every team that entered via open_match_teams.
+      const transferTeamIds = [...new Set((transfers ?? []).map((t) => t.team_id).filter(Boolean))] as string[];
+      const { data: payerTeams } = transferTeamIds.length
+        ? await supabase.from("teams").select("id, name").in("id", transferTeamIds)
+        : { data: [] as { id: string; name: string }[] };
+      const payerTeamName = new Map((payerTeams ?? []).map((t) => [t.id, t.name as string]));
+      const teamIdByBooking = new Map((transfers ?? []).filter((t) => t.team_id).map((t) => [t.booking_id, t.team_id as string]));
+
+      const tournamentOmIds = (oms ?? []).filter((o) => o.match_type === "tournament").map((o) => o.id);
+      const { data: enteredTeams } = tournamentOmIds.length
+        ? await supabase.from("open_match_teams").select("open_match_id, team_name").in("open_match_id", tournamentOmIds)
+        : { data: [] as { open_match_id: string; team_name: string }[] };
+      const omIdByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.id]));
+      const enteredTeamsByOm = new Map<string, string[]>();
+      for (const row of enteredTeams ?? []) {
+        const list = enteredTeamsByOm.get(row.open_match_id) ?? [];
+        list.push(row.team_name);
+        enteredTeamsByOm.set(row.open_match_id, list);
+      }
 
       // Reconcile Unitr (platform) bookings: if the money actually moved — a paid
       // card charge, a Stripe intent on the booking, or a completed venue payout —
@@ -159,7 +182,13 @@ export default function VenueBookingsPage() {
               : matchTypeByBooking.get(b.id) === "league" ? "league" : "match")
             : "match"; // platform = a team's match booked through Unitr
 
-        return { ...b, booker_name: name, payment_status: payment, category, match_date: normalizeMatchDate(b.match_date) } as Booking;
+        const omId = omIdByBooking.get(b.id);
+        const enteredNames = category === "tournament" && omId ? enteredTeamsByOm.get(omId) : undefined;
+        const payerLabel = enteredNames && enteredNames.length > 0
+          ? `${enteredNames.length} team${enteredNames.length === 1 ? "" : "s"} · ${enteredNames.join(", ")}`
+          : teamIdByBooking.has(b.id) ? (payerTeamName.get(teamIdByBooking.get(b.id)!) ?? null) : null;
+
+        return { ...b, booker_name: name, payment_status: payment, category, payerLabel, match_date: normalizeMatchDate(b.match_date) } as Booking;
       }));
 
       if (toMarkPaid.length) {
@@ -181,10 +210,14 @@ export default function VenueBookingsPage() {
     setBookings((b) => b.map((x) => x.id === id ? { ...x, payment_status } : x));
   };
 
-  const filtered = bookings.filter((b) =>
-    (filter === "All" || b.status === filter.toLowerCase()) &&
-    (category === "all" || b.category === category)
-  );
+  const filtered = bookings
+    .filter((b) =>
+      (filter === "All" || b.status === filter.toLowerCase()) &&
+      (category === "all" || b.category === category)
+    )
+    // Most recent first — match_date is already normalized to ISO above, so
+    // this sorts correctly even for legacy display-string rows.
+    .sort((a, b) => `${b.match_date} ${b.start_time}`.localeCompare(`${a.match_date} ${a.start_time}`));
 
   // Group by upcoming vs past using match_date string comparison
   const today = new Date();
@@ -264,6 +297,7 @@ export default function VenueBookingsPage() {
                         <p className="text-xs text-text-secondary mt-0.5">
                           {formatMatchDate(b.match_date)} · {b.start_time}{endTime ? `–${endTime}` : ""}
                         </p>
+                        {b.payerLabel && <p className="text-[11px] text-text-secondary mt-0.5 truncate">Paid by {b.payerLabel}</p>}
                         <span className="text-[10px] text-text-secondary italic">
                           {b.booking_type === "manual" ? "External booking"
                             : b.booking_type === "platform" ? "Booked via Unitr" : "Listing"}

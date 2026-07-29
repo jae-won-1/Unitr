@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 // ── Nav config ────────────────────────────────────────────────
 type NavItem = { label: string; href: string; icon: (active: boolean) => React.ReactNode };
@@ -90,6 +93,29 @@ const venueNav: NavItem[] = [
 
 export default function VenueLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, signOut } = useAuth();
+  const [initials, setInitials] = useState("?");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) { setInitials("?"); return; }
+    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data?.full_name) {
+          const parts = (data.full_name as string).split(" ").filter(Boolean);
+          setInitials(parts.map((w: string) => w[0]).join("").slice(0, 2).toUpperCase());
+        }
+      });
+  }, [user]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,8 +152,37 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* Footer: back to player app */}
-        <div className="border-t border-border p-2 md:p-3 flex-shrink-0">
+        {/* Footer: profile + back to player app */}
+        <div className="border-t border-border p-2 md:p-3 flex-shrink-0 space-y-1">
+          {user && (
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setProfileOpen((o) => !o)}
+                title="Account"
+                className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors justify-center md:justify-start hover:bg-white/[0.03]"
+              >
+                <span className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[11px] font-bold text-accent">{initials}</span>
+                </span>
+                <span className="hidden md:inline text-sm font-medium text-text-secondary truncate">Account</span>
+              </button>
+
+              {profileOpen && (
+                <div className="absolute left-0 bottom-full mb-2 w-44 bg-surface border border-border rounded-2xl shadow-lg overflow-hidden z-50">
+                  <Link href="/venue/settings" onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-3 px-4 py-3 text-sm text-text-primary hover:bg-surface-2 transition-colors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Settings
+                  </Link>
+                  <button onClick={() => { setProfileOpen(false); signOut(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-surface-2 transition-colors border-t border-border">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <Link href="/" title="Player app"
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-text-secondary hover:text-accent hover:bg-white/[0.03] transition-colors justify-center md:justify-start">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">

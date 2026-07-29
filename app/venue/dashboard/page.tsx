@@ -63,7 +63,7 @@ export default function VenueDashboard() {
         .from("pitch_bookings")
         .select("id, pitch_id, match_date, start_time, player_count, per_player_pence, status, booked_by")
         .in("pitch_id", pitchIds)
-        .order("match_date", { ascending: true });
+        .order("match_date", { ascending: false });
 
       const enriched = await Promise.all((bks ?? []).map(async (b) => {
         const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
