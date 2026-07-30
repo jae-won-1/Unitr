@@ -545,7 +545,7 @@ export default function MatchHistoryPage() {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Match History</h1>
+          <h1 className="text-xl font-bold">Settle Payments</h1>
           <p className="text-xs text-text-secondary">Upcoming and past fixtures for your team</p>
         </div>
       </div>

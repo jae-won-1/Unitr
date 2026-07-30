@@ -61,9 +61,16 @@ export default function TopBar() {
     if (!user) { setMatchDues(0); return; }
     async function loadDues() {
       const today = new Date().toISOString().split("T")[0];
-      const { data: confs } = await supabase.from("match_confirmations")
-        .select("match_id").eq("player_id", user!.id).eq("status", "confirmed");
-      const matchIds = Array.from(new Set((confs ?? []).map((c) => c.match_id)));
+      // Matches this player was in — excluding ones they guested in as a paid
+      // ringer, which carry no share of the team's pitch fee. (is_ringer arrives
+      // with supabase_ringers.sql; selecting a missing column fails the whole
+      // query, so fall back to the pre-ringer shape.)
+      const withRinger = await supabase.from("match_confirmations")
+        .select("match_id, is_ringer").eq("player_id", user!.id).eq("status", "confirmed");
+      const confs = (withRinger.data ?? (await supabase.from("match_confirmations")
+        .select("match_id").eq("player_id", user!.id).eq("status", "confirmed")).data
+      ) as { match_id: string; is_ringer?: boolean }[] | null;
+      const matchIds = Array.from(new Set((confs ?? []).filter((c) => !c.is_ringer).map((c) => c.match_id)));
       if (matchIds.length === 0) { setMatchDues(0); return; }
 
       const { data: ms } = await supabase.from("matches")

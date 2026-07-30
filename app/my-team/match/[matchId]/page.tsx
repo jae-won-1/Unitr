@@ -27,6 +27,9 @@ type Confirmation = {
   team_id: string;
   status: string;
   full_name: string;
+  // A paid guest player. In the squad and the lineup, but never in the charge —
+  // they've already paid Unitr their flat ringer fee (supabase_ringers.sql).
+  is_ringer: boolean;
 };
 
 type OriginalPost = { match_date: string; match_time: string };
@@ -72,6 +75,184 @@ function ConfirmBadge({ status }: { status: string }) {
   if (status === "confirmed") return <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">In</span>;
   if (status === "declined") return <span className="text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">Out</span>;
   return <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>;
+}
+
+// ── Ringer request (captain) ──────────────────────────────────
+// Short of bodies for this match? Post the positions you need and the spots
+// show up in every player's Fill In feed. Guests pay Unitr a flat fee to join
+// — nothing about the team's own pitch split changes.
+const RINGER_POSITIONS = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
+const RINGER_FEE_PENCE = 500;
+
+type RingerRequestRow = { id: string; positions: string[]; spots: number; notes: string | null; status: string };
+type RingerSignup = { player_id: string; name: string; position: string | null };
+
+function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; teamId: string; userId: string }) {
+  const [request, setRequest] = useState<RingerRequestRow | null | undefined>(undefined);
+  const [signups, setSignups] = useState<RingerSignup[]>([]);
+  const [positions, setPositions] = useState<string[]>([]);
+  const [spots, setSpots] = useState(1);
+  const [notes, setNotes] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const { data, error: reqErr } = await supabase.from("ringer_requests")
+        .select("id, positions, spots, notes, status")
+        .eq("match_id", matchId).eq("team_id", teamId).maybeSingle();
+      if (reqErr) {
+        // Table missing — the migration hasn't been run on this database.
+        setError("Ringer requests aren't set up yet — run supabase_ringers.sql.");
+        setRequest(null);
+        return;
+      }
+      setRequest(data ?? null);
+      if (data) {
+        setPositions(data.positions ?? []);
+        setSpots(data.spots ?? 1);
+        setNotes(data.notes ?? "");
+        const { data: su } = await supabase.from("ringer_signups")
+          .select("player_id, position").eq("request_id", data.id);
+        const ids = (su ?? []).map((s) => s.player_id);
+        const { data: profs } = ids.length
+          ? await supabase.from("profiles").select("id, full_name").in("id", ids)
+          : { data: [] as { id: string; full_name: string }[] };
+        const nameById = new Map((profs ?? []).map((p) => [p.id, p.full_name as string]));
+        setSignups((su ?? []).map((s) => ({
+          player_id: s.player_id,
+          name: nameById.get(s.player_id) ?? "Player",
+          position: s.position,
+        })));
+      }
+    }
+    load();
+  }, [matchId, teamId]);
+
+  const togglePosition = (p: string) =>
+    setPositions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+
+  const handleSave = async () => {
+    setBusy(true);
+    setError(null);
+    const { data, error: saveErr } = await supabase.from("ringer_requests").upsert({
+      match_id: matchId,
+      team_id: teamId,
+      posted_by: userId,
+      positions,
+      spots,
+      notes: notes.trim() || null,
+      price_pence: RINGER_FEE_PENCE,
+      status: "open",
+    }, { onConflict: "match_id,team_id" }).select("id, positions, spots, notes, status").maybeSingle();
+    if (saveErr || !data) setError(saveErr?.message ?? "Couldn't post the request.");
+    else { setRequest(data); setExpanded(false); }
+    setBusy(false);
+  };
+
+  const handleClose = async () => {
+    if (!request) return;
+    setBusy(true);
+    await supabase.from("ringer_requests").update({ status: "cancelled" }).eq("id", request.id);
+    setRequest({ ...request, status: "cancelled" });
+    setBusy(false);
+  };
+
+  const isLive = request?.status === "open";
+  const spotsLeft = request ? Math.max(0, request.spots - signups.length) : 0;
+
+  return (
+    <div className="mt-4 bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-sm font-semibold">Need a ringer?</p>
+        {isLive && (
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">
+            {spotsLeft} spot{spotsLeft === 1 ? "" : "s"} left
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-text-secondary mb-3">
+        Post the positions you&apos;re short and players can buy in for £{(RINGER_FEE_PENCE / 100).toFixed(2)}.
+        Ringers join your squad but aren&apos;t part of your team&apos;s payment split.
+      </p>
+
+      {signups.length > 0 && (
+        <div className="bg-background border border-border rounded-xl p-3 mb-3 space-y-2">
+          <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Joined</p>
+          {signups.map((s) => (
+            <div key={s.player_id} className="flex items-center gap-2">
+              <p className="flex-1 text-sm truncate">{s.name}</p>
+              <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Paid</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {request === undefined ? (
+        <div className="py-2 text-center"><div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
+      ) : expanded || !request || request.status !== "open" ? (
+        <div className="space-y-3">
+          <div>
+            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Positions needed</p>
+            <div className="flex flex-wrap gap-1.5">
+              {RINGER_POSITIONS.map((p) => (
+                <button key={p} type="button" onClick={() => togglePosition(p)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${positions.includes(p) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+            {positions.length === 0 && <p className="text-[10px] text-text-secondary mt-1.5">None selected — the post will say &quot;any position&quot;.</p>}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-text-secondary flex-1">Players needed</p>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setSpots((s) => Math.max(1, s - 1))}
+                className="w-8 h-8 rounded-lg border border-border text-text-secondary font-bold">−</button>
+              <span className="w-6 text-center text-sm font-bold">{spots}</span>
+              <button type="button" onClick={() => setSpots((s) => Math.min(11, s + 1))}
+                className="w-8 h-8 rounded-lg border border-border text-text-secondary font-bold">+</button>
+            </div>
+          </div>
+
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            placeholder="Anything they should know? (e.g. bring dark shirt)"
+            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm placeholder:text-text-secondary" />
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            {request?.status === "open" && (
+              <button type="button" onClick={() => setExpanded(false)} disabled={busy}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
+                Cancel
+              </button>
+            )}
+            <button type="button" onClick={handleSave} disabled={busy || !!error}
+              className="flex-[2] py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              {busy ? "Posting…" : request ? "Update Request" : "Post Ringer Request"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-text-secondary">
+            Live · {request.positions.length === 0 ? "Any position" : request.positions.join(", ")} · {request.spots} needed
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setExpanded(true)}
+              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">Edit</button>
+            <button type="button" onClick={handleClose} disabled={busy}
+              className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-sm font-semibold text-red-400 disabled:opacity-50">
+              {busy ? "…" : "Close Request"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ManageMatchPage({ params }: { params: { matchId: string } }) {
@@ -148,16 +329,25 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       const { data: bk } = await supabase.from("pitch_bookings").select("id").eq("post_id", m.post_id).maybeSingle();
       setBookingId(bk?.id ?? null);
 
-      const { data: confs } = await supabase
+      // is_ringer arrives with supabase_ringers.sql. Before that migration the
+      // column doesn't exist and selecting it fails the whole query, taking the
+      // squad list with it — so fall back to the pre-ringer shape.
+      type ConfRow = { player_id: string; team_id: string; status: string; is_ringer?: boolean; profiles: { full_name: string } | null };
+      const withRinger = await supabase
+        .from("match_confirmations")
+        .select("player_id, team_id, status, is_ringer, profiles(full_name)")
+        .eq("match_id", m.id);
+      const confs = (withRinger.data ?? (await supabase
         .from("match_confirmations")
         .select("player_id, team_id, status, profiles(full_name)")
-        .eq("match_id", m.id);
+        .eq("match_id", m.id)).data) as ConfRow[] | null;
 
       const mapped = (confs ?? []).map((c) => ({
         player_id: c.player_id,
         team_id: c.team_id,
         status: c.status,
         full_name: (c.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown",
+        is_ringer: Boolean((c as { is_ringer?: boolean }).is_ringer),
       }));
       setConfirmations(mapped);
       setMyConfirmStatus(mapped.find((c) => c.player_id === currentUser.id)?.status ?? null);
@@ -273,9 +463,11 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     }
 
     // Actual participants on my team = those confirmed for the (possibly retimed)
-    // slot, minus anyone the captain explicitly excluded from this charge.
+    // slot, minus anyone the captain explicitly excluded from this charge, minus
+    // ringers — a guest paid Unitr a flat fee and owes the team nothing.
     const participants = confirmations.filter(
-      (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed" && !excluded.has(c.player_id)
+      (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
+        && !c.is_ringer && !excluded.has(c.player_id)
     );
     if (participants.length === 0) {
       setSettleError("No players selected to charge.");
@@ -413,7 +605,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const timeChanged = originalPost
     ? (originalPost.match_time !== match.match_time || originalPost.match_date !== match.match_date)
     : false;
-  const confirmedCount = confirmations.filter((c) => effectiveStatus(c.status, timeChanged) === "confirmed").length;
+  // Payers only — a ringer plays but takes no share of the pitch fee.
+  const confirmedCount = confirmations.filter(
+    (c) => effectiveStatus(c.status, timeChanged) === "confirmed" && !c.is_ringer
+  ).length;
   const totalPlayers = confirmations.length > 0 ? confirmations.length : 22;
   const effectivePlayers = confirmedCount > 0 ? confirmedCount : totalPlayers;
   const perPlayer = ((match.confirmedPitch.price * 1.05) / effectivePlayers).toFixed(2);
@@ -428,7 +623,9 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const myParticipants = confirmations.filter(
     (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
   );
-  const chargedParticipants = myParticipants.filter((c) => !excluded.has(c.player_id));
+  // Ringers play but don't pay — the team's pitch fee is split between its own
+  // players only, so the per-player share must not count guests.
+  const chargedParticipants = myParticipants.filter((c) => !c.is_ringer && !excluded.has(c.player_id));
   const feePence = Math.round(match.confirmedPitch.price * 100);
   const halfPence = Math.floor(feePence / 2);
   const isPoster = myTeamId === match.postingTeamId;
@@ -600,6 +797,9 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                         <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
                       </div>
                       <p className="flex-1 text-sm truncate">{p.full_name}</p>
+                      {p.is_ringer && (
+                        <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+                      )}
                       {inLineup
                         ? <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">Starting</span>
                         : <span className="text-[10px] font-semibold text-text-secondary">Bench</span>}
@@ -618,6 +818,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           ) : Object.keys(lineup).length === 0 ? (
             <p className="text-xs text-text-secondary text-center mt-3">The captain hasn&apos;t set the lineup yet.</p>
           ) : null}
+
+          {isCaptain && myTeamId && user && (
+            <RingerRequestPanel matchId={params.matchId} teamId={myTeamId} userId={user.id} />
+          )}
         </div>
       )}
 

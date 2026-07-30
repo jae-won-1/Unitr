@@ -5,6 +5,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import HomeSearchBar from "@/components/HomeSearchBar";
+import RingerFeed from "@/components/RingerFeed";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 import { isUpcomingDate, sortKey } from "@/lib/match-dates";
 
@@ -210,6 +211,32 @@ function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
   );
 }
 
+// Home splits into the usual dashboard and a Fill In feed of ringer spots —
+// the quick way into a game when your team has nothing on, or you have no team
+// yet. Deep-linkable via /?tab=ringer.
+type HomeTab = "home" | "ringer";
+
+function useHomeTab() {
+  const [tab, setTab] = useState<HomeTab>("home");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "ringer") setTab("ringer");
+  }, []);
+  return { tab, setTab };
+}
+
+function HomeTabs({ tab, setTab }: { tab: HomeTab; setTab: (t: HomeTab) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      {([{ key: "home", label: "Home" }, { key: "ringer", label: "Fill In" }] as { key: HomeTab; label: string }[]).map((t) => (
+        <button key={t.key} type="button" onClick={() => setTab(t.key)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function EmptySocialFeed() {
   return (
     <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
@@ -223,11 +250,14 @@ function EmptySocialFeed() {
 function NewUserHome() {
   const { user } = useAuth();
   const { teams, loading: teamsLoading } = useNearbyTeams();
+  const { tab, setTab } = useHomeTab();
 
   // Logged in but not yet in a team — show onboarding
   if (user) {
     return (
       <div className="flex flex-col gap-6">
+        <HomeTabs tab={tab} setTab={setTab} />
+        {tab === "ringer" ? <RingerFeed /> : <>
         <section className="rounded-2xl bg-surface-2 border border-border p-5">
           <p className="text-xs font-semibold text-accent uppercase tracking-wider mb-1">Welcome to Unitr</p>
           <h2 className="text-lg font-bold mb-1">You&apos;re in — now pick your path</h2>
@@ -266,6 +296,7 @@ function NewUserHome() {
           )}
         </section>
         <EmptySocialFeed />
+        </>}
       </div>
     );
   }
@@ -309,9 +340,13 @@ function NewUserHome() {
 
 function PlayerHome({ userId }: { userId: string | undefined }) {
   const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
+  const { tab, setTab } = useHomeTab();
 
   return (
     <div className="flex flex-col gap-6">
+      <HomeTabs tab={tab} setTab={setTab} />
+
+      {tab === "ringer" ? <RingerFeed /> : <>
 
       {/* Availability notification */}
       <a href="/my-team/availability" className="flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4">
@@ -360,15 +395,20 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
         </div>
         <EmptySocialFeed />
       </section>
+      </>}
     </div>
   );
 }
 
 function CaptainHome({ userId }: { userId: string | undefined }) {
   const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
+  const { tab, setTab } = useHomeTab();
 
   return (
     <div className="flex flex-col gap-6">
+      <HomeTabs tab={tab} setTab={setTab} />
+
+      {tab === "ringer" ? <RingerFeed /> : <>
 
       {/* Quick actions */}
       <section>
@@ -439,6 +479,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
         </div>
         <EmptySocialFeed />
       </section>
+      </>}
     </div>
   );
 }

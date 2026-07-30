@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import BookPitchPanel from "@/components/BookPitchPanel";
 import MyBookingsPanel from "@/components/MyBookingsPanel";
+import RingerFeed from "@/components/RingerFeed";
 
 type MatchTab = "matches" | "tournaments" | "ringer";
 
@@ -99,12 +100,6 @@ type Tournament = {
   // Pending-invitation discount off the buy-in for the viewing captain's team (0 if none).
   inviteDiscountPence: number;
 };
-
-const ringerGames = [
-  { id: "r-1", team: "Hackney United", format: "5-a-side", location: "Hackney Marshes", time: "Today, 6:00 PM", spotsNeeded: 2, fullPrice: 12, ringerPrice: 6, level: "Casual", description: "Missing 2 players for our regular weekly game. Come join!" },
-  { id: "r-2", team: "East End FC", format: "7-a-side", location: "Victoria Park", time: "Sat, 10:00 AM", spotsNeeded: 1, fullPrice: 15, ringerPrice: 8, level: "Competitive", description: "One of our regulars is injured. Need a solid midfielder to fill in." },
-  { id: "r-3", team: "Shoreditch Rovers", format: "5-a-side", location: "Powerleague Shoreditch", time: "Sun, 2:00 PM", spotsNeeded: 3, fullPrice: 14, ringerPrice: 7, level: "Casual", description: "Got a few lads away on holiday. Come join for a relaxed Sunday game." },
-];
 
 function Stars({ rating }: { rating: number }) {
   if (rating === 0) return <div className="flex items-center gap-1"><span className="text-xs text-text-secondary">No rating yet</span></div>;
@@ -785,39 +780,6 @@ function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: stri
   );
 }
 
-// ── Ringer Card ───────────────────────────────────────────────
-function RingerCard({ game }: { game: typeof ringerGames[0] }) {
-  return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-accent">{game.team.split(" ").map((w) => w[0]).join("").slice(0,2)}</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold">{game.team}</p>
-            <p className="text-xs text-text-secondary">{game.format} · {game.location}</p>
-          </div>
-        </div>
-        <span className={`text-xs font-medium px-2 py-1 rounded-lg ${game.level === "Casual" ? "bg-blue-500/10 text-blue-400" : "bg-orange-500/10 text-orange-400"}`}>{game.level}</span>
-      </div>
-      <p className="text-xs text-text-secondary mb-2">{game.description}</p>
-      <div className="flex items-center gap-2 text-xs text-text-secondary mb-3">
-        <span>{game.time}</span>
-        <span className="w-1 h-1 rounded-full bg-border" />
-        <span className="text-accent font-semibold">{game.spotsNeeded} spot{game.spotsNeeded > 1 ? "s" : ""} needed</span>
-      </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-lg font-bold text-accent">£{game.ringerPrice}</span>
-          <span className="text-xs text-text-secondary ml-1 line-through">£{game.fullPrice}</span>
-        </div>
-        <button className="px-5 py-2 rounded-xl bg-accent text-black text-sm font-bold">Join as Ringer</button>
-      </div>
-    </div>
-  );
-}
-
 // ── Tournament list — hosted-by-you first, under its own heading ──
 function TournamentList({ tournaments, myTeamId, myTeamName, onJoined }: {
   tournaments: Tournament[]; myTeamId: string | null; myTeamName: string | null; onJoined: (id: string) => void;
@@ -1269,17 +1231,7 @@ function useMyPosts(captainId?: string) {
 
 // ── POV Views ─────────────────────────────────────────────────
 function NewUserPlay() {
-  return (
-    <div className="space-y-4">
-      <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
-        <p className="text-sm font-semibold text-accent mb-1">Fill in for a Match</p>
-        <p className="text-xs text-text-secondary leading-relaxed">
-          No team? No problem. Join a game as a temporary ringer at a discounted rate.
-        </p>
-      </div>
-      {ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
-    </div>
-  );
+  return <RingerFeed />;
 }
 
 function PlayerPlay() {
@@ -1326,7 +1278,7 @@ function PlayerPlay() {
         )
       )}
 
-      {tab === "ringer" && ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
+      {tab === "ringer" && <RingerFeed />}
     </div>
   );
 }
@@ -1401,16 +1353,9 @@ function CaptainPlay() {
         </div>
       )}
 
-      {tab === "ringer" && (
-        <div className="space-y-4">
-          <div className="bg-surface-2 border border-border rounded-xl p-4">
-            <p className="text-sm font-semibold mb-1">Need a Ringer?</p>
-            <p className="text-xs text-text-secondary mb-3">Post a ringer request if your team is short players.</p>
-            <button className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Post Ringer Request</button>
-          </div>
-          {ringerGames.map((g) => <RingerCard key={g.id} game={g} />)}
-        </div>
-      )}
+      {/* Captains post ringer requests from Manage Match (the fixture there knows
+          the date, pitch and squad), so this tab is browse-only for them too. */}
+      {tab === "ringer" && <RingerFeed />}
     </div>
   );
 }

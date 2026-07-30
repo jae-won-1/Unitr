@@ -412,16 +412,22 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
         .from("pitch_bookings").select("id").eq("post_id", params.matchId).maybeSingle();
       const bookingId = booking?.id ?? null;
 
-      // Count players (both teams) — used for the individual split display
+      // Count players (both teams) — used for the individual split display.
+      // Ringers are excluded: they pay Unitr a flat fee instead of a share, so
+      // counting them would understate what everyone else owes. (is_ringer
+      // arrives with supabase_ringers.sql; selecting a missing column fails the
+      // whole query, so fall back to the pre-ringer shape.)
       let playerCount = 22;
       const { data: matchRecord } = await supabase
         .from("matches").select("id").eq("post_id", params.matchId).maybeSingle();
       if (matchRecord) {
-        const { count } = await supabase
-          .from("match_confirmations")
-          .select("id", { count: "exact", head: true })
-          .eq("match_id", matchRecord.id);
-        if (count && count > 0) playerCount = count;
+        const withRinger = await supabase
+          .from("match_confirmations").select("id, is_ringer").eq("match_id", matchRecord.id);
+        const confRows = (withRinger.data ?? (await supabase
+          .from("match_confirmations").select("id").eq("match_id", matchRecord.id)).data
+        ) as { id: string; is_ringer?: boolean }[] | null;
+        const count = (confRows ?? []).filter((c) => !c.is_ringer).length;
+        if (count > 0) playerCount = count;
       }
 
       // Look up any card already saved on this player's profile.
