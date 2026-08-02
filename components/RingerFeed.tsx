@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
+import DateDial, { countByDate } from "@/components/DateDial";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
 // shortest path in the app: see the price, see the match, pay, you're in the
@@ -230,9 +231,13 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
 }
 
 // ── Feed ──────────────────────────────────────────────────────
-export default function RingerFeed() {
+export default function RingerFeed({ showIntro = true, showDateDial = false }: {
+  showIntro?: boolean;
+  showDateDial?: boolean;
+} = {}) {
   const { user } = useAuth();
   const { posts, loading, unavailable, reload } = useRingerPosts(user?.id);
+  const [dateKey, setDateKey] = useState<string | null>(null);
   const [target, setTarget] = useState<RingerPost | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -285,29 +290,42 @@ export default function RingerFeed() {
     }
   };
 
+  const counts = countByDate(posts, (p) => p.date);
+  const visible = dateKey ? posts.filter((p) => toDateKey(p.date) === dateKey) : posts;
+
   return (
     <div className="space-y-4">
-      <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
-        <p className="text-sm font-semibold text-accent mb-1">Fill in for a Match</p>
-        <p className="text-xs text-text-secondary leading-relaxed">
-          No team, or no game this week? Join someone else&apos;s match as a one-off guest.
-          Flat £5, pay by card, and you&apos;re straight into the squad.
-        </p>
-      </div>
+      {showIntro && (
+        <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
+          <p className="text-sm font-semibold text-accent mb-1">Fill in for a Match</p>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            No team, or no game this week? Join someone else&apos;s match as a one-off guest.
+            Flat £5, pay by card, and you&apos;re straight into the squad.
+          </p>
+        </div>
+      )}
+
+      {showDateDial && !loading && <DateDial value={dateKey} onChange={setDateKey} counts={counts} />}
 
       {loading ? (
         <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
-      ) : posts.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
-          <p className="text-sm text-text-secondary">No teams are looking for players right now.</p>
+          <p className="text-sm text-text-secondary">
+            {posts.length > 0
+              ? "No spots open on this day."
+              : "No teams are looking for players right now."}
+          </p>
           <p className="text-xs text-text-secondary mt-1">
-            {unavailable
+            {posts.length > 0
+              ? "Try another date, or pick All to see everything."
+              : unavailable
               ? "Ringer requests aren't set up yet — run supabase_ringers.sql."
               : "Check back soon — captains post here when they're short."}
           </p>
         </div>
       ) : (
-        posts.map((p) => <RingerCard key={p.id} post={p} onJoin={startJoin} />)
+        visible.map((p) => <RingerCard key={p.id} post={p} onJoin={startJoin} />)
       )}
 
       {target && (

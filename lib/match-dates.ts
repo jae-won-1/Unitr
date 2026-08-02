@@ -48,3 +48,22 @@ export function isUpcomingDate(raw: string | null | undefined): boolean {
 export function sortKey(raw: string | null | undefined, time?: string | null): string {
   return `${toDateKey(raw)} ${(time ?? "").padStart(5, "0")}`;
 }
+
+// Has kickoff already passed? Compares the stored naive "YYYY-MM-DD" + "HH:mm"
+// against now as Europe/London wall-clock strings, so the answer never depends
+// on the viewer's device timezone — a phone set to Korea time would otherwise
+// read a UK kickoff ~9h early and hide matches that haven't started.
+export function isKickoffPast(rawDate: string, time: string): boolean {
+  const key = toDateKey(rawDate);
+  if (!key) return false;
+  const kickoff = `${key} ${(time ?? "").padStart(5, "0")}:00`;
+  return kickoff < new Date().toLocaleString("sv-SE", { timeZone: "Europe/London" });
+}
+
+// "Sat, 13 Jun · 16:00" from either stored date shape.
+export function fmtKickoff(rawDate: string, time: string): string {
+  const key = toDateKey(rawDate);
+  if (!key) return `${rawDate} · ${time}`;
+  const d = new Date(`${key}T12:00:00`);
+  return `${d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · ${time}`;
+}

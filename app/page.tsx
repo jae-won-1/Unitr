@@ -6,6 +6,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import HomeSearchBar from "@/components/HomeSearchBar";
 import RingerFeed from "@/components/RingerFeed";
+import QuickNav from "@/components/QuickNav";
+import TeamsPanel from "@/components/TeamsPanel";
+import PlayerActionStrip from "@/components/PlayerActionStrip";
+import GameFeed from "@/components/GameFeed";
+import TeamCreditsBar from "@/components/TeamCreditsBar";
+import PollStatusTile from "@/components/PollStatusTile";
+import MyPostCard, { useMyPosts } from "@/components/MyPostCard";
+import SuggestionsStrip from "@/components/SuggestionsStrip";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 import { isUpcomingDate, sortKey } from "@/lib/match-dates";
 
@@ -21,21 +29,115 @@ type ConfirmedFixture = {
 };
 
 // ── Shared data ──────────────────────────────────────────────
-type NearbyTeam = { id: string; name: string; location: string; level: string; format: string; description: string };
-
-function useNearbyTeams() {
-  const [teams, setTeams] = useState<NearbyTeam[]>([]);
-  const [loading, setLoading] = useState(true);
+// A join request leaves the requester classed as `new_user` until a captain
+// approves it — RoleContext only counts approved memberships. Without this the
+// user lands back on an identical onboarding home with no trace of the request
+// and re-sends it, so surface the pending state explicitly.
+// The viewer's team, whether they captain it or were approved into it.
+function useMyTeamId(userId: string | undefined) {
+  const [teamId, setTeamId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("teams").select("id, name, location, level, format, description").limit(3)
-      .then(({ data }) => {
-        setTeams(data ?? []);
-        setLoading(false);
-      });
-  }, []);
+    if (!userId) { setTeamId(null); return; }
+    async function load() {
+      const { data: own } = await supabase.from("teams").select("id").eq("captain_id", userId!).maybeSingle();
+      if (own) { setTeamId(own.id); return; }
+      const { data: mem } = await supabase.from("team_members")
+        .select("team_id").eq("player_id", userId!).eq("status", "approved").maybeSingle();
+      setTeamId(mem?.team_id ?? null);
+    }
+    load();
+  }, [userId]);
 
-  return { teams, loading };
+  return teamId;
+}
+
+type PendingRequest = { teamId: string; teamName: string };
+
+function usePendingJoinRequests(userId: string | undefined) {
+  const [pending, setPending] = useState<PendingRequest[]>([]);
+
+  useEffect(() => {
+    if (!userId) { setPending([]); return; }
+
+    async function load() {
+      const { data: rows } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("player_id", userId!)
+        .eq("status", "pending");
+      if (!rows || rows.length === 0) { setPending([]); return; }
+
+      const { data: teams } = await supabase
+        .from("teams").select("id, name").in("id", rows.map((r) => r.team_id));
+      setPending((teams ?? []).map((t) => ({ teamId: t.id, teamName: t.name as string })));
+    }
+    load();
+  }, [userId]);
+
+  return pending;
+}
+
+// Players waiting on the captain to approve them. Exception-based: the count
+// already lives in the TopBar bell, so home only speaks up when there is
+// actually something to review.
+function useJoinRequestCount(teamId: string | null) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!teamId) { setCount(0); return; }
+    supabase.from("team_members")
+      .select("id", { count: "exact", head: true })
+      .eq("team_id", teamId).eq("status", "pending")
+      .then(({ count: c }) => setCount(c ?? 0));
+  }, [teamId]);
+
+  return count;
+}
+
+function JoinRequestsStrip({ count }: { count: number }) {
+  return (
+    <a href="/my-team/transfer"
+      className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-2xl p-4">
+      <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-accent">
+          {count} player{count === 1 ? "" : "s"} want{count === 1 ? "s" : ""} to join
+        </p>
+        <p className="text-xs text-text-secondary mt-0.5 truncate">Review and approve them in Transfer Window</p>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </a>
+  );
+}
+
+function PendingRequestStrip({ request }: { request: PendingRequest }) {
+  return (
+    <a href={`/my-team/${request.teamId}`}
+      className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4">
+      <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-yellow-400">Request pending</p>
+        <p className="text-xs text-text-secondary mt-0.5 truncate">
+          Waiting on {request.teamName} to approve you
+        </p>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <path d="M5 12h14M12 5l7 7-7 7" />
+      </svg>
+    </a>
+  );
 }
 
 function useConfirmedFixtures(userId: string | undefined) {
@@ -157,26 +259,6 @@ function UpcomingFixturesList({ fixtures }: { fixtures: ConfirmedFixture[] }) {
 }
 
 // ── Sub-components ───────────────────────────────────────────
-function TeamCard({ team }: { team: NearbyTeam }) {
-  return (
-    <a href={`/my-team/${team.id}`} className="block bg-surface-2 border border-border rounded-2xl p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-accent">{team.name.split(" ").map((w) => w[0]).join("").slice(0,2)}</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{team.name}</p>
-          <p className="text-xs text-text-secondary">{team.location}</p>
-        </div>
-        <span className={`text-xs font-medium px-2 py-1 rounded-lg flex-shrink-0 ${team.level === "Casual" ? "bg-blue-500/10 text-blue-400" : team.level === "Competitive" ? "bg-orange-500/10 text-orange-400" : "bg-purple-500/10 text-purple-400"}`}>
-          {team.level}
-        </span>
-      </div>
-      {team.description && <p className="text-xs text-text-secondary line-clamp-1">{team.description}</p>}
-    </a>
-  );
-}
-
 function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
   const isTournament = fixture.kind === "tournament";
   const Wrapper = isTournament ? "a" : "div";
@@ -211,28 +293,26 @@ function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
   );
 }
 
-// Home splits into the usual dashboard and a Fill In feed of ringer spots —
-// the quick way into a game when your team has nothing on, or you have no team
-// yet. Deep-linkable via /?tab=ringer.
-type HomeTab = "home" | "ringer";
-
-function useHomeTab() {
-  const [tab, setTab] = useState<HomeTab>("home");
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "ringer") setTab("ringer");
-  }, []);
-  return { tab, setTab };
-}
-
-function HomeTabs({ tab, setTab }: { tab: HomeTab; setTab: (t: HomeTab) => void }) {
+// The game-type toggle above the feed. For someone without a team, Matches and
+// Tournaments are both team-entry only, so they render greyed rather than
+// hidden — the point is to show what joining a team unlocks.
+function TeamlessFeedToggle() {
   return (
-    <div className="flex items-center gap-2">
-      {([{ key: "home", label: "Home" }, { key: "ringer", label: "Fill In" }] as { key: HomeTab; label: string }[]).map((t) => (
-        <button key={t.key} type="button" onClick={() => setTab(t.key)}
-          className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
-          {t.label}
-        </button>
-      ))}
+    <div>
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <span className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border bg-accent text-black border-accent">
+          Fill In
+        </span>
+        {["Matches", "Tournaments"].map((label) => (
+          <span key={label}
+            className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border bg-surface-2 text-text-secondary border-border opacity-40 cursor-not-allowed">
+            {label}
+          </span>
+        ))}
+      </div>
+      <p className="text-[11px] text-text-secondary mt-2">
+        Matches and tournaments are team entries — join or register a team to unlock them.
+      </p>
     </div>
   );
 }
@@ -249,54 +329,47 @@ function EmptySocialFeed() {
 // ── POV Views ────────────────────────────────────────────────
 function NewUserHome() {
   const { user } = useAuth();
-  const { teams, loading: teamsLoading } = useNearbyTeams();
-  const { tab, setTab } = useHomeTab();
+  const pending = usePendingJoinRequests(user?.id);
 
-  // Logged in but not yet in a team — show onboarding
+  // Registered but not yet in a team. The shape mirrors the other two homes —
+  // quick nav, status strips, then a feed — so nothing about the page moves
+  // once they join a team.
   if (user) {
     return (
       <div className="flex flex-col gap-6">
-        <HomeTabs tab={tab} setTab={setTab} />
-        {tab === "ringer" ? <RingerFeed /> : <>
-        <section className="rounded-2xl bg-surface-2 border border-border p-5">
-          <p className="text-xs font-semibold text-accent uppercase tracking-wider mb-1">Welcome to Unitr</p>
-          <h2 className="text-lg font-bold mb-1">You&apos;re in — now pick your path</h2>
-          <p className="text-text-secondary text-sm">Register your own team as captain, or find an existing team to join.</p>
-        </section>
-        <div className="grid grid-cols-2 gap-3">
-          <a href="/my-team/create" className="bg-accent text-black rounded-2xl p-4 flex flex-col gap-2">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <QuickNav ringerHref="#ringer" />
+
+        {pending.map((p) => <PendingRequestStrip key={p.teamId} request={p} />)}
+
+        <a href="/my-team/create" className="bg-accent text-black rounded-2xl p-4 flex items-center gap-3">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-bold">Register Your Team</p>
             <p className="text-xs font-normal opacity-70">Become a captain</p>
-          </a>
-          <a href="/my-team" className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <p className="text-sm font-bold">Find a Team</p>
-            <p className="text-xs text-text-secondary">Browse and request to join</p>
-          </a>
-        </div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+
+        <TeamsPanel />
+
+        <section id="ringer" className="scroll-mt-20 space-y-4">
+          <TeamlessFeedToggle />
+          <RingerFeed showIntro={false} showDateDial />
+        </section>
+
         <section>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="font-bold">Teams Near You</h3>
-              <p className="text-xs text-text-secondary mt-0.5">Find a team to join</p>
+              <h3 className="font-bold">Your Area</h3>
+              <p className="text-xs text-text-secondary mt-0.5">Results, highlights &amp; local news</p>
             </div>
-            <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
           </div>
-          {teamsLoading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
-          ) : teams.length === 0 ? (
-            <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
-              <p className="text-sm text-text-secondary">No teams registered yet.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {teams.map((t) => <TeamCard key={t.id} team={t} />)}
-            </div>
-          )}
+          <EmptySocialFeed />
         </section>
-        <EmptySocialFeed />
-        </>}
       </div>
     );
   }
@@ -314,76 +387,47 @@ function NewUserHome() {
           <a href="/login" className="flex-1 py-3 rounded-xl border border-border text-text-primary font-semibold text-sm text-center">Sign In</a>
         </div>
       </section>
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-bold">Teams Near You</h3>
-            <p className="text-xs text-text-secondary mt-0.5">Find a team to join</p>
-          </div>
-          <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
-        </div>
-        {teamsLoading ? (
-          <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
-        ) : teams.length === 0 ? (
-          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
-            <p className="text-sm text-text-secondary">No teams registered yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {teams.map((t) => <TeamCard key={t.id} team={t} />)}
-          </div>
-        )}
-      </section>
+      <QuickNav />
+      <TeamsPanel />
     </div>
   );
 }
 
 function PlayerHome({ userId }: { userId: string | undefined }) {
   const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
-  const { tab, setTab } = useHomeTab();
+  const teamId = useMyTeamId(userId);
+  const next = fixtures[0] ?? null;
 
   return (
     <div className="flex flex-col gap-6">
-      <HomeTabs tab={tab} setTab={setTab} />
+      <QuickNav />
 
-      {tab === "ringer" ? <RingerFeed /> : <>
+      {/* What the captain needs from you — both resolve in a popup */}
+      {userId && <PlayerActionStrip teamId={teamId} userId={userId} />}
 
-      {/* Availability notification */}
-      <a href="/my-team/availability" className="flex items-center gap-3 bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4">
-        <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FB923C" strokeWidth="2" strokeLinecap="round">
-            <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-          </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-orange-400">Action needed</p>
-          <p className="text-xs text-text-secondary mt-0.5 truncate">Captain wants your availability for the next match</p>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-      </a>
-
-      {/* Confirmed fixtures */}
+      {/* Next fixture only. Everything else lives in the calendar. */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-bold">Upcoming Fixtures</h3>
+            <h3 className="font-bold">Next Fixture</h3>
             <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
+          <a href="/my-team/availability" className="text-xs text-accent font-medium">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
-        ) : fixtures.length === 0 ? (
+        ) : !next ? (
           <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
             <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
             <p className="text-xs text-text-secondary mt-1">Matches will appear here once confirmed.</p>
           </div>
         ) : (
-          <UpcomingFixturesList fixtures={fixtures} />
+          <ConfirmedFixtureCard fixture={next} />
         )}
       </section>
+
+      {/* Games the team could enter */}
+      {userId && <GameFeed teamId={teamId} userId={userId} />}
 
       {/* Social feed */}
       <section>
@@ -395,79 +439,75 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
         </div>
         <EmptySocialFeed />
       </section>
-      </>}
     </div>
   );
 }
 
 function CaptainHome({ userId }: { userId: string | undefined }) {
   const { fixtures, loading: fixturesLoading } = useConfirmedFixtures(userId);
-  const { tab, setTab } = useHomeTab();
+  const teamId = useMyTeamId(userId);
+  const joinRequests = useJoinRequestCount(teamId);
+  const { posts: myPosts, removePost: removeMyPost } = useMyPosts(userId);
+  const next = fixtures[0] ?? null;
+  const myPost = myPosts[0] ?? null;
 
   return (
     <div className="flex flex-col gap-6">
-      <HomeTabs tab={tab} setTab={setTab} />
+      <QuickNav />
 
-      {tab === "ringer" ? <RingerFeed /> : <>
+      {joinRequests > 0 && <JoinRequestsStrip count={joinRequests} />}
 
-      {/* Quick actions */}
-      <section>
-        <h3 className="font-bold mb-3">Quick Actions</h3>
-        <div className="flex justify-between gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {[
-            {
-              label: "Fill in for Game", href: "/play?tab=ringer",
-              icon: <><circle cx="9" cy="7" r="4" /><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" /><path d="M19 8v6" /><path d="M16 11h6" /></>,
-            },
-            {
-              label: "Transfer Window", href: "/my-team/transfer",
-              icon: <><path d="M17 3l4 4-4 4" /><path d="M21 7H7" /><path d="M7 21l-4-4 4-4" /><path d="M3 17h14" /></>,
-            },
-            {
-              label: "Calendar", href: "/my-team/availability",
-              icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /></>,
-            },
-            {
-              label: "Book Court", href: "/book",
-              icon: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M12 5v14" /><circle cx="12" cy="12" r="3" /></>,
-            },
-            {
-              label: "Stats", href: "/profile",
-              icon: <><path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></>,
-            },
-          ].map((action) => (
-            <a key={action.label} href={action.href} className="flex flex-col items-center gap-2 flex-1 min-w-[64px]">
-              <span className="w-14 h-14 rounded-full bg-accent text-black flex items-center justify-center">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  {action.icon}
-                </svg>
-              </span>
-              <p className="text-[11px] font-semibold text-center leading-tight">{action.label}</p>
-            </a>
-          ))}
-        </div>
-      </section>
+      <SuggestionsStrip teamId={teamId} />
 
-      {/* Confirmed fixtures */}
+      {/* Money: credits, top up / settle up, payment status, settle payments */}
+      {userId && (
+        <section>
+          <h3 className="font-bold mb-2">Team Money</h3>
+          <TeamCreditsBar userId={userId} role="captain" />
+        </section>
+      )}
+
+      {/* Availability poll progress */}
+      <PollStatusTile teamId={teamId} />
+
+      {/* Next fixture only. Everything else lives in the calendar. */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-bold">Upcoming Fixtures</h3>
+            <h3 className="font-bold">Next Fixture</h3>
             <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team" className="text-xs text-accent font-medium">See all</a>
+          <a href="/my-team/availability" className="text-xs text-accent font-medium">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
-        ) : fixtures.length === 0 ? (
+        ) : !next ? (
           <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
             <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
             <a href="/play/create" className="inline-block mt-2 text-xs text-accent font-medium">Post a match to get started →</a>
           </div>
         ) : (
-          <UpcomingFixturesList fixtures={fixtures} />
+          <div className="space-y-2">
+            <ConfirmedFixtureCard fixture={next} />
+            {next.kind === "match" && (
+              <a href={`/my-team/match/${next.id}`}
+                className="block w-full py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold text-center">
+                Manage match
+              </a>
+            )}
+          </div>
         )}
       </section>
+
+      {/* Games to enter — captains act directly, with their own live post pinned above */}
+      {userId && (
+        <GameFeed
+          teamId={teamId}
+          userId={userId}
+          canAct
+          matchesHeader={myPost ? <MyPostCard post={myPost} onRemoved={removeMyPost} /> : null}
+        />
+      )}
 
       {/* Social feed */}
       <section>
@@ -479,7 +519,6 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
         </div>
         <EmptySocialFeed />
       </section>
-      </>}
     </div>
   );
 }
@@ -492,7 +531,7 @@ export default function HomePage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-16">
+    <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <HomeSearchBar />
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}
