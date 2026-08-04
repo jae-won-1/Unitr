@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import HomeSearchBar from "@/components/HomeSearchBar";
 import RingerFeed from "@/components/RingerFeed";
 import QuickNav from "@/components/QuickNav";
 import TeamsPanel from "@/components/TeamsPanel";
@@ -295,8 +294,10 @@ function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
 
 // The game-type toggle above the feed. For someone without a team, Matches and
 // Tournaments are both team-entry only, so they render greyed rather than
-// hidden — the point is to show what joining a team unlocks.
-function TeamlessFeedToggle() {
+// hidden — the point is to show what joining a team unlocks. A signed-out
+// visitor sees the identical control; only the note under it differs, because
+// for them the missing step is the account, not the team.
+function TeamlessFeedToggle({ note }: { note?: string }) {
   return (
     <div>
       <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -311,17 +312,8 @@ function TeamlessFeedToggle() {
         ))}
       </div>
       <p className="text-[11px] text-text-secondary mt-2">
-        Matches and tournaments are team entries — join or register a team to unlock them.
+        {note ?? "Matches and tournaments are team entries — join or register a team to unlock them."}
       </p>
-    </div>
-  );
-}
-
-function EmptySocialFeed() {
-  return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
-      <p className="text-sm text-text-secondary">No posts yet.</p>
-      <p className="text-xs text-text-secondary mt-1">Match results, highlights, and stats from your area will show up here.</p>
     </div>
   );
 }
@@ -337,7 +329,7 @@ function NewUserHome() {
   if (user) {
     return (
       <div className="flex flex-col gap-6">
-        <QuickNav ringerHref="#ringer" />
+        <QuickNav />
 
         {pending.map((p) => <PendingRequestStrip key={p.teamId} request={p} />)}
 
@@ -356,19 +348,9 @@ function NewUserHome() {
 
         <TeamsPanel />
 
-        <section id="ringer" className="scroll-mt-20 space-y-4">
+        <section className="space-y-4">
           <TeamlessFeedToggle />
           <RingerFeed showIntro={false} showDateDial />
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="font-bold">Your Area</h3>
-              <p className="text-xs text-text-secondary mt-0.5">Results, highlights &amp; local news</p>
-            </div>
-          </div>
-          <EmptySocialFeed />
         </section>
       </div>
     );
@@ -389,6 +371,19 @@ function NewUserHome() {
       </section>
       <QuickNav />
       <TeamsPanel />
+
+      {/* Match discovery, same shape as the teamless-but-registered home above.
+          A visitor should be able to see there are real games happening here
+          before being asked for anything — tapping a team or a match is what
+          raises the sign-up gate, not scrolling. */}
+      <section className="space-y-4">
+        <div>
+          <h3 className="font-bold">Matches</h3>
+          <p className="text-xs text-text-secondary mt-0.5">Teams near you looking for players</p>
+        </div>
+        <TeamlessFeedToggle note="Matches and tournaments are team entries — create an account and join a team to unlock them." />
+        <RingerFeed showIntro={false} showDateDial />
+      </section>
     </div>
   );
 }
@@ -412,7 +407,7 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
             <h3 className="font-bold">Next Fixture</h3>
             <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team/availability" className="text-xs text-accent font-medium">See all</a>
+          <a href="/calendar" className="text-xs text-accent font-medium">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
@@ -428,17 +423,6 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
 
       {/* Games the team could enter */}
       {userId && <GameFeed teamId={teamId} userId={userId} />}
-
-      {/* Social feed */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-bold">Your Area</h3>
-            <p className="text-xs text-text-secondary mt-0.5">Results, highlights &amp; local news</p>
-          </div>
-        </div>
-        <EmptySocialFeed />
-      </section>
     </div>
   );
 }
@@ -468,7 +452,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
       )}
 
       {/* Availability poll progress */}
-      <PollStatusTile teamId={teamId} />
+      <PollStatusTile teamId={teamId} userId={userId} />
 
       {/* Next fixture only. Everything else lives in the calendar. */}
       <section>
@@ -477,7 +461,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
             <h3 className="font-bold">Next Fixture</h3>
             <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/my-team/availability" className="text-xs text-accent font-medium">See all</a>
+          <a href="/calendar" className="text-xs text-accent font-medium">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
@@ -508,17 +492,6 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
           matchesHeader={myPost ? <MyPostCard post={myPost} onRemoved={removeMyPost} /> : null}
         />
       )}
-
-      {/* Social feed */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-bold">Your Area</h3>
-            <p className="text-xs text-text-secondary mt-0.5">Results, highlights &amp; local news</p>
-          </div>
-        </div>
-        <EmptySocialFeed />
-      </section>
     </div>
   );
 }
@@ -531,8 +504,9 @@ export default function HomePage() {
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
   return (
+    /* Search lives in the Transfer Market now — home is a dashboard of things
+       already happening to you, and a search box there only led away from it. */
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
-      <HomeSearchBar />
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}
       {role === "captain" && <CaptainHome userId={user?.id} />}

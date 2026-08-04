@@ -32,22 +32,21 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    label: "Play",
-    href: "/play",
+    label: "Calendar",
+    href: "/calendar",
     icon: (active) => (
       <svg
         width="24"
         height="24"
         viewBox="0 0 24 24"
-        fill={active ? "#00E676" : "none"}
+        fill="none"
         stroke={active ? "#00E676" : "#9E9E9E"}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-        <path d="M2 12h20" />
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
     ),
   },
@@ -94,7 +93,10 @@ export default function BottomNav() {
   if (role === "venue_manager") return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t border-border pb-safe">
+    // z-40, below the z-50 overlay floor. The nav is chrome: it renders after
+    // every page in the layout, so at an equal z-index it silently painted over
+    // the bottom of any sheet the page opened.
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-border pb-safe">
       <ul className="flex items-center justify-around h-16">
         {navItems.map((item) => {
           const isActive =

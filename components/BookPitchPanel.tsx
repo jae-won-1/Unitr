@@ -332,7 +332,7 @@ function BookingConfirmed({ pitch, date, time, posted, onDone }: {
           </p>
         </div>
         {posted && (
-          <a href="/play" className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">View in Play feed</a>
+          <a href="/calendar" className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">View in Calendar</a>
         )}
         <button onClick={onDone} className={`w-full py-3 rounded-xl font-bold text-sm ${posted ? "bg-surface-2 border border-border text-text-primary" : "bg-accent text-black"}`}>Done</button>
       </div>

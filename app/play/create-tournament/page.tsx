@@ -195,7 +195,7 @@ export default function CreateTournamentPage() {
     }).catch(() => {});
 
     setSaving(false);
-    router.push("/play?tab=tournaments");
+    router.push("/calendar?filter=tournaments");
   };
 
   return (

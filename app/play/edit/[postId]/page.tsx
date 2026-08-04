@@ -83,7 +83,7 @@ export default function EditMatchPostPage({ params }: { params: { postId: string
       <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-3">
         <p className="font-semibold">Post not found</p>
         <p className="text-sm text-text-secondary">This post doesn&apos;t exist or isn&apos;t yours to edit.</p>
-        <a href="/play" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm mt-2">Back to Play</a>
+        <a href="/calendar" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm mt-2">Back to Calendar</a>
       </div>
     );
   }

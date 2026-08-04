@@ -144,7 +144,9 @@ export default function TopBar() {
   const unreadCount = (joinRequests > 0 ? 1 : 0) + (openPosts > 0 ? 1 : 0) + (matchDues > 0 ? 1 : 0) + unreadNotifs;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 h-16 w-full bg-background flex items-center justify-between gap-2 px-4">
+    // z-40 alongside BottomNav — chrome sits below the z-50 overlay floor so a
+    // tall sheet can use the full viewport height instead of being clipped.
+    <div className="fixed top-0 left-0 right-0 z-40 h-16 w-full bg-background flex items-center justify-between gap-2 px-4">
 
       {/* ── Logo ── */}
       <a href="/" className="text-xl font-bold tracking-tight flex-shrink-0">
@@ -237,7 +239,7 @@ export default function TopBar() {
             </a>
 
             {/* Pinned: Open Match Posts */}
-            <a href="/play" onClick={() => setNotifOpen(false)}
+            <a href="/calendar?filter=my_post" onClick={() => setNotifOpen(false)}
               className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors">
               <div className="w-8 h-8 rounded-full bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round">

@@ -317,7 +317,7 @@ export default function CreateMatchPage() {
     localStorage.removeItem("unitr_pitch_overrides");
     localStorage.removeItem("unitr_manual_dates");
     localStorage.removeItem("unitr_selected_poll_dates");
-    router.push("/play");
+    router.push("/calendar");
   };
 
   // The single original date/time the admin is posting for (used to flag which
@@ -543,7 +543,7 @@ export default function CreateMatchPage() {
                   Add another date
                 </button>
               )}
-              <a href="/my-team/availability"
+              <a href="/calendar"
                 className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm text-accent font-medium">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                 Collect team availability first
@@ -655,7 +655,7 @@ export default function CreateMatchPage() {
               autoPost
               onDone={(posted) => {
                 setShowBookModal(false);
-                if (posted) router.push("/play");
+                if (posted) router.push("/calendar");
                 else setLockInPitch("no");
               }}
             />
