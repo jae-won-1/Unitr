@@ -376,7 +376,7 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
       {editingDay !== null && editing && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4"
           onClick={() => setEditingDay(null)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4"
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             <p className="font-bold mb-4">{DAY_NAMES[editingDay]} Hours</p>
             <div className="grid grid-cols-2 gap-3 mb-5">
@@ -502,7 +502,7 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
 
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <p className="font-bold">New Pricing Rule</p>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium">Rule Name</label>

@@ -150,7 +150,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
   }, [selectedDate, pitch.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
       <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
         <div className="px-5 pb-6">
@@ -224,7 +224,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
 function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: string; time: string; onDone: () => void }) {
   const perPlayer = (pitch.price_per_hour / 22 * 1.05).toFixed(2);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 pb-16">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
         <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -944,7 +944,9 @@ function PitchesContent() {
 
       {/* SELECT MODE: sticky confirm bar — hidden while the detail panel is open so it doesn't cover the panel's controls */}
       {selectMode && !detailPitch && (
-        <div className="fixed bottom-20 left-0 right-0 z-[60] bg-surface border-t border-border px-4 pt-3 pb-3">
+        /* z-40: chrome tier. Above the map layers, below the z-50 overlay floor
+           so the confirm dialog isn't painted over by this bar. */
+        <div className="fixed bottom-20 left-0 right-0 z-40 bg-surface border-t border-border px-4 pt-3 pb-3">
           {pickedPitches.length > 0 && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto">
               {pickedPitches.map((p, i) => (

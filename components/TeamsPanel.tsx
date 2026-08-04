@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 
 // Team discovery list, laid out the way Plab lists recruiting teams: one row
 // per team, crest on the left, a single grey meta line underneath the name.
@@ -84,19 +86,32 @@ function Crest({ team }: { team: Team }) {
   );
 }
 
-function TeamRow({ team }: { team: Team }) {
+// Signed out, the row is a button that raises the sign-up gate instead of a
+// link — the team page reads memberships and squad data a guest can't see, so
+// intercepting here beats letting them land on a half-empty page.
+function TeamRow({ team, onGuestTap }: { team: Team; onGuestTap?: (team: Team) => void }) {
   const meta = [team.location, team.format, `${team.members} member${team.members === 1 ? "" : "s"}`]
     .filter(Boolean)
     .join(" · ");
-  return (
-    <a href={`/my-team/${team.id}`} className="flex items-center gap-3 py-3">
+  const inner = (
+    <>
       <Crest team={team} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold truncate">{team.name}</p>
         <p className="text-xs text-text-secondary truncate mt-0.5">{meta}</p>
       </div>
-    </a>
+    </>
   );
+  const className = "flex items-center gap-3 py-3 w-full text-left";
+
+  if (onGuestTap) {
+    return (
+      <button type="button" onClick={() => onGuestTap(team)} className={className}>
+        {inner}
+      </button>
+    );
+  }
+  return <a href={`/my-team/${team.id}`} className={className}>{inner}</a>;
 }
 
 function Chip({ label, active, onClick, disabled, caret }: {
@@ -122,9 +137,11 @@ function Chip({ label, active, onClick, disabled, caret }: {
 }
 
 export default function TeamsPanel() {
+  const { user } = useAuth();
   const { teams, loading } = useTeams();
   const [expanded, setExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [gate, setGate] = useState<GateTarget | null>(null);
 
   const [area, setArea] = useState<string | null>(null);
   const [format, setFormat] = useState<string | null>(null);
@@ -212,7 +229,17 @@ export default function TeamsPanel() {
         </div>
       ) : (
         <div className="bg-surface-2 border border-border rounded-2xl px-4 divide-y divide-border">
-          {shown.map((t) => <TeamRow key={t.id} team={t} />)}
+          {shown.map((t) => (
+            <TeamRow
+              key={t.id}
+              team={t}
+              onGuestTap={user ? undefined : (team) => setGate({
+                title: team.name,
+                subtitle: [team.location, team.format].filter(Boolean).join(" · ") || undefined,
+                unlocks: "see this squad and ask to join",
+              })}
+            />
+          ))}
           {filtered.length > COLLAPSED && (
             <button
               type="button"
@@ -231,6 +258,8 @@ export default function TeamsPanel() {
           )}
         </div>
       )}
+
+      <SignUpGate target={gate} onClose={() => setGate(null)} />
 
       {/* ── Filter sheet ── */}
       {sheetOpen && (

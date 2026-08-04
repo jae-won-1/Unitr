@@ -342,7 +342,7 @@ export default function ChallengePanel({
 
   if (allPitchesTaken) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
         <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -357,7 +357,7 @@ export default function ChallengePanel({
 
   if (alreadyTaken) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
         <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -372,7 +372,7 @@ export default function ChallengePanel({
 
   if (confirmed) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
         <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -408,7 +408,7 @@ export default function ChallengePanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
       <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />

@@ -120,7 +120,8 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-background">
       {/* ── Sidebar: icon rail on mobile, full on desktop ── */}
-      <aside className="fixed top-0 left-0 bottom-0 z-50 w-16 md:w-60 bg-surface border-r border-border flex flex-col">
+      {/* z-40: chrome, same floor as the player nav — venue sheets are z-50+ */}
+      <aside className="fixed top-0 left-0 bottom-0 z-40 w-16 md:w-60 bg-surface border-r border-border flex flex-col">
         {/* Brand */}
         <div className="h-14 flex items-center gap-2.5 px-3 md:px-5 border-b border-border flex-shrink-0">
           <div className="w-8 h-8 rounded-lg bg-accent/15 border border-accent/40 flex items-center justify-center flex-shrink-0">

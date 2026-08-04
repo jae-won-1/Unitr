@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
+import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
 // shortest path in the app: see the price, see the match, pay, you're in the
@@ -243,6 +244,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RingerPost | null>(null);
+  const [gate, setGate] = useState<GateTarget | null>(null);
 
   const closeModal = () => {
     setTarget(null);
@@ -253,7 +255,17 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
   };
 
   const startJoin = async (post: RingerPost) => {
-    if (!user) { setError("Sign in to join a match as a ringer."); setTarget(post); return; }
+    // A guest can browse the feed but there is nobody to put in the squad and
+    // nobody to charge, so ask for an account instead of opening a checkout
+    // that can only fail.
+    if (!user) {
+      setGate({
+        title: `${post.teamName} vs ${post.opponentName}`,
+        subtitle: `${fmtDate(post.date)} · ${post.time} · ${post.pitch}`,
+        unlocks: `claim this spot for £${(post.pricePence / 100).toFixed(2)}`,
+      });
+      return;
+    }
     setTarget(post);
     setError(null);
     setStarting(true);
@@ -327,6 +339,8 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
       ) : (
         visible.map((p) => <RingerCard key={p.id} post={p} onJoin={startJoin} />)
       )}
+
+      <SignUpGate target={gate} onClose={() => setGate(null)} />
 
       {target && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={closeModal}>

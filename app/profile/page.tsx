@@ -257,7 +257,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       {/* Friends modal */}
       {modal === "friends" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
-          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="font-bold text-base">Friends ({FRIENDS.length})</p>
               <button onClick={() => setModal(null)}>
@@ -292,7 +292,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       {/* Bookmarked Teams modal */}
       {modal === "teams" && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
-          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="font-bold text-base">Bookmarked Teams ({BOOKMARKED_TEAMS.length})</p>
               <button onClick={() => setModal(null)}>
