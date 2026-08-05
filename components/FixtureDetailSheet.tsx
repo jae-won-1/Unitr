@@ -4,12 +4,13 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { KIND_LABEL, KIND_STYLE, type CalendarEntry } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
+import AvailabilityButtons from "@/components/AvailabilityButtons";
 
 // What opens when you tap anything on the Calendar. Basic detail for everyone;
 // the management CTA appears only for the person entitled to it.
 //
 // Nothing here re-implements a management screen — /my-team/match/[matchId] is
-// already a full manage surface (overview / squad / payment / tactics / result)
+// already a full manage surface (info / attendance / lineup / tactics)
 // and /play/tournament/[id] owns schedules and referees. This sheet is the door
 // to them, plus the one action that had nowhere else to live once the Play page
 // went away: turning a direct pitch booking into a secured match post.
@@ -140,10 +141,15 @@ function TakeDownButton({ entry, onRemoved }: { entry: CalendarEntry; onRemoved:
 }
 
 // ── Sheet ─────────────────────────────────────────────────────────────
-export default function FixtureDetailSheet({ entry, isCaptain, team, onClose, onChanged }: {
+export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, viewerTeamId, onClose, onChanged }: {
   entry: CalendarEntry;
   isCaptain: boolean;
+  /** The captain's team — only resolved for captains, since it exists to back "Turn into Match Post". */
   team: ViewerTeam;
+  /** The signed-in viewer, captain or not. */
+  viewerId: string | null;
+  /** The viewer's own team. Distinct from `team`: every squad member answers availability. */
+  viewerTeamId: string | null;
   onClose: () => void;
   /** Something was written — the page reloads rather than patching state. */
   onChanged: () => void;
@@ -192,6 +198,20 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, onClose, on
               </div>
             ))}
           </div>
+
+          {/* Availability, for anyone in the squad. Only confirmed friendlies
+              have a matches row to record it against. */}
+          {entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && viewerTeamId && (
+            <div className="bg-surface-2 border border-border rounded-xl p-4">
+              <p className="text-xs text-text-secondary mb-2">Your availability</p>
+              <AvailabilityButtons
+                matchId={entry.matchId}
+                playerId={viewerId}
+                teamId={viewerTeamId}
+                onChanged={onChanged}
+              />
+            </div>
+          )}
 
           {/* ── Actions ── */}
           {entry.kind === "friendly" && (

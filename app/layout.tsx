@@ -4,7 +4,6 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import TopBar from "@/components/TopBar";
 import { RoleProvider } from "@/contexts/RoleContext";
-import { TacticsProvider } from "@/contexts/TacticsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -24,11 +23,9 @@ export default function RootLayout({
       <body className={`${inter.className} bg-background text-text-primary`}>
         <AuthProvider>
           <RoleProvider>
-            <TacticsProvider>
-<TopBar />
-<main className="min-h-screen pb-20">{children}</main>
-              <BottomNav />
-            </TacticsProvider>
+            <TopBar />
+            <main className="min-h-screen pb-20">{children}</main>
+            <BottomNav />
           </RoleProvider>
         </AuthProvider>
       </body>

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTactics } from "@/contexts/TacticsContext";
 import { supabase } from "@/lib/supabase";
-import { splitPence } from "@/lib/money";
+import { FORMATIONS, FORMATION_KEYS, DEFAULT_FORMATION, slotsFor, PLAY_STYLES } from "@/lib/formations";
+import { loadTeamTactics, type TeamTactic } from "@/components/my-team/TacticsTab";
+import AvailabilityButtons from "@/components/AvailabilityButtons";
 
 type PitchInfo = { id?: string; name: string; address?: string; price: number };
 
@@ -39,37 +40,22 @@ function effectiveStatus(status: string, timeChanged: boolean) {
   return timeChanged ? status : "confirmed";
 }
 
-type Tab = "overview" | "squad" | "payment" | "tactics" | "result";
+// Info · Attendance · Lineup · Tactics — mirroring how a matchday screen is
+// normally read: what is this game, who's coming, who's playing, how we play.
+type Tab = "info" | "attendance" | "lineup" | "tactics";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "info", label: "Info" },
+  { key: "attendance", label: "Attendance" },
+  { key: "lineup", label: "Lineup" },
+  { key: "tactics", label: "Tactics" },
+];
 
 type ResultPlayer = { player_id: string; name: string; started: boolean; subbed_on: boolean; goals: number };
 
-const formations: Record<string, { position: string; x: number; y: number }[]> = {
-  "4-3-3": [
-    { position: "GK", x: 50, y: 88 },
-    { position: "LB", x: 15, y: 70 }, { position: "CB", x: 35, y: 72 }, { position: "CB", x: 65, y: 72 }, { position: "RB", x: 85, y: 70 },
-    { position: "CM", x: 25, y: 52 }, { position: "CM", x: 50, y: 50 }, { position: "CM", x: 75, y: 52 },
-    { position: "LW", x: 15, y: 28 }, { position: "ST", x: 50, y: 22 }, { position: "RW", x: 85, y: 28 },
-  ],
-  "4-4-2": [
-    { position: "GK", x: 50, y: 88 },
-    { position: "LB", x: 15, y: 70 }, { position: "CB", x: 35, y: 72 }, { position: "CB", x: 65, y: 72 }, { position: "RB", x: 85, y: 70 },
-    { position: "LM", x: 15, y: 50 }, { position: "CM", x: 35, y: 50 }, { position: "CM", x: 65, y: 50 }, { position: "RM", x: 85, y: 50 },
-    { position: "ST", x: 35, y: 22 }, { position: "ST", x: 65, y: 22 },
-  ],
-  "4-2-3-1": [
-    { position: "GK", x: 50, y: 88 },
-    { position: "LB", x: 15, y: 70 }, { position: "CB", x: 35, y: 72 }, { position: "CB", x: 65, y: 72 }, { position: "RB", x: 85, y: 70 },
-    { position: "CDM", x: 35, y: 55 }, { position: "CDM", x: 65, y: 55 },
-    { position: "LW", x: 18, y: 36 }, { position: "CAM", x: 50, y: 36 }, { position: "RW", x: 82, y: 36 },
-    { position: "ST", x: 50, y: 18 },
-  ],
-  "3-5-2": [
-    { position: "GK", x: 50, y: 88 },
-    { position: "CB", x: 25, y: 72 }, { position: "CB", x: 50, y: 74 }, { position: "CB", x: 75, y: 72 },
-    { position: "LWB", x: 10, y: 52 }, { position: "CM", x: 30, y: 50 }, { position: "CM", x: 50, y: 55 }, { position: "CM", x: 70, y: 50 }, { position: "RWB", x: 90, y: 52 },
-    { position: "ST", x: 35, y: 22 }, { position: "ST", x: 65, y: 22 },
-  ],
-};
+// Formations now live in lib/formations.ts. They used to be duplicated here and
+// in the team tactics page, and the two copies had drifted — dangerous, because
+// a saved lineup is keyed by INDEX into this array.
+const formations = FORMATIONS;
 
 function ConfirmBadge({ status }: { status: string }) {
   if (status === "confirmed") return <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">In</span>;
@@ -255,38 +241,203 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
   );
 }
 
+// ── Match tasks ───────────────────────────────────────────────
+// The jobs around a fixture that aren't football — bring the kit, collect the
+// ball, give Danny a lift. Captains were putting these in announcements, where
+// they scroll away and nothing can be ticked off.
+//
+// A task with no assignee is for the whole squad, and completion is per-player:
+// "everyone bring £5" needs ten separate ticks, not one.
+type TaskRow = { id: string; title: string; detail: string | null; assignee_id: string | null };
+
+const TASKS_MISSING_MSG = "Match tasks aren't set up yet — run supabase_match_tasks.sql.";
+
+function MatchTasks({
+  matchId, teamId, userId, isCaptain, squad,
+}: {
+  matchId: string;
+  teamId: string;
+  userId: string;
+  isCaptain: boolean;
+  squad: { player_id: string; full_name: string }[];
+}) {
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [doneByTask, setDoneByTask] = useState<Record<string, Set<string>>>({});
+  const [unavailable, setUnavailable] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [detail, setDetail] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("match_tasks")
+      .select("id, title, detail, assignee_id")
+      .eq("match_id", matchId).eq("team_id", teamId)
+      .order("created_at", { ascending: true });
+
+    if (error) { setUnavailable(true); setLoading(false); return; }
+
+    const rows = (data ?? []) as TaskRow[];
+    const { data: done } = rows.length
+      ? await supabase.from("match_task_done").select("task_id, player_id").in("task_id", rows.map((r) => r.id))
+      : { data: [] };
+
+    const map: Record<string, Set<string>> = {};
+    for (const d of done ?? []) {
+      (map[d.task_id] ??= new Set()).add(d.player_id);
+    }
+    setTasks(rows);
+    setDoneByTask(map);
+    setUnavailable(false);
+    setLoading(false);
+  }, [matchId, teamId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addTask() {
+    if (!title.trim()) return;
+    setBusy(true);
+    await supabase.from("match_tasks").insert({
+      match_id: matchId, team_id: teamId, title: title.trim(),
+      detail: detail.trim() || null, assignee_id: assignee || null, created_by: userId,
+    });
+    setTitle(""); setDetail(""); setAssignee(""); setAdding(false); setBusy(false);
+    load();
+  }
+
+  async function removeTask(id: string) {
+    await supabase.from("match_tasks").delete().eq("id", id);
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  // Un-ticking is a delete, not a flag flip — absence of a row is the only
+  // "not done", so there's no third state to get out of sync.
+  async function toggleDone(taskId: string) {
+    const mine = doneByTask[taskId]?.has(userId);
+    setDoneByTask((prev) => {
+      const next = { ...prev };
+      const set = new Set(next[taskId] ?? []);
+      if (mine) set.delete(userId); else set.add(userId);
+      next[taskId] = set;
+      return next;
+    });
+    if (mine) {
+      await supabase.from("match_task_done").delete().eq("task_id", taskId).eq("player_id", userId);
+    } else {
+      await supabase.from("match_task_done").upsert(
+        { task_id: taskId, player_id: userId }, { onConflict: "task_id,player_id" },
+      );
+    }
+  }
+
+  if (loading) return null;
+
+  const nameOf = (id: string) => squad.find((s) => s.player_id === id)?.full_name ?? "Player";
+
+  return (
+    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Tasks</p>
+        <button
+          type="button"
+          disabled={!isCaptain || unavailable}
+          onClick={() => setAdding(!adding)}
+          title={!isCaptain ? "Only the captain can set tasks" : unavailable ? TASKS_MISSING_MSG : undefined}
+          className="text-xs font-bold text-accent disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {adding ? "Cancel" : "+ Add"}
+        </button>
+      </div>
+
+      {unavailable ? (
+        <p className="text-xs text-text-secondary">{TASKS_MISSING_MSG}</p>
+      ) : (
+        <>
+          {adding && (
+            <div className="space-y-2 mb-3 pb-3 border-b border-border">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Bring the away kit"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm placeholder:text-text-secondary outline-none focus:border-accent" />
+              <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Any detail (optional)"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm placeholder:text-text-secondary outline-none focus:border-accent" />
+              <select value={assignee} onChange={(e) => setAssignee(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-accent">
+                <option value="">Everyone</option>
+                {squad.map((s) => <option key={s.player_id} value={s.player_id}>{s.full_name}</option>)}
+              </select>
+              <button type="button" onClick={addTask} disabled={busy || !title.trim()}
+                className="w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+                {busy ? "Adding…" : "Add task"}
+              </button>
+            </div>
+          )}
+
+          {tasks.length === 0 ? (
+            <p className="text-xs text-text-secondary">
+              {isCaptain ? "Nothing to sort yet. Add what the squad needs to bring or do." : "Your captain hasn't set any tasks."}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {tasks.map((t) => {
+                const mineDone = doneByTask[t.id]?.has(userId) ?? false;
+                const doneCount = doneByTask[t.id]?.size ?? 0;
+                // A task aimed at someone else is information, not a to-do.
+                const isMine = !t.assignee_id || t.assignee_id === userId;
+                return (
+                  <div key={t.id} className="flex items-start gap-3">
+                    <button type="button" disabled={!isMine} onClick={() => toggleDone(t.id)}
+                      className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                        mineDone ? "bg-accent border-accent" : "border-border"} ${isMine ? "" : "opacity-30"}`}>
+                      {mineDone && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm ${mineDone ? "line-through text-text-secondary" : ""}`}>{t.title}</p>
+                      {t.detail && <p className="text-[11px] text-text-secondary">{t.detail}</p>}
+                      <p className="text-[10px] text-text-secondary mt-0.5">
+                        {t.assignee_id ? nameOf(t.assignee_id) : `Everyone · ${doneCount} done`}
+                      </p>
+                    </div>
+                    {isCaptain && (
+                      <button type="button" onClick={() => removeTask(t.id)} className="text-[11px] text-text-secondary flex-shrink-0">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ManageMatchPage({ params }: { params: { matchId: string } }) {
   const { user } = useAuth();
-  const { tactics, saveTactics } = useTactics();
   const [match, setMatch] = useState<Match | null | undefined>(undefined);
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [confirmations, setConfirmations] = useState<Confirmation[]>([]);
-  const [myConfirmStatus, setMyConfirmStatus] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState("");
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("info");
   const [originalPost, setOriginalPost] = useState<OriginalPost | null | undefined>(undefined);
-  const [formation, setFormation] = useState("4-3-3");
+  const [formation, setFormation] = useState(DEFAULT_FORMATION);
   const [style, setStyle] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [lineup, setLineup] = useState<Record<number, string>>({});
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
-  const [tacticsLoaded, setTacticsLoaded] = useState(false);
   const [savingTactics, setSavingTactics] = useState(false);
   const [isCaptain, setIsCaptain] = useState(false);
-  const [bookingId, setBookingId] = useState<string | null>(null);
-  const [settling, setSettling] = useState(false);
-  const [settleResults, setSettleResults] = useState<Record<string, { ok: boolean; reason?: string }> | null>(null);
-  const [settleError, setSettleError] = useState<string | null>(null);
-  const [rosterLocked, setRosterLocked] = useState(false);
-  const [excluded, setExcluded] = useState<Set<string>>(new Set());  // players the captain removed from charging
   const [resultVerified, setResultVerified] = useState(false);
   const [myResult, setMyResult] = useState<{ teamScore: number; opponentScore: number } | null>(null);
   const [oppResult, setOppResult] = useState<{ teamScore: number; opponentScore: number } | null>(null);
   const [myResultPlayers, setMyResultPlayers] = useState<ResultPlayer[]>([]);
   const [oppResultPlayers, setOppResultPlayers] = useState<ResultPlayer[]>([]);
-
-  const matchMedia = tactics.media.filter((m) => m.matchId === params.matchId);
-  const teamMedia = tactics.media.filter((m) => !m.matchId);
+  // Saved team presets, for the "load from saved" picker on the Tactics tab.
+  // null means supabase_team_tactics.sql hasn't been applied.
+  const [presets, setPresets] = useState<TeamTactic[] | null>([]);
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -323,11 +474,6 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       }
       setMyTeamId(tid);
       setIsCaptain(!!captainTeam && captainTeam.id === tid);
-      setRosterLocked(!!m.roster_locked_at);
-
-      // Booking row backs the replenishment player_payments for this match.
-      const { data: bk } = await supabase.from("pitch_bookings").select("id").eq("post_id", m.post_id).maybeSingle();
-      setBookingId(bk?.id ?? null);
 
       // is_ringer arrives with supabase_ringers.sql. Before that migration the
       // column doesn't exist and selecting it fails the whole query, taking the
@@ -350,7 +496,6 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         is_ringer: Boolean((c as { is_ringer?: boolean }).is_ringer),
       }));
       setConfirmations(mapped);
-      setMyConfirmStatus(mapped.find((c) => c.player_id === currentUser.id)?.status ?? null);
     }
     load();
   }, [user, params.matchId]);
@@ -369,31 +514,20 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     supabase.from("match_tactics").select("*").eq("match_id", match.id).eq("team_id", myTeamId).maybeSingle()
       .then(({ data }) => {
         if (data) {
-          setFormation(data.formation ?? "4-3-3");
+          setFormation(data.formation ?? DEFAULT_FORMATION);
           setStyle(data.style ?? null);
           setNotes(data.notes ?? "");
           setLineup((data.lineup ?? {}) as Record<number, string>);
         }
-        setTacticsLoaded(true);
       });
   }, [myTeamId, match]);
 
-  // Live countdown: 3h from match creation
+  // The team's saved presets, so a captain can pull one in rather than
+  // rebuilding the same shape for the fourth time this season.
   useEffect(() => {
-    if (!match) return;
-    const deadline = new Date(match.created_at).getTime() + 3 * 60 * 60 * 1000;
-    function tick() {
-      const r = deadline - Date.now();
-      if (r <= 0) { setCountdown("Expired"); return; }
-      const h = Math.floor(r / 3600000);
-      const min = Math.floor((r % 3600000) / 60000);
-      const s = Math.floor((r % 60000) / 1000);
-      setCountdown(`${h}h ${String(min).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`);
-    }
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [match]);
+    if (!myTeamId) return;
+    loadTeamTactics(myTeamId).then(setPresets);
+  }, [myTeamId]);
 
   // Load submitted results + players for both teams whenever the match and team are known.
   useEffect(() => {
@@ -437,138 +571,6 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     loadResults();
   }, [match, myTeamId, params.matchId]);
 
-  const handleConfirmAttendance = async (newStatus: "confirmed" | "declined") => {
-    if (!user || !myTeamId) return;
-    await supabase.from("match_confirmations").upsert({
-      match_id: params.matchId,
-      player_id: user.id,
-      team_id: myTeamId,
-      status: newStatus,
-    }, { onConflict: "match_id,player_id" });
-    setMyConfirmStatus(newStatus);
-    setConfirmations((prev) => prev.map((c) => c.player_id === user.id ? { ...c, status: newStatus } : c));
-  };
-
-  // Roster-lock settlement (captain): freeze MY team's confirmed squad and charge
-  // each actual participant's saved card off-session, refilling the team's credit.
-  const handleSettleSquad = async () => {
-    if (!match || !myTeamId) return;
-    setSettling(true);
-    setSettleError(null);
-
-    if (!bookingId) {
-      setSettleError("No booking is linked to this match yet — settlement isn't available.");
-      setSettling(false);
-      return;
-    }
-
-    // Actual participants on my team = those confirmed for the (possibly retimed)
-    // slot, minus anyone the captain explicitly excluded from this charge, minus
-    // ringers — a guest paid Unitr a flat fee and owes the team nothing.
-    const participants = confirmations.filter(
-      (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
-        && !c.is_ringer && !excluded.has(c.player_id)
-    );
-    if (participants.length === 0) {
-      setSettleError("No players selected to charge.");
-      setSettling(false);
-      return;
-    }
-
-    // This team's pool = the net it owes (poster: P − ⌊P/2⌋, challenger: ⌊P/2⌋).
-    const feePence = Math.round(match.confirmedPitch.price * 100);
-    const halfPence = Math.floor(feePence / 2);
-    const isPoster = myTeamId === match.postingTeamId;
-    const poolPence = isPoster ? feePence - halfPence : halfPence;
-    const shares = splitPence(poolPence, participants.length);
-
-    // Already-settled players (e.g. a prior partial run) must not be charged again.
-    const { data: existing } = await supabase
-      .from("player_payments").select("player_id, status")
-      .eq("booking_id", bookingId).eq("purpose", "replenish");
-    const alreadyPaid = new Set((existing ?? []).filter((r) => r.status === "paid").map((r) => r.player_id));
-
-    // Saved cards for the players we still need to charge.
-    const toCharge = participants
-      .map((p, i) => ({ p, share: shares[i] }))
-      .filter(({ p }) => !alreadyPaid.has(p.player_id));
-
-    if (toCharge.length === 0) {
-      setSettleError("Everyone on your squad is already settled.");
-      setSettling(false);
-      return;
-    }
-
-    const { data: profs } = await supabase
-      .from("profiles").select("id, stripe_customer_id, stripe_payment_method_id")
-      .in("id", toCharge.map(({ p }) => p.player_id));
-    const cardOf = new Map((profs ?? []).map((p) => [p.id, p]));
-
-    const items = toCharge.map(({ p, share }) => {
-      const fee = Math.round(share * 0.05);
-      const card = cardOf.get(p.player_id);
-      return {
-        playerId: p.player_id,
-        customerId: card?.stripe_customer_id ?? null,
-        paymentMethodId: card?.stripe_payment_method_id ?? null,
-        sharePence: share,
-        feePence: fee,
-        amountPence: share + fee,
-        matchId: match.id,
-        bookingId,
-      };
-    });
-
-    type ChargeResult = { playerId: string; ok: boolean; paymentIntentId?: string; error?: string; noCard?: boolean };
-    let results: ChargeResult[] = [];
-    try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setSettleError(d.error ?? "Settlement failed."); setSettling(false); return; }
-      results = d.results ?? [];
-    } catch {
-      setSettleError("Could not reach the payment service.");
-      setSettling(false);
-      return;
-    }
-
-    // Persist outcomes: paid rows refill credit via apply_replenishment; failed
-    // rows are stored so the player can settle manually at /pay.
-    const resultMap: Record<string, { ok: boolean; reason?: string }> = {};
-    for (const it of items) {
-      const r = results.find((x) => x.playerId === it.playerId);
-      const ok = !!r?.ok;
-      const { data: row } = await supabase.from("player_payments").upsert({
-        booking_id: bookingId,
-        player_id: it.playerId,
-        team_id: myTeamId,
-        amount_pence: it.sharePence,
-        unitr_fee_pence: it.feePence,
-        total_pence: it.amountPence,
-        purpose: "replenish",
-        off_session: true,
-        status: ok ? "paid" : "failed",
-        stripe_payment_intent_id: r?.paymentIntentId ?? null,
-        failure_reason: ok ? null : (r?.noCard ? "No saved card" : r?.error ?? "Charge failed"),
-        paid_at: ok ? new Date().toISOString() : null,
-      }, { onConflict: "booking_id,player_id" }).select("id").single();
-
-      if (ok && row?.id) await supabase.rpc("apply_replenishment", { p_payment_id: row.id });
-      resultMap[it.playerId] = { ok, reason: r?.noCard ? "No saved card" : r?.error };
-    }
-
-    await supabase.from("matches").update({
-      roster_locked_at: new Date().toISOString(),
-      settled_at: new Date().toISOString(),
-    }).eq("id", match.id);
-
-    setSettleResults(resultMap);
-    setRosterLocked(true);
-    setSettling(false);
-  };
 
   const handleSaveMatchTactics = async () => {
     if (!myTeamId || !match) return;
@@ -584,10 +586,13 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     setSavingTactics(false);
   };
 
-  const loadFromTeamTactics = () => {
-    setFormation(tactics.formation);
-    setStyle(tactics.style);
-    setNotes(tactics.notes);
+  // Copies a saved preset's values in. Deliberately a copy, not a live link:
+  // once loaded, editing this match's plan must not rewrite the team's template.
+  const applyPreset = (p: TeamTactic) => {
+    setFormation(p.formation);
+    setStyle(p.style);
+    setNotes(p.notes ?? "");
+    setPresetPickerOpen(false);
   };
 
   if (match === undefined) {
@@ -605,35 +610,29 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const timeChanged = originalPost
     ? (originalPost.match_time !== match.match_time || originalPost.match_date !== match.match_date)
     : false;
-  // Payers only — a ringer plays but takes no share of the pitch fee.
-  const confirmedCount = confirmations.filter(
-    (c) => effectiveStatus(c.status, timeChanged) === "confirmed" && !c.is_ringer
-  ).length;
-  const totalPlayers = confirmations.length > 0 ? confirmations.length : 22;
-  const effectivePlayers = confirmedCount > 0 ? confirmedCount : totalPlayers;
-  const perPlayer = ((match.confirmedPitch.price * 1.05) / effectivePlayers).toFixed(2);
   const myTeamName = myTeamId === match.postingTeamId ? match.postingTeamName : match.challengingTeamName;
   const opponentTeamId = myTeamId === match.postingTeamId ? match.challengingTeamId : match.postingTeamId;
   const opponentName = myTeamId === match.postingTeamId ? match.challengingTeamName : match.postingTeamName;
-  const myTeamConfs = confirmations.filter((c) => c.team_id === myTeamId);
-  const opponentConfs = confirmations.filter((c) => c.team_id === opponentTeamId);
-  const players = formations[formation];
+  const players = slotsFor(formation);
 
-  // Roster-lock settlement figures for MY team (PAYMENT_PLAN §10).
+  // My team's matchday squad — everyone confirmed for the (possibly retimed) slot.
   const myParticipants = confirmations.filter(
     (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
   );
-  // Ringers play but don't pay — the team's pitch fee is split between its own
-  // players only, so the per-player share must not count guests.
-  const chargedParticipants = myParticipants.filter((c) => !c.is_ringer && !excluded.has(c.player_id));
-  const feePence = Math.round(match.confirmedPitch.price * 100);
-  const halfPence = Math.floor(feePence / 2);
-  const isPoster = myTeamId === match.postingTeamId;
-  const teamPoolPence = isPoster ? feePence - halfPence : halfPence;
-  const teamShare = chargedParticipants.length > 0 ? teamPoolPence / chargedParticipants.length / 100 : 0;
+
+  // ── Attendance tab figures ───────────────────────────────────
+  // Only my team's rows: the opposing captain's squad is their business, and
+  // the screenshot's Attendees / Awaiting reply / Unavailable trio is about
+  // who WE can field.
+  const myTeamConfs = confirmations.filter((c) => c.team_id === myTeamId);
+  const attIn = myTeamConfs.filter((c) => effectiveStatus(c.status, timeChanged) === "confirmed");
+  const attOut = myTeamConfs.filter((c) => c.status === "declined");
+  const attPending = myTeamConfs.filter(
+    (c) => effectiveStatus(c.status, timeChanged) !== "confirmed" && c.status !== "declined"
+  );
 
   // ── Result-view derived data ──────────────────────────────────
-  const pitchPositions = formations[formation] ?? formations["4-3-3"];
+  const pitchPositions = slotsFor(formation);
   const myStarters = myResultPlayers.filter((p) => p.started);
   const myBench    = myResultPlayers.filter((p) => p.subbed_on);
   const myScorers  = myResultPlayers.filter((p) => p.goals > 0);
@@ -672,8 +671,30 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         </div>
       </div>
 
-      {/* ── Result view (no tabs) ──────────────────────────────── */}
+      {/* Availability sits above the tabs, not inside one. It's the single
+          question every player opens this page to answer, and it stays
+          answerable right up to kickoff — plans change. Hidden once the game
+          has been played and a result exists. */}
+      {!hasResult && myTeamId && user && (
+        <div className="mb-4">
+          <AvailabilityButtons matchId={params.matchId} playerId={user.id} teamId={myTeamId} />
+        </div>
+      )}
 
+      {/* ── Tabs ── */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {TABS.map((t) => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)}
+            className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══ INFO ══════════════════════════════════════════════ */}
+      {tab === "info" && (
+      <div className="space-y-4">
       {/* ── Score block ── */}
       <div className="bg-surface-2 border border-border rounded-2xl pt-5 pb-4 px-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -732,12 +753,62 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         )}
       </div>
 
+      {myTeamId && user && (
+        <MatchTasks
+          matchId={params.matchId} teamId={myTeamId} userId={user.id} isCaptain={isCaptain}
+          squad={myTeamConfs.map((c) => ({ player_id: c.player_id, full_name: c.full_name }))}
+        />
+      )}
+      </div>
+      )}
+
+      {/* ══ ATTENDANCE ════════════════════════════════════════ */}
+      {tab === "attendance" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            {([["Attendees", attIn.length], ["Awaiting reply", attPending.length], ["Unavailable", attOut.length]] as const).map(([label, n]) => (
+              <div key={label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
+                <p className="text-2xl font-bold">{n}</p>
+                <p className="text-[10px] text-text-secondary mt-0.5 leading-tight">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {myTeamConfs.length === 0 ? (
+            <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+              <p className="text-sm font-semibold mb-1">No squad yet</p>
+              <p className="text-xs text-text-secondary">Attendance appears once the match is confirmed and your squad is attached.</p>
+            </div>
+          ) : (
+            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-2">
+              {myTeamConfs.map((c) => (
+                <div key={c.player_id} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-semibold text-text-secondary">
+                      {c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="flex-1 text-sm truncate">{c.full_name}</p>
+                  {c.is_ringer && (
+                    <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+                  )}
+                  <ConfirmBadge status={effectiveStatus(c.status, timeChanged)} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ LINEUP ════════════════════════════════════════════ */}
+      {tab === "lineup" && (
+      <div className="space-y-4">
       {/* ── Pre-match starting lineup board ──────────────────────
           Captain assigns confirmed players to positions; everyone else
           sees the captain's picks read-only. Hidden once a result exists
           (the result view below takes over). */}
       {!hasResult && (
-        <div className="mt-4">
+        <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup</p>
             <span className="text-[10px] text-text-secondary">{isCaptain ? "Tap a position to assign" : "Set by captain"}</span>
@@ -745,7 +816,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {isCaptain && (
             <div className="flex gap-2 overflow-x-auto pb-2 mb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {Object.keys(formations).map((f) => (
+              {FORMATION_KEYS.map((f) => (
                 <button key={f} type="button" onClick={() => setFormation(f)}
                   className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${formation === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {f}
@@ -912,6 +983,107 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                 );
               })}
             </>
+          )}
+        </div>
+      )}
+      </div>
+      )}
+
+      {/* ══ TACTICS ═══════════════════════════════════════════ */}
+      {tab === "tactics" && (
+        <div className="space-y-4">
+          {/* Load from saved — the reason team_tactics exists. A captain who
+              has already worked out how they press shouldn't rebuild it every
+              Saturday. Copies values in; editing here never writes back. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold mb-0.5">Match plan</p>
+              <p className="text-xs text-text-secondary">
+                {isCaptain ? "Private to your team — the opposition never sees it." : "Set by your captain."}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!isCaptain || presets === null || presets.length === 0}
+              onClick={() => setPresetPickerOpen(true)}
+              title={
+                !isCaptain ? "Only the captain can set tactics"
+                : presets === null ? "Saved setups aren't set up yet — run supabase_team_tactics.sql."
+                : presets.length === 0 ? "No saved setups yet — create one in My Team > Tactics."
+                : undefined
+              }
+              className="flex-shrink-0 px-3 py-2 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Load saved
+            </button>
+          </div>
+
+          <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Formation</p>
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {FORMATION_KEYS.map((f) => (
+                  <button key={f} type="button" disabled={!isCaptain} onClick={() => setFormation(f)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border disabled:opacity-60 ${
+                      formation === f ? "bg-accent text-black border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Play style</p>
+              <div className="flex flex-wrap gap-2">
+                {PLAY_STYLES.map((s) => (
+                  <button key={s} type="button" disabled={!isCaptain} onClick={() => setStyle(style === s ? null : s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-60 ${
+                      style === s ? "bg-accent text-black border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Instructions</p>
+              {isCaptain ? (
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={5}
+                  placeholder="What the squad needs to do in this game."
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent resize-none placeholder:text-text-secondary" />
+              ) : notes ? (
+                <p className="text-sm text-text-secondary whitespace-pre-wrap">{notes}</p>
+              ) : (
+                <p className="text-xs text-text-secondary">No instructions set yet.</p>
+              )}
+            </div>
+          </div>
+
+          {isCaptain && (
+            <button type="button" onClick={handleSaveMatchTactics} disabled={savingTactics}
+              className="w-full py-3 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              {savingTactics ? "Saving…" : "Save Tactics"}
+            </button>
+          )}
+
+          {presetPickerOpen && presets && (
+            <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={() => setPresetPickerOpen(false)}>
+              <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
+                <div className="p-4 space-y-2">
+                  <p className="font-bold text-base mb-2">Load a saved setup</p>
+                  {presets.map((p) => (
+                    <button key={p.id} type="button" onClick={() => applyPreset(p)}
+                      className="w-full text-left bg-surface-2 border border-border rounded-xl p-3">
+                      <p className="text-sm font-semibold">{p.title}</p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">
+                        {[p.situation, p.formation, p.style].filter(Boolean).join(" · ")}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

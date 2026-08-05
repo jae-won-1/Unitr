@@ -6,6 +6,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadPlayerStats, type PlayerStats } from "@/lib/stats";
 
 const stripeAppearance = {
   theme: "night" as const,
@@ -182,13 +183,6 @@ type Profile = {
   experience: string | null;
 };
 
-const stats = [
-  { label: "Games", value: "47" },
-  { label: "Goals", value: "23" },
-  { label: "Assists", value: "31" },
-  { label: "Rating", value: "8.7" },
-];
-
 const badges = [
   { label: "Hat-trick Hero", icon: "⚽" },
   { label: "Team Player", icon: "🤝" },
@@ -208,11 +202,19 @@ const BOOKMARKED_TEAMS = [
 ];
 
 function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; profile: Profile | null; teamName: string | null }) {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const name = profile?.full_name ?? "Player";
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
   const [modal, setModal] = useState<"friends" | "teams" | null>(null);
+  const [myStats, setMyStats] = useState<PlayerStats | null>(null);
+
+  // Career totals, not team-scoped — a player's own record shouldn't reset
+  // when they transfer.
+  useEffect(() => {
+    if (!user) return;
+    loadPlayerStats(user.id).then(setMyStats);
+  }, [user]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -325,17 +327,31 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       )}
 
-      {/* Stats */}
+      {/* Stats — real, from submitted results (lib/stats.ts). These were four
+          hardcoded strings; a profile that invents 47 games is worse than one
+          that admits it has none yet. */}
       <section>
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Season Stats</h3>
-        <div className="grid grid-cols-4 gap-2">
-          {stats.map((s) => (
-            <div key={s.label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
-              <p className="text-lg font-bold text-accent">{s.value}</p>
-              <p className="text-[10px] text-text-secondary mt-0.5">{s.label}</p>
-            </div>
-          ))}
-        </div>
+        {myStats && myStats.matchesWithResults > 0 ? (
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Games", value: myStats.appearances },
+              { label: "Starts", value: myStats.starts },
+              { label: "Goals", value: myStats.goals },
+              { label: "Assists", value: myStats.assists },
+            ].map((s) => (
+              <div key={s.label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-accent">{s.value}</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+            <p className="text-sm font-semibold mb-1">No stats yet</p>
+            <p className="text-xs text-text-secondary">Your record starts once you&apos;re named in a submitted match result.</p>
+          </div>
+        )}
       </section>
 
       {/* Badges */}
@@ -351,14 +367,29 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       </section>
 
-      {/* My Stats */}
+      {/* Pass accuracy and a match rating have no ingestion pipeline behind
+          them, so they're gone rather than invented. What's left is derivable
+          from the result form. */}
+      {myStats && myStats.matchesWithResults > 0 && (
       <section>
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">My Stats</h3>
         <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
           {[
-            { label: "Win Rate", value: "72%", bar: 72 },
-            { label: "Goals Per Game", value: "0.49", bar: 49 },
-            { label: "Pass Accuracy", value: "84%", bar: 84 },
+            {
+              label: "Start Rate",
+              value: `${myStats.appearances > 0 ? Math.round((myStats.starts / myStats.appearances) * 100) : 0}%`,
+              bar: myStats.appearances > 0 ? Math.round((myStats.starts / myStats.appearances) * 100) : 0,
+            },
+            {
+              label: "Goals Per Game",
+              value: myStats.goalsPerGame.toFixed(2),
+              bar: Math.min(100, Math.round(myStats.goalsPerGame * 100)),
+            },
+            {
+              label: "Assists Per Game",
+              value: (myStats.appearances > 0 ? myStats.assists / myStats.appearances : 0).toFixed(2),
+              bar: Math.min(100, Math.round((myStats.appearances > 0 ? myStats.assists / myStats.appearances : 0) * 100)),
+            },
           ].map((s) => (
             <div key={s.label}>
               <div className="flex justify-between text-xs mb-1">
@@ -372,6 +403,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
           ))}
         </div>
       </section>
+      )}
 
       {/* Individual Highlights */}
       <section>

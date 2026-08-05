@@ -10,6 +10,7 @@ import {
   type CalendarEntry, type EntryKind,
 } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
+import AvailabilityButtons from "@/components/AvailabilityButtons";
 
 // The Calendar owns every commitment the viewer has, upcoming and past. It
 // replaced the Play page, whose discovery feed the home screen had already
@@ -41,11 +42,25 @@ function fmtDay(dateKey: string): string {
 }
 
 // ── Card ──────────────────────────────────────────────────────────────
-function EntryCard({ entry, onOpen }: { entry: CalendarEntry; onOpen: (e: CalendarEntry) => void }) {
+// The card body is a button and the availability row contains buttons, and
+// buttons cannot nest — so the outer element is a div and the tappable region
+// is an inner button that fills it. Making the whole card one button (as it was
+// before availability landed here) is what forces that split.
+function EntryCard({ entry, viewerId, teamId, onOpen }: {
+  entry: CalendarEntry;
+  viewerId: string | null;
+  teamId: string | null;
+  onOpen: (e: CalendarEntry) => void;
+}) {
   const style = KIND_STYLE[entry.kind];
+  // Only confirmed friendlies have a matches row to hang a confirmation off.
+  // Tournaments, bookings and ringer entries carry matchId: null.
+  const canRespond =
+    entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && teamId;
+
   return (
-    <button type="button" onClick={() => onOpen(entry)}
-      className={`w-full text-left bg-surface-2 border border-border border-l-4 ${style.border} rounded-2xl p-4 ${entry.isUpcoming ? "" : "opacity-75"}`}>
+    <div className={`bg-surface-2 border border-border border-l-4 ${style.border} rounded-2xl p-4 ${entry.isUpcoming ? "" : "opacity-75"}`}>
+    <button type="button" onClick={() => onOpen(entry)} className="w-full text-left">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 ${style.bg} ${style.text} ${style.border}`}>
@@ -72,6 +87,18 @@ function EntryCard({ entry, onOpen }: { entry: CalendarEntry; onOpen: (e: Calend
         </div>
       )}
     </button>
+
+    {canRespond && (
+      <div className="mt-3 pt-3 border-t border-border">
+        <AvailabilityButtons
+          matchId={entry.matchId!}
+          playerId={viewerId!}
+          teamId={teamId!}
+          size="sm"
+        />
+      </div>
+    )}
+    </div>
   );
 }
 
@@ -143,8 +170,9 @@ function FilterMenu({ options, value, onChange }: {
   );
 }
 
-function Section({ title, entries, empty, onOpen }: {
+function Section({ title, entries, empty, viewerId, teamId, onOpen }: {
   title: string; entries: CalendarEntry[]; empty: string;
+  viewerId: string | null; teamId: string | null;
   onOpen: (e: CalendarEntry) => void;
 }) {
   return (
@@ -163,7 +191,9 @@ function Section({ title, entries, empty, onOpen }: {
         </div>
       ) : (
         <div className="space-y-3">
-          {entries.map((e) => <EntryCard key={e.key} entry={e} onOpen={onOpen} />)}
+          {entries.map((e) => (
+            <EntryCard key={e.key} entry={e} viewerId={viewerId} teamId={teamId} onOpen={onOpen} />
+          ))}
         </div>
       )}
     </section>
@@ -176,6 +206,9 @@ export default function CalendarPage() {
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [isCaptain, setIsCaptain] = useState(false);
   const [team, setTeam] = useState<ViewerTeam>(null);
+  // The viewer's own team, captain or not — availability is answered by every
+  // squad member, so this can't reuse the captain-only `team` above.
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [filter, setFilter] = useState<Filter>("all");
@@ -188,6 +221,7 @@ export default function CalendarPage() {
     const { entries: rows, teamId, isCaptain: captain } = await loadCalendarEntries(user.id);
     setEntries(rows);
     setIsCaptain(captain);
+    setMyTeamId(teamId);
 
     // Only a captain can post, so only a captain's team is worth resolving here
     // — it's what "Turn into Match Post" writes the post against.
@@ -286,8 +320,10 @@ export default function CalendarPage() {
       ) : (
         <div className="space-y-6">
           <Section title="Upcoming" entries={upcoming} onOpen={setDetail}
+            viewerId={user?.id ?? null} teamId={myTeamId}
             empty={dateKey ? "Nothing coming up on this date." : "Nothing coming up."} />
           <Section title="Past" entries={past} onOpen={setDetail}
+            viewerId={user?.id ?? null} teamId={myTeamId}
             empty={dateKey ? "Nothing played on this date." : "Nothing played yet."} />
         </div>
       )}
@@ -299,6 +335,7 @@ export default function CalendarPage() {
 
       {detail && (
         <FixtureDetailSheet entry={detail} isCaptain={isCaptain} team={team}
+          viewerId={user?.id ?? null} viewerTeamId={myTeamId}
           onClose={() => setDetail(null)} onChanged={load} />
       )}
     </div>
