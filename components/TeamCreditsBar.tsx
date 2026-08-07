@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
+import SettlePaymentsModal from "@/components/SettlePaymentsModal";
 
 // The team's money bar: credit balance and transaction log, the player's own
 // top-up / settle-up popup, and — for captains — the payment status of every
@@ -49,6 +50,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
+  const [showSettle, setShowSettle] = useState(false);
   const [collectMatches, setCollectMatches] = useState<CollectMatch[]>([]);
   const [selectedCollectMatch, setSelectedCollectMatch] = useState<string | null>(null);
   const [collectLoading, setCollectLoading] = useState(true);
@@ -523,15 +525,19 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
             )}
           </button>
         )}
-        <a href="/my-team/history" className="relative ml-auto text-xs font-semibold text-text-secondary flex items-center gap-1 flex-shrink-0">
+        {/* Opens in place rather than navigating: its neighbours in this row are
+            all popups, and sending the captain to a full page for the same kind
+            of quick check lost them their position on Home. */}
+        <button onClick={() => setShowSettle(true)}
+          className="relative ml-auto text-xs font-semibold text-text-secondary flex items-center gap-1 flex-shrink-0">
           Settle Payments
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           {historyAlertCount > 0 && (
             <span className="absolute -top-2 -left-4 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
               {historyAlertCount}
             </span>
           )}
-        </a>
+        </button>
       </div>
       {reserved > 0 && (
         <p className="text-[11px] text-text-secondary mt-1">
@@ -780,6 +786,8 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
           onClose={() => { setShowTopUp(false); reloadMyDues(); }}
         />
       )}
+
+      {showSettle && <SettlePaymentsModal onClose={() => setShowSettle(false)} />}
     </>
   );
 }

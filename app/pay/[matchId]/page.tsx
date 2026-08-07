@@ -5,6 +5,7 @@ import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-
 import { stripePromise } from "@/lib/stripe-client";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { saveCardFromIntent } from "@/components/SaveCardPrompt";
 
 type MatchInfo = {
   opponent: string;
@@ -341,7 +342,6 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   const { user } = useAuth();
   const [matchInfo, setMatchInfo] = useState<MatchInfo | null | undefined>(undefined);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [intentCustomerId, setIntentCustomerId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
 
@@ -368,7 +368,6 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       const data = await res.json();
       if (data.clientSecret) {
         setClientSecret(data.clientSecret);
-        setIntentCustomerId(data.customerId ?? null);
       } else {
         setLoadError("Could not set up payment. Check Stripe keys in .env.local");
       }
@@ -517,22 +516,11 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   const handleSaveCard = async () => {
     if (!saveCardPrompt || !user) return;
     setSavingCard(true);
-    try {
-      // The PaymentIntent was created with setup_future_usage: "off_session" and a
-      // customer, so Stripe already attached the payment method — just look it up.
-      const piRes = await fetch(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(saveCardPrompt.paymentIntentId)}`);
-      const piData = await piRes.json();
-      if (piData.paymentMethodId && intentCustomerId) {
-        await supabase.from("profiles").update({
-          stripe_customer_id: intentCustomerId,
-          stripe_payment_method_id: piData.paymentMethodId,
-          card_brand: piData.brand ?? null,
-          card_last4: piData.last4 ?? null,
-        }).eq("id", user.id);
-      }
-    } catch {
-      // Non-fatal — the payment itself already succeeded.
-    }
+    // Shared with every other payment surface. The PaymentIntent was created
+    // with setup_future_usage: "off_session" and a customer, so Stripe has
+    // already attached the payment method — this just copies it to the profile.
+    // Non-fatal either way: the payment itself has already succeeded.
+    await saveCardFromIntent(user.id, saveCardPrompt.paymentIntentId);
     setSavingCard(false);
     setSaveCardPrompt(null);
     setPaid(true);

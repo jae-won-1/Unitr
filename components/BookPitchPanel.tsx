@@ -8,6 +8,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import TopUpModal from "@/components/TopUpModal";
+import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -170,9 +171,9 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, customerId, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
   pitch: Pitch; date: string; time: string;
-  isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
+  isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null; customerId: string | null;
   working: boolean; error: string | null;
   onCancel: () => void;
   onPayCredit: () => void;
@@ -199,13 +200,13 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
     setLoadingSecret(true);
     fetch("/api/create-payment-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: cardTotalPence }),
+      body: JSON.stringify({ amountPence: cardTotalPence, customerId }),
     })
       .then((r) => r.json())
       .then((d) => { if (d.clientSecret) setClientSecret(d.clientSecret); else onError(d.error ?? "Could not start card payment."); })
       .catch(() => onError("Could not reach the payment service."))
       .finally(() => setLoadingSecret(false));
-  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, onError]);
+  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, customerId, onError]);
 
   const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
 
@@ -364,6 +365,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   const isCaptain = team !== null;
   // Card already on file — lets any card payment skip manual entry.
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
+  const saveCard = useSaveCardOffer(user?.id);
 
   // Filters — pre-fill from the captain's chosen posting slot when the Book tab
   // is opened via "lock in a pitch first"; otherwise default the date to today
@@ -646,7 +648,12 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       ? { ...prev, [pitch.id]: prev[pitch.id].map((s) => s.time === time ? { ...s, status: "booked" } : s) }
       : prev);
     setPendingSlot(null);
-    setBookedInfo({ pitch, date, time, posted });
+    // Card path only: offer to keep the card before the confirmation screen.
+    // The credit path never touched one. `offer` falls straight through for
+    // anyone who already has a card saved.
+    saveCard.offer(method === "card" ? intentId : null, () => {
+      setBookedInfo({ pitch, date, time, posted });
+    });
   };
 
   return (
@@ -860,6 +867,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           isCaptain={isCaptain}
           teamCreditPence={teamCreditPence}
           savedCard={savedCard}
+          customerId={saveCard.customerId}
           working={booking}
           error={error}
           onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}
@@ -898,6 +906,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           onDone={() => { const posted = bookedInfo.posted; setBookedInfo(null); onDone?.(posted); }}
         />
       )}
+
+      {saveCard.prompt}
     </div>
   );
 }

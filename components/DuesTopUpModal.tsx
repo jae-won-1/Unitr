@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
+import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -146,7 +147,7 @@ export function useMyDues(teamId: string | null, userId: string) {
 function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number;
   targetPcsId?: string;
-  onSuccess: (newBalance: number) => void; onBack: () => void;
+  onSuccess: (newBalance: number, paymentIntentId: string) => void; onBack: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -161,7 +162,10 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
       const newBalancePence = await applyTopUp(teamId, userId, Math.round(amount * 100), targetPcsId);
-      onSuccess(typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount);
+      onSuccess(
+        typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount,
+        paymentIntent.id,
+      );
     } else {
       setPayError("Payment did not complete. Please try again.");
       setPaying(false);
@@ -214,6 +218,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   const [duePaidFlash, setDuePaidFlash] = useState(false);
   const [topUpBusy, setTopUpBusy] = useState(false);
   const [success, setSuccess] = useState(false);
+  const saveCard = useSaveCardOffer(userId);
 
   const setBalance = useCallback((pounds: number) => {
     setCredits(pounds);
@@ -296,7 +301,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setIntentError(null);
     const res = await fetch("/api/create-credits-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: due.remainingPence, teamId }),
+      body: JSON.stringify({ amountPence: due.remainingPence, teamId, customerId: saveCard.customerId }),
     });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
@@ -310,7 +315,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setIntentError(null);
     const res = await fetch("/api/create-credits-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId }),
+      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId, customerId: saveCard.customerId }),
     });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
@@ -350,6 +355,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-5" onClick={onClose}>
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {credits === null ? (
@@ -381,11 +387,11 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 userId={userId}
                 currentCredits={credits}
                 targetPcsId={payTarget?.pcsId}
-                onSuccess={async (newBalance) => {
+                onSuccess={(newBalance, paymentIntentId) => saveCard.offer(paymentIntentId, async () => {
                   setBalance(newBalance);
                   setSuccess(true);
                   await reloadDues();
-                }}
+                })}
                 onBack={() => { setClientSecret(null); setPayTarget(null); }}
               />
             </Elements>
@@ -517,5 +523,9 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
         )}
       </div>
     </div>
+    {/* Outside the backdrop above — nested, its clicks would bubble into that
+        backdrop's onClose and dismiss the whole modal mid-prompt. */}
+    {saveCard.prompt}
+    </>
   );
 }

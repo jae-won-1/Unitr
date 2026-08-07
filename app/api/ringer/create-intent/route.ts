@@ -35,9 +35,27 @@ export async function POST(req: NextRequest) {
     }
 
     const amount = Math.round(request.price_pence ?? 500);
+
+    // Attach to a Stripe customer and mark the card for future off-session
+    // reuse, so the player can be offered "save this card" afterwards. The
+    // existing customer is read from the profile here rather than taken from
+    // the request body — the client already can't be trusted with the amount.
+    const { data: profile } = await adminSupabase
+      .from("profiles").select("stripe_customer_id").eq("id", playerId).maybeSingle();
+    let customer = (profile?.stripe_customer_id as string | null) ?? undefined;
+    if (!customer) {
+      const created = await stripe.customers.create({
+        email: email ?? undefined,
+        metadata: { app: "unitr" },
+      });
+      customer = created.id;
+    }
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: "gbp",
+      customer,
+      setup_future_usage: "off_session",
       receipt_email: email ?? undefined,
       automatic_payment_methods: { enabled: true },
       metadata: {
@@ -50,7 +68,7 @@ export async function POST(req: NextRequest) {
       description: `Unitr ringer spot — £${(amount / 100).toFixed(2)}`,
     });
 
-    return NextResponse.json({ clientSecret: paymentIntent.client_secret, amountPence: amount });
+    return NextResponse.json({ clientSecret: paymentIntent.client_secret, amountPence: amount, customerId: customer });
   } catch (err) {
     console.error("Ringer intent error:", err);
     return NextResponse.json({ error: "Payment setup failed" }, { status: 500 });

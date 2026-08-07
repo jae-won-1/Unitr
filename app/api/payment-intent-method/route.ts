@@ -17,8 +17,14 @@ export async function GET(req: NextRequest) {
     }
 
     const method = await stripe.paymentMethods.retrieve(pm);
+    // The customer comes off the intent rather than the caller: every surface
+    // that offers to save a card would otherwise have to thread the id back
+    // from intent creation, and one that forgot would silently save a payment
+    // method with no customer — unusable for the off-session charge later.
+    const customer = typeof pi.customer === "string" ? pi.customer : pi.customer?.id ?? null;
     return NextResponse.json({
       paymentMethodId: pm,
+      customerId: customer,
       brand: method.card?.brand ?? null,
       last4: method.card?.last4 ?? null,
     });

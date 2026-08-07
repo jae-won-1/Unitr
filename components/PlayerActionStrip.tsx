@@ -69,7 +69,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
               <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
             </svg>
           </div>
-          <p className="text-sm font-bold leading-tight">{owedPence > 0 ? "Settle Up" : "Top Up"}</p>
+          <p className="text-sm font-bold leading-tight">Top Up Team Credit</p>
           <p className={`text-[11px] mt-1 leading-tight ${owedPence > 0 ? "text-red-400 font-semibold" : "text-text-secondary"}`}>
             {owedPence > 0
               ? `You owe £${(owedPence / 100).toFixed(2)}`

@@ -8,6 +8,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
+import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
 // shortest path in the app: see the price, see the match, pay, you're in the
@@ -245,6 +246,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RingerPost | null>(null);
   const [gate, setGate] = useState<GateTarget | null>(null);
+  const saveCard = useSaveCardOffer(user?.id);
 
   const closeModal = () => {
     setTarget(null);
@@ -293,8 +295,12 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
       const data = await res.json();
       if (!data.ok) { setError(data.error ?? "Payment went through but the join failed."); return; }
       if (data.squadWarning) setError(data.squadWarning);
-      setDone(target);
-      setClientSecret(null);
+      // Offer to keep the card before the confirmation screen — a ringer with
+      // no team has no other surface that would ever ask them.
+      saveCard.offer(paymentIntentId, () => {
+        setDone(target);
+        setClientSecret(null);
+      });
       await reload();
     } catch {
       // The charge succeeded — say so plainly rather than inviting a re-pay.
@@ -391,6 +397,8 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
           </div>
         </div>
       )}
+
+      {saveCard.prompt}
     </div>
   );
 }

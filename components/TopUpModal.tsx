@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
+import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 
 const PRESETS_POUNDS = [10, 20, 50, 100];
 
 // ── Card entry (inside <Elements>) ────────────────────────────
 function TopUpCheckoutForm({ amount, teamId, userId, currentPence, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentPence: number;
-  onSuccess: (newBalancePence: number) => void; onBack: () => void;
+  onSuccess: (newBalancePence: number, paymentIntentId: string | null) => void; onBack: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -33,7 +34,10 @@ function TopUpCheckoutForm({ amount, teamId, userId, currentPence, onSuccess, on
       p_amount_pence: Math.round(amount * 100),
       p_player_id: userId,
     });
-    onSuccess(typeof newBalancePence === "number" ? newBalancePence : currentPence + Math.round(amount * 100));
+    onSuccess(
+      typeof newBalancePence === "number" ? newBalancePence : currentPence + Math.round(amount * 100),
+      paymentIntent.id,
+    );
   };
 
   return (
@@ -75,6 +79,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   const [loadingSecret, setLoadingSecret] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null); // new balance pence, once paid
+  const saveCard = useSaveCardOffer(userId);
 
   const effectiveAmount = customInput ? parseFloat(customInput) : selectedAmount;
 
@@ -85,7 +90,11 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
     try {
       const res = await fetch("/api/create-credits-intent", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId }),
+        body: JSON.stringify({
+          amountPence: Math.round(effectiveAmount * 100),
+          teamId,
+          customerId: saveCard.customerId,
+        }),
       });
       const data = await res.json();
       if (data.clientSecret) setClientSecret(data.clientSecret);
@@ -97,6 +106,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
       <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {done !== null ? (
@@ -154,7 +164,8 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
                   teamId={teamId}
                   userId={userId}
                   currentPence={currentPence}
-                  onSuccess={(newBalancePence) => setDone(newBalancePence)}
+                  onSuccess={(newBalancePence, paymentIntentId) =>
+                    saveCard.offer(paymentIntentId, () => setDone(newBalancePence))}
                   onBack={() => setClientSecret(null)}
                 />
               </Elements>
@@ -163,5 +174,9 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
         )}
       </div>
     </div>
+    {/* Outside the backdrop above — nested, its clicks would bubble into that
+        backdrop's onClose and dismiss the whole top-up mid-prompt. */}
+    {saveCard.prompt}
+    </>
   );
 }
