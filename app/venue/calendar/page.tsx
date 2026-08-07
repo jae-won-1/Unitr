@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { TimePicker } from "@/components/DateTimePickers";
+import { loadBookingPayments, persistPaidCorrections, type BookingPayment } from "@/lib/venue-payments";
 
 // ── Constants ─────────────────────────────────────────────────
 const SLOT_H = 52;
@@ -55,7 +56,12 @@ type Booking = {
   total_price_pence?: number;
   per_player_pence?: number;
   player_count?: number;
+  post_id?: string | null;
+  stripe_payment_intent_id?: string | null;
   category?: BookingCategory;
+  // Reconstructed from the payment ledgers — see lib/venue-payments. Absent
+  // only for a booking added from this page before the next load.
+  payment?: BookingPayment;
 };
 
 function categoryFor(booking: Booking, matchTypeByBooking: Map<string, string>): BookingCategory {
@@ -152,6 +158,13 @@ function BookingBlock({ booking, onClick }: {
   const endSlot = Math.min(TOTAL_SLOTS, timeToSlot(endTime));
   const height = Math.max(SLOT_H / 2, (endSlot - startSlot) * SLOT_H - 2);
   const top = startSlot * SLOT_H + 1;
+  const pay = booking.payment;
+  const payLabel = !pay ? null
+    : pay.entries ? `${pay.entries.joined}/${pay.entries.max} teams · £${(pay.collectedPence / 100).toFixed(0)}`
+    : pay.status === "paid" ? "Paid ✓"
+    : pay.status === "after_match" ? "Due after match"
+    : pay.status === "reception" ? "Pay at reception"
+    : "Unpaid";
 
   return (
     <div
@@ -171,6 +184,13 @@ function BookingBlock({ booking, onClick }: {
       <p className="text-[10px] leading-tight" style={{ color: color.text, opacity: 0.75 }}>
         {booking.start_time}–{endTime}
       </p>
+      {/* Payment at a glance: a listing shows how full it is, everything else
+          whether the money is in. Blocks are small, so this is one short line. */}
+      {payLabel && (
+        <p className="text-[9px] font-semibold leading-tight truncate" style={{ color: color.text, opacity: 0.85 }}>
+          {payLabel}
+        </p>
+      )}
       {booking.booking_type === "manual" && (
         <p className="text-[9px] leading-tight" style={{ color: color.text, opacity: 0.6 }}>Manual</p>
       )}
@@ -659,7 +679,8 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
     setCancelling(false);
   };
 
-  const paymentStatus = booking.payment_status ?? "unpaid";
+  const payment = booking.payment;
+  const paymentStatus = payment?.status ?? booking.payment_status ?? "unpaid";
 
   const price = (() => {
     if (booking.total_price_pence && booking.total_price_pence > 0) return booking.total_price_pence / 100;
@@ -704,10 +725,66 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
           <div className="bg-surface-2 border border-border rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Payment</p>
-              {price > 0 && (
-                <span className="text-sm font-bold text-accent">£{price.toFixed(2)}</span>
+              {(payment?.entries ? payment.expectedPence > 0 : price > 0) && (
+                <span className="text-sm font-bold text-accent">
+                  £{(payment?.entries ? payment.expectedPence / 100 : price).toFixed(2)}
+                </span>
               )}
             </div>
+
+            {payment && (
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  payment.status === "paid" ? "bg-accent/10 text-accent"
+                    : payment.status === "part_paid" ? "bg-accent/10 text-accent/80 border border-accent/20"
+                    : payment.status === "unpaid" ? "bg-red-500/10 text-red-400"
+                    : "bg-yellow-500/10 text-yellow-400"
+                }`}>
+                  {payment.status === "paid" ? "Paid" : payment.status === "part_paid" ? "Part paid"
+                    : payment.status === "reception" ? "At reception" : payment.status === "after_match" ? "After match" : "Unpaid"}
+                </span>
+                <span className="text-[11px] text-text-secondary">{payment.detail}</span>
+              </div>
+            )}
+
+            {payment?.payoutFailed && (
+              <p className="text-[11px] text-yellow-400">The customer paid, but Unitr&apos;s payout to your account failed — see Reports.</p>
+            )}
+
+            {/* Listing: many teams pay in over time, so show entries + money in. */}
+            {payment?.entries && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">
+                    {payment.entries.joined}/{payment.entries.max} teams entered
+                    <span className="text-text-secondary/70"> · £{(payment.entries.pricePerTeamPence / 100).toFixed(2)} per team</span>
+                  </span>
+                  <span className="font-bold text-accent">
+                    £{(payment.collectedPence / 100).toFixed(2)}
+                    <span className="text-text-secondary font-medium"> / £{(payment.expectedPence / 100).toFixed(2)}</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                  <div className="h-full bg-accent rounded-full"
+                    style={{ width: `${payment.expectedPence > 0 ? Math.min(100, Math.round((payment.collectedPence / payment.expectedPence) * 100)) : 0}%` }} />
+                </div>
+                {payment.payers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {payment.payers.map((p) => (
+                      <span key={p.name} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                        p.paid ? "bg-accent/10 border-accent/30 text-accent" : "bg-surface border-border text-text-secondary"
+                      }`}>
+                        {p.name} · £{(p.amountPence / 100).toFixed(2)}{p.paid ? " ✓" : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Manual override — pointless for a listing, whose status is the
+                sum of its entries. */}
+            {!payment?.entries && (
             <div className="flex gap-2">
               {(() => {
                 // Show the payment states that make sense for this booking kind:
@@ -735,6 +812,7 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
                 });
               })()}
             </div>
+            )}
           </div>
 
           <div className="flex gap-2 pb-2">
@@ -777,7 +855,7 @@ export default function VenueCalendarPage() {
 
       // Fetch all non-cancelled bookings for this venue's pitches
       const { data: bks } = await supabase.from("pitch_bookings")
-        .select("id, pitch_id, match_date, start_time, end_time, booker_name, status, booking_type, notes, booked_by, payment_status, total_price_pence, per_player_pence, player_count")
+        .select("id, pitch_id, match_date, start_time, end_time, booker_name, status, booking_type, notes, booked_by, payment_status, total_price_pence, per_player_pence, player_count, post_id, stripe_payment_intent_id")
         .in("pitch_id", ps.map((p) => p.id))
         .neq("status", "cancelled");
 
@@ -788,6 +866,12 @@ export default function VenueCalendarPage() {
         : { data: [] as { booking_id: string; match_type: string }[] };
       const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));
 
+      // What has actually been paid against each booking — a match settled from
+      // team credit, a tournament filling up team by team. The stored
+      // payment_status is only ever written at booking time, so on its own it
+      // shows everything as unpaid forever.
+      const payments = await loadBookingPayments(rows);
+
       // Enrich platform bookings with profile names
       const enriched = await Promise.all(rows.map(async (b) => {
         let booker_name = b.booker_name;
@@ -795,10 +879,12 @@ export default function VenueCalendarPage() {
           const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
           booker_name = prof?.full_name ?? "Unitr Booking";
         }
-        const withName = { ...b, booker_name } as Booking;
+        const payment = payments.get(b.id);
+        const withName = { ...b, booker_name, payment, payment_status: payment?.status ?? b.payment_status } as Booking;
         return { ...withName, category: categoryFor(withName, matchTypeByBooking) };
       }));
 
+      await persistPaidCorrections(rows, payments);
       setBookings(enriched.map(b => ({ ...b, match_date: normalizeMatchDate(b.match_date) })));
       setLoading(false);
     }
@@ -831,8 +917,19 @@ export default function VenueCalendarPage() {
 
   const handlePaymentUpdate = async (id: string, status: string) => {
     await supabase.from("pitch_bookings").update({ payment_status: status }).eq("id", id);
-    setBookings((prev) => prev.map((b) => b.id === id ? { ...b, payment_status: status } : b));
-    setSelectedBooking((b) => b && b.id === id ? { ...b, payment_status: status } : b);
+    const apply = (b: Booking): Booking => ({
+      ...b,
+      payment_status: status,
+      payment: b.payment && {
+        ...b.payment,
+        status: status as BookingPayment["status"],
+        collectedPence: status === "paid" ? b.payment.expectedPence : 0,
+        detail: status === "paid" ? "Marked paid by the venue"
+          : status === "reception" ? "Collected at the venue" : "Due after the match",
+      },
+    });
+    setBookings((prev) => prev.map((b) => b.id === id ? apply(b) : b));
+    setSelectedBooking((b) => b && b.id === id ? apply(b) : b);
   };
 
   // Filter bookings for current view — case-insensitive to handle "JUN" vs "Jun"

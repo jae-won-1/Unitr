@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import RingerFeed from "@/components/RingerFeed";
 import DateDial, { countByDate } from "@/components/DateDial";
 import ChallengePanel, { type MatchPost, type PitchOption } from "@/components/ChallengePanel";
+import EnterTournamentPanel from "@/components/EnterTournamentPanel";
 import { fmtKickoff, isKickoffPast, toDateKey } from "@/lib/match-dates";
 
 // The home feed for someone who has a team. Same three categories a teamless
@@ -33,6 +34,13 @@ type Tournament = {
   pricePerTeamPence: number;
   maxTeams: number;
   joinedCount: number;
+  // Null for venue-hosted tournaments.
+  organiserTeamName: string | null;
+  // Teams already bought in — so the card can say "you're entered" instead of
+  // offering the buy-in again.
+  joinedTeamIds: string[];
+  // Pending-invitation discount off the buy-in for the viewer's team (0 if none).
+  inviteDiscountPence: number;
 };
 
 // ── Suggestions ───────────────────────────────────────────────
@@ -146,7 +154,7 @@ function useOpenTournaments(teamId: string | null) {
   useEffect(() => {
     async function load() {
       const { data: oms } = await supabase.from("open_matches")
-        .select("id, title, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id")
+        .select("id, title, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id, organiser_team_name")
         .eq("match_type", "tournament")
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });
@@ -155,9 +163,18 @@ function useOpenTournaments(teamId: string | null) {
         (m) => m.organiser_team_id !== teamId && !isKickoffPast(m.match_date, m.start_time)
       );
 
+      // Pending invitations for the viewer's team → discount per tournament.
+      const discountByTournament = new Map<string, number>();
+      if (teamId) {
+        const { data: invites } = await supabase.from("tournament_invitations")
+          .select("open_match_id, discount_pence").eq("team_id", teamId).eq("status", "pending");
+        for (const inv of invites ?? []) discountByTournament.set(inv.open_match_id as string, inv.discount_pence ?? 0);
+      }
+
       const withCounts = await Promise.all(active.map(async (m) => {
-        const { count } = await supabase.from("open_match_teams")
-          .select("team_id", { count: "exact", head: true }).eq("open_match_id", m.id);
+        const { data: joined } = await supabase.from("open_match_teams")
+          .select("team_id").eq("open_match_id", m.id);
+        const joinedTeamIds = (joined ?? []).map((x) => x.team_id as string);
         return {
           id: m.id,
           title: m.title,
@@ -168,7 +185,10 @@ function useOpenTournaments(teamId: string | null) {
           skillLevel: m.skill_level,
           pricePerTeamPence: m.price_per_team_pence,
           maxTeams: m.max_teams,
-          joinedCount: count ?? 0,
+          joinedCount: joinedTeamIds.length,
+          organiserTeamName: m.organiser_team_name ?? null,
+          joinedTeamIds,
+          inviteDiscountPence: discountByTournament.get(m.id) ?? 0,
         } as Tournament;
       }));
 
@@ -178,7 +198,14 @@ function useOpenTournaments(teamId: string | null) {
     load();
   }, [teamId]);
 
-  return { tournaments, loading };
+  // Optimistically mark the viewer's team as entered after a successful buy-in.
+  const markJoined = (id: string, joinedTeamId: string) => setTournaments((prev) => prev.map((t) =>
+    t.id === id && !t.joinedTeamIds.includes(joinedTeamId)
+      ? { ...t, joinedCount: t.joinedCount + 1, joinedTeamIds: [...t.joinedTeamIds, joinedTeamId] }
+      : t
+  ));
+
+  return { tournaments, loading, markJoined };
 }
 
 // ── Cards ─────────────────────────────────────────────────────
@@ -285,6 +312,62 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
   );
 }
 
+// ── Enter Tournament CTA ──────────────────────────────────────
+// Entering is a real transaction — the team's buy-in leaves team credit — so the
+// button raises the confirmation sheet rather than linking straight through.
+// The detail page (/play/tournament/[id]) is the schedule/referee view; it's the
+// secondary link here, not the action.
+function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
+  t: Tournament;
+  teamId: string | null;
+  teamName: string | null;
+  onJoined: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const alreadyIn = teamId ? t.joinedTeamIds.includes(teamId) : false;
+  const isFull = t.joinedCount >= t.maxTeams;
+  const discounted = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
+
+  return (
+    <div className="space-y-2">
+      {alreadyIn ? (
+        <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
+      ) : isFull ? (
+        <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
+      ) : (
+        <button onClick={() => setOpen(true)}
+          className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+          {t.inviteDiscountPence > 0
+            ? `Accept invitation — £${(discounted / 100).toFixed(2)}`
+            : "Enter Tournament"}
+        </button>
+      )}
+      <a href={`/play/tournament/${t.id}`}
+        className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-surface border border-border text-sm font-semibold text-text-primary">
+        View schedule &amp; referees
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+
+      {open && (
+        <EnterTournamentPanel
+          tournament={{
+            id: t.id, title: t.title, pitchName: t.pitchName,
+            matchDate: t.matchDate, startTime: t.startTime,
+            pricePerTeamPence: t.pricePerTeamPence, maxTeams: t.maxTeams,
+            joinedCount: t.joinedCount,
+            organiserName: t.organiserTeamName ?? t.pitchName,
+            inviteDiscountPence: t.inviteDiscountPence,
+          }}
+          myTeamId={teamId}
+          myTeamName={teamName}
+          onClose={() => setOpen(false)}
+          onJoined={() => { setOpen(false); onJoined(); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Feed ──────────────────────────────────────────────────────
 export default function GameFeed({ teamId, userId, canAct = false, matchesHeader }: {
   teamId: string | null;
@@ -301,8 +384,15 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   // dates come from a separate query.
   const [dateKey, setDateKey] = useState<string | null>(null);
   const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
-  const { tournaments, loading: tLoading } = useOpenTournaments(teamId);
+  const { tournaments, loading: tLoading, markJoined } = useOpenTournaments(teamId);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
+  // Only needed for the tournament buy-in, which stamps the entry with the name.
+  const [teamName, setTeamName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!teamId) { setTeamName(null); return; }
+    supabase.from("teams").select("name").eq("id", teamId).maybeSingle()
+      .then(({ data }) => setTeamName(data?.name ?? null));
+  }, [teamId]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "ringer", label: "Fill In" },
@@ -385,10 +475,12 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
                 <TournamentPostCard key={t.id} t={t}>
                   {canAct
                     ? (
-                      <a href={`/play/tournament/${t.id}`}
-                        className="block w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm text-center">
-                        Enter Tournament
-                      </a>
+                      <EnterTournamentButton
+                        t={t}
+                        teamId={teamId}
+                        teamName={teamName}
+                        onJoined={() => teamId && markJoined(t.id, teamId)}
+                      />
                     )
                     : <SuggestButton postId={t.id} kind="tournament" suggested={suggested.has(t.id)} unavailable={unavailable} onSuggest={suggest} />}
                 </TournamentPostCard>

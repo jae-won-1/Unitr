@@ -284,6 +284,12 @@ export default function ChallengePanel({
             p_fee_pence: feePence,
           });
           if (settleErr) console.error("split_pitch_fee failed:", settleErr.message);
+          // The pitch is paid for the moment both halves leave team credit. Say
+          // so on the booking, or the venue portal shows this slot as unpaid
+          // forever — nothing else ever writes payment_status after insert.
+          else if (pitchBookingId) {
+            await supabase.from("pitch_bookings").update({ payment_status: "paid" }).eq("id", pitchBookingId);
+          }
 
           // Release the poster's batch earmark, if any (credit mode placed one at
           // post time). Clear it so it can't be released twice.

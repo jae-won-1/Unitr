@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import TournamentInvitePanel from "@/components/TournamentInvitePanel";
+import EnterTournamentPanel from "@/components/EnterTournamentPanel";
+import { isKickoffPast } from "@/lib/match-dates";
 
 // Tournament detail + management. The organiser (the hosting team's captain, or
 // the venue owner for venue-hosted tournaments) can generate a schedule of
@@ -69,6 +71,9 @@ export default function TournamentDetailPage() {
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
+  const [myTeamName, setMyTeamName] = useState<string | null>(null);
+  const [inviteDiscountPence, setInviteDiscountPence] = useState(0);
+  const [showEnter, setShowEnter] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
@@ -130,9 +135,17 @@ export default function TournamentDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("teams").select("id").eq("captain_id", user.id).maybeSingle()
-      .then(({ data }) => setMyTeamId(data?.id ?? null));
+    supabase.from("teams").select("id, name").eq("captain_id", user.id).maybeSingle()
+      .then(({ data }) => { setMyTeamId(data?.id ?? null); setMyTeamName(data?.name ?? null); });
   }, [user]);
+
+  // Pending invitation for this team → discount off the buy-in.
+  useEffect(() => {
+    if (!myTeamId) { setInviteDiscountPence(0); return; }
+    supabase.from("tournament_invitations")
+      .select("discount_pence").eq("open_match_id", params.id).eq("team_id", myTeamId).eq("status", "pending").maybeSingle()
+      .then(({ data }) => setInviteDiscountPence(data?.discount_pence ?? 0));
+  }, [myTeamId, params.id]);
 
   const canManage = Boolean(t && user && (
     (t.organiser_team_id && t.organiser_team_id === myTeamId) || t.venue_owner_id === user.id
@@ -282,6 +295,40 @@ export default function TournamentDetailPage() {
           )}
         </section>
 
+        {/* Entry CTA — a captain arriving from the feed or a suggestion needs to
+            be able to actually buy in from here, not just read the schedule. */}
+        {(() => {
+          const alreadyIn = Boolean(myTeamId && teams.some((tm) => tm.team_id === myTeamId));
+          const isFull = teams.length >= t.max_teams || t.status === "full";
+          const past = isKickoffPast(t.match_date, t.start_time);
+          if (canManage || past) return null;
+          const discounted = Math.max(0, t.price_per_team_pence - inviteDiscountPence);
+          return (
+            <section className="bg-surface-2 border border-border rounded-2xl p-4">
+              {alreadyIn ? (
+                <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
+              ) : isFull ? (
+                <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-text-secondary">Buy-in (per team)</span>
+                    <span className="text-sm font-bold">
+                      {inviteDiscountPence > 0 && <span className="text-[11px] text-text-secondary line-through mr-1.5">£{(t.price_per_team_pence / 100).toFixed(2)}</span>}
+                      £{(discounted / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  <button onClick={() => setShowEnter(true)} disabled={!myTeamId}
+                    className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+                    {inviteDiscountPence > 0 ? `Accept invitation — £${(discounted / 100).toFixed(2)}` : "Enter Tournament"}
+                  </button>
+                  {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}
+                </>
+              )}
+            </section>
+          );
+        })()}
+
         {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-400">{error}</p></div>}
 
         {/* Organiser: invite good-fit teams */}
@@ -377,6 +424,23 @@ export default function TournamentDetailPage() {
           inviterName={t.organiser_team_name ?? t.pitch_name}
           onClose={() => setShowInvite(false)}
           onSent={load}
+        />
+      )}
+
+      {showEnter && (
+        <EnterTournamentPanel
+          tournament={{
+            id: t.id, title: t.title, pitchName: t.pitch_name,
+            matchDate: t.match_date, startTime: t.start_time,
+            pricePerTeamPence: t.price_per_team_pence, maxTeams: t.max_teams,
+            joinedCount: teams.length,
+            organiserName: t.organiser_team_name ?? t.pitch_name,
+            inviteDiscountPence,
+          }}
+          myTeamId={myTeamId}
+          myTeamName={myTeamName}
+          onClose={() => setShowEnter(false)}
+          onJoined={() => { setShowEnter(false); load(); }}
         />
       )}
     </div>

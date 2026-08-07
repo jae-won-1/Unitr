@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toDateKey } from "@/lib/match-dates";
+import { loadBookingPayments, persistPaidCorrections, type BookingPayment } from "@/lib/venue-payments";
 
 // Legacy dates are stored uppercase ("Wed, 03 JUN 2026"), which the previous
 // case-sensitive month lookup here missed — toDateKey is case-insensitive.
@@ -30,8 +31,12 @@ type Booking = {
   booking_type: string;
   payment_status: string;
   booker_name: string;
+  post_id: string | null;
+  stripe_payment_intent_id: string | null;
   category: Category;
   payerLabel: string | null;
+  // What actually got paid, reconstructed from the ledgers — see lib/venue-payments.
+  payment: BookingPayment;
 };
 
 const STATUS_FILTERS = ["All", "Confirmed", "Pending", "Cancelled"] as const;
@@ -50,10 +55,6 @@ const CATEGORY_META: Record<Category, { label: string; cls: string }> = {
   league: { label: "League", cls: "bg-blue-500/10 text-blue-400" },
   manual: { label: "Manual", cls: "bg-surface text-text-secondary" },
 };
-
-// A booking's payment counts as settled only when it's "paid". Everything else
-// (unpaid, pay-at-reception, pay-after-match) is money still to collect.
-function isPaid(status: string) { return status === "paid"; }
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -76,6 +77,9 @@ function CategoryBadge({ category }: { category: Category }) {
 function PaymentBadge({ status }: { status: string }) {
   if (status === "paid") return (
     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent">Paid</span>
+  );
+  if (status === "part_paid") return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent/80 border border-accent/20">Part paid</span>
   );
   if (status === "reception") return (
     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">Pay at reception</span>
@@ -103,67 +107,21 @@ export default function VenueBookingsPage() {
       if (!ps || ps.length === 0) { setLoading(false); return; }
 
       const { data: bks } = await supabase.from("pitch_bookings")
-        .select("id, match_date, start_time, end_time, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status, booker_name, booked_by, stripe_payment_intent_id")
+        .select("id, match_date, start_time, end_time, total_price_pence, per_player_pence, player_count, status, booking_type, payment_status, booker_name, booked_by, post_id, stripe_payment_intent_id")
         .in("pitch_id", ps.map((p) => p.id)).order("match_date", { ascending: false });
 
       const rows = bks ?? [];
       const bookingIds = rows.map((b) => b.id);
 
-      // Fetch the payment picture in three batched queries:
-      //  • open_matches → the match_type (match / tournament / league) so we can
-      //    categorise the listing bookings.
-      //  • player_payments → a paid card charge for a booking (direct Book flow).
-      //  • venue_transfers → the payout Unitr sent the venue. A paid transfer is
-      //    the definitive "the venue got its money" signal and fires for BOTH
-      //    credit- and card-paid Unitr bookings, so we reconcile against it.
-      const [{ data: oms }, { data: pays }, { data: transfers }] = await Promise.all([
-        bookingIds.length
-          ? supabase.from("open_matches").select("id, booking_id, match_type").in("booking_id", bookingIds)
-          : Promise.resolve({ data: [] as { id: string; booking_id: string; match_type: string }[] }),
-        bookingIds.length
-          ? supabase.from("player_payments").select("booking_id, status").in("booking_id", bookingIds)
-          : Promise.resolve({ data: [] as { booking_id: string; status: string }[] }),
-        bookingIds.length
-          // team_id comes from supabase_venue_payouts.sql; without that migration
-          // this select errors and would wipe out the whole payment picture, so
-          // fall back to the columns that always exist.
-          ? supabase.from("venue_transfers").select("booking_id, status, team_id").in("booking_id", bookingIds)
-              .then(async (r) => r.error
-                ? { data: ((await supabase.from("venue_transfers").select("booking_id, status").in("booking_id", bookingIds)).data ?? [])
-                    .map((t) => ({ ...t, team_id: null })) }
-                : r)
-          : Promise.resolve({ data: [] as { booking_id: string; status: string; team_id: string | null }[] }),
-      ]);
+      // Categorise the listing bookings (match / tournament / league)…
+      const { data: oms } = bookingIds.length
+        ? await supabase.from("open_matches").select("id, booking_id, match_type").in("booking_id", bookingIds)
+        : { data: [] as { id: string; booking_id: string; match_type: string }[] };
       const matchTypeByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.match_type]));
-      const paidBookingIds = new Set((pays ?? []).filter((p) => p.status === "paid").map((p) => p.booking_id));
-      const paidOutBookingIds = new Set((transfers ?? []).filter((t) => t.status === "paid" && t.booking_id).map((t) => t.booking_id));
 
-      // Which team paid: for a single-team booking (match/direct), read the
-      // team_id off its venue_transfers row. For a tournament, many teams
-      // share one booking — list every team that entered via open_match_teams.
-      const transferTeamIds = [...new Set((transfers ?? []).map((t) => t.team_id).filter(Boolean))] as string[];
-      const { data: payerTeams } = transferTeamIds.length
-        ? await supabase.from("teams").select("id, name").in("id", transferTeamIds)
-        : { data: [] as { id: string; name: string }[] };
-      const payerTeamName = new Map((payerTeams ?? []).map((t) => [t.id, t.name as string]));
-      const teamIdByBooking = new Map((transfers ?? []).filter((t) => t.team_id).map((t) => [t.booking_id, t.team_id as string]));
+      // …and reconstruct what has actually been paid against each one.
+      const payments = await loadBookingPayments(rows);
 
-      const tournamentOmIds = (oms ?? []).filter((o) => o.match_type === "tournament").map((o) => o.id);
-      const { data: enteredTeams } = tournamentOmIds.length
-        ? await supabase.from("open_match_teams").select("open_match_id, team_name").in("open_match_id", tournamentOmIds)
-        : { data: [] as { open_match_id: string; team_name: string }[] };
-      const omIdByBooking = new Map((oms ?? []).map((o) => [o.booking_id, o.id]));
-      const enteredTeamsByOm = new Map<string, string[]>();
-      for (const row of enteredTeams ?? []) {
-        const list = enteredTeamsByOm.get(row.open_match_id) ?? [];
-        list.push(row.team_name);
-        enteredTeamsByOm.set(row.open_match_id, list);
-      }
-
-      // Reconcile Unitr (platform) bookings: if the money actually moved — a paid
-      // card charge, a Stripe intent on the booking, or a completed venue payout —
-      // mark it paid and persist the correction so it stays fixed.
-      const toMarkPaid: string[] = [];
       const enriched = await Promise.all(rows.map(async (b) => {
         let name = b.booker_name;
         if (!name) {
@@ -171,29 +129,29 @@ export default function VenueBookingsPage() {
           name = (prof as { full_name: string } | null)?.full_name ?? "Unknown";
         }
 
-        let payment = b.payment_status ?? "unpaid";
-        const paidViaUnitr = b.booking_type === "platform" &&
-          (paidBookingIds.has(b.id) || paidOutBookingIds.has(b.id) || Boolean(b.stripe_payment_intent_id));
-        if (paidViaUnitr && payment !== "paid") { payment = "paid"; toMarkPaid.push(b.id); }
-
+        const payment = payments.get(b.id)!;
         const category: Category = b.booking_type === "manual" ? "manual"
           : b.booking_type === "open_match"
             ? (matchTypeByBooking.get(b.id) === "tournament" ? "tournament"
               : matchTypeByBooking.get(b.id) === "league" ? "league" : "match")
             : "match"; // platform = a team's match booked through Unitr
 
-        const omId = omIdByBooking.get(b.id);
-        const enteredNames = category === "tournament" && omId ? enteredTeamsByOm.get(omId) : undefined;
-        const payerLabel = enteredNames && enteredNames.length > 0
-          ? `${enteredNames.length} team${enteredNames.length === 1 ? "" : "s"} · ${enteredNames.join(", ")}`
-          : teamIdByBooking.has(b.id) ? (payerTeamName.get(teamIdByBooking.get(b.id)!) ?? null) : null;
+        const paidNames = payment.payers.filter((p) => p.paid).map((p) => p.name);
+        const payerLabel = paidNames.length > 0 ? paidNames.join(", ") : null;
 
-        return { ...b, booker_name: name, payment_status: payment, category, payerLabel, match_date: normalizeMatchDate(b.match_date) } as Booking;
+        return {
+          ...b,
+          booker_name: name,
+          payment_status: payment.status,
+          payment,
+          category,
+          payerLabel,
+          match_date: normalizeMatchDate(b.match_date),
+        } as Booking;
       }));
 
-      if (toMarkPaid.length) {
-        await supabase.from("pitch_bookings").update({ payment_status: "paid" }).in("id", toMarkPaid);
-      }
+      // Persist the correction so anything still reading payment_status agrees.
+      await persistPaidCorrections(rows, payments);
       setBookings(enriched);
       setLoading(false);
     }
@@ -207,7 +165,16 @@ export default function VenueBookingsPage() {
 
   const updatePaymentStatus = async (id: string, payment_status: string) => {
     await supabase.from("pitch_bookings").update({ payment_status }).eq("id", id);
-    setBookings((b) => b.map((x) => x.id === id ? { ...x, payment_status } : x));
+    setBookings((b) => b.map((x) => x.id === id ? {
+      ...x,
+      payment_status,
+      payment: {
+        ...x.payment,
+        status: payment_status as BookingPayment["status"],
+        collectedPence: payment_status === "paid" ? x.payment.expectedPence : 0,
+        detail: payment_status === "paid" ? "Marked paid by the venue" : "Due after the match",
+      },
+    } : x));
   };
 
   const filtered = bookings
@@ -298,6 +265,9 @@ export default function VenueBookingsPage() {
                           {formatMatchDate(b.match_date)} · {b.start_time}{endTime ? `–${endTime}` : ""}
                         </p>
                         {b.payerLabel && <p className="text-[11px] text-text-secondary mt-0.5 truncate">Paid by {b.payerLabel}</p>}
+                        {b.payment.payoutFailed && (
+                          <p className="text-[11px] text-yellow-400 mt-0.5">Customer paid · Unitr payout failed</p>
+                        )}
                         <span className="text-[10px] text-text-secondary italic">
                           {b.booking_type === "manual" ? "External booking"
                             : b.booking_type === "platform" ? "Booked via Unitr" : "Listing"}
@@ -310,14 +280,50 @@ export default function VenueBookingsPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <PaymentBadge status={b.payment_status} />
+                        <span className="text-[11px] text-text-secondary">{b.payment.detail}</span>
                       </div>
-                      {price > 0 && (
-                        <span className="text-sm font-bold text-accent">£{price.toFixed(2)}</span>
+                      {(b.payment.entries ? b.payment.expectedPence > 0 : price > 0) && (
+                        <span className="text-sm font-bold text-accent">
+                          £{((b.payment.entries ? b.payment.expectedPence / 100 : price)).toFixed(2)}
+                        </span>
                       )}
                     </div>
 
-                    {/* Payment status controls */}
-                    {b.status !== "cancelled" && b.payment_status !== "paid" && (
+                    {/* Multi-payer listing: teams buy in one at a time, so show the
+                        entries filled and the money in so far rather than one flag. */}
+                    {b.payment.entries && (
+                      <div className="bg-surface border border-border rounded-xl p-3 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-text-secondary">
+                            {b.payment.entries.joined}/{b.payment.entries.max} teams entered
+                            <span className="text-text-secondary/70"> · £{(b.payment.entries.pricePerTeamPence / 100).toFixed(2)} per team</span>
+                          </span>
+                          <span className="font-bold text-accent">
+                            £{(b.payment.collectedPence / 100).toFixed(2)}
+                            <span className="text-text-secondary font-medium"> / £{(b.payment.expectedPence / 100).toFixed(2)}</span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                          <div className="h-full bg-accent rounded-full transition-all"
+                            style={{ width: `${b.payment.expectedPence > 0 ? Math.min(100, Math.round((b.payment.collectedPence / b.payment.expectedPence) * 100)) : 0}%` }} />
+                        </div>
+                        {b.payment.payers.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {b.payment.payers.map((p) => (
+                              <span key={p.name} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                                p.paid ? "bg-accent/10 border-accent/30 text-accent" : "bg-surface-2 border-border text-text-secondary"
+                              }`}>
+                                {p.name} · £{(p.amountPence / 100).toFixed(2)}{p.paid ? " ✓" : ""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Payment status controls. A listing's status comes from its
+                        entries, so there's nothing sensible to override there. */}
+                    {b.status !== "cancelled" && b.payment_status !== "paid" && !b.payment.entries && (
                       <div className="flex gap-2">
                         <button onClick={() => updatePaymentStatus(b.id, "paid")}
                           className="flex-1 py-2 rounded-xl bg-accent text-black text-xs font-bold">
