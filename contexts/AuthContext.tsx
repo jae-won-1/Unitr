@@ -8,7 +8,10 @@ type AuthContextType = {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signOut: () => Promise<void>;
+  // Clears the session and navigates. Signing out without going anywhere left
+  // the viewer on a page they're no longer entitled to — most visibly in the
+  // venue portal, which has no signed-out state and just sat there empty.
+  signOut: (redirectTo?: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -40,8 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  // A full page load rather than a router push: it drops every bit of
+  // user-scoped state the app is holding (role, team, cached queries) instead
+  // of leaving it for the next person to sign in on this device. If Supabase
+  // errors we still leave — the local session is gone either way.
+  const signOut = async (redirectTo = "/") => {
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      window.location.assign(redirectTo);
+    }
   };
 
   return (

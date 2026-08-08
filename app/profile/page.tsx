@@ -451,7 +451,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
 
 
       <button
-        onClick={signOut}
+        onClick={() => signOut()}
         className="w-full py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm flex items-center justify-center gap-2"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

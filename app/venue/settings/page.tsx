@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { TimePicker } from "@/components/DateTimePickers";
 
@@ -832,7 +831,6 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
 // ── Page ──────────────────────────────────────────────────────
 export default function VenueSettingsPage() {
   const { user, signOut } = useAuth();
-  const router = useRouter();
   const [allPitches, setAllPitches] = useState<PitchItem[]>([]);
   const [selectedPitchId, setSelectedPitchId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("info");
@@ -968,7 +966,7 @@ export default function VenueSettingsPage() {
         <PayoutsTab pitches={allPitches} />
       )}
 
-      <button onClick={async () => { await signOut(); router.push("/"); }}
+      <button onClick={() => signOut("/login")}
         className="w-full py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm flex items-center justify-center gap-2">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
