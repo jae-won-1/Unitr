@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import MatchAvailabilityList, { type UpcomingMatch } from "@/components/MatchAvailabilityList";
 
 // Answering the captain's availability poll without leaving home. Same options,
 // same "unavailable for any of these" escape hatch, and the same
 // availability_responses upsert the My Team tab writes — this is a second
 // doorway onto one record, not a second record.
+//
+// It also carries the squad's already-confirmed fixtures, because plenty of
+// games never went through a poll (the captain matched straight off the feed)
+// and those still need an answer from every player. Two different records —
+// availability_responses for the poll, match_confirmations for the fixtures —
+// behind one "am I playing?" surface, which is the only question the player is
+// actually asking.
 
 export type DateOption = {
   id: string;
@@ -15,6 +23,7 @@ export type DateOption = {
   day: string;
   month: string;
   dayName: string;
+  location?: string;
 };
 
 type Request = { id: string; date_options: DateOption[] };
@@ -56,10 +65,16 @@ export function useAvailabilityPoll(teamId: string | null, userId: string | unde
   return { request, myAnswer, loading, reload: load };
 }
 
-export default function AvailabilityModal({ request, myAnswer, userId, onClose, onSubmitted }: {
-  request: Request;
+export default function AvailabilityModal({
+  request, myAnswer, userId, teamId, matches = [], onMatchChanged, onClose, onSubmitted,
+}: {
+  request: Request | null;
   myAnswer: string[] | null;
   userId: string;
+  // Only needed to answer fixtures — match_confirmations rows are team-scoped.
+  teamId?: string | null;
+  matches?: UpcomingMatch[];
+  onMatchChanged?: () => void;
   onClose: () => void;
   onSubmitted: (ids: string[]) => void;
 }) {
@@ -67,9 +82,13 @@ export default function AvailabilityModal({ request, myAnswer, userId, onClose, 
   const [noneWork, setNoneWork] = useState(myAnswer !== null && myAnswer.length === 0);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const showMatches = matches.length > 0 && !!teamId;
+
   const submit = async () => {
+    if (!request) return;
     setSubmitting(true);
     setError(null);
     const ids = noneWork ? [] : selected;
@@ -78,7 +97,11 @@ export default function AvailabilityModal({ request, myAnswer, userId, onClose, 
       { onConflict: "request_id,player_id" }
     );
     if (err) { setError("Couldn't save your availability. Try again."); setSubmitting(false); return; }
-    setDone(true);
+    // The full-screen confirmation is only right when the poll was the whole
+    // job. With fixtures also on this sheet it would hide work still to do, so
+    // there the save reports itself inline instead.
+    setDone(!showMatches);
+    setSaved(true);
     setSubmitting(false);
     onSubmitted(ids);
   };
@@ -105,9 +128,32 @@ export default function AvailabilityModal({ request, myAnswer, userId, onClose, 
           <>
             <p className="text-lg font-bold mb-1">Submit availability</p>
             <p className="text-xs text-text-secondary mb-4">
-              Pick every slot you could play. Your captain sees the totals, not who picked what.
+              {request
+                ? "Pick every slot you could play. Your captain sees the totals, not who picked what."
+                : "Confirm whether you can play the games your team already has booked in."}
             </p>
 
+            {showMatches && (
+              <div className="mb-5">
+                <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
+                  Confirmed matches
+                </p>
+                <MatchAvailabilityList
+                  matches={matches}
+                  userId={userId}
+                  teamId={teamId!}
+                  onChanged={onMatchChanged}
+                />
+              </div>
+            )}
+
+            {request && (
+            <>
+            {showMatches && (
+              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
+                Proposed dates
+              </p>
+            )}
             <div className="space-y-2 mb-4">
               {request.date_options.map((opt) => {
                 const picked = selected.includes(opt.id);
@@ -125,7 +171,9 @@ export default function AvailabilityModal({ request, myAnswer, userId, onClose, 
                   >
                     <div>
                       <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
-                      <p className="text-[10px] text-text-secondary mt-0.5">{opt.date}</p>
+                      <p className="text-[10px] text-text-secondary mt-0.5">
+                        {opt.date}{opt.location ? ` · ${opt.location}` : ""}
+                      </p>
                     </div>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
                       {picked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
@@ -149,16 +197,24 @@ export default function AvailabilityModal({ request, myAnswer, userId, onClose, 
                 </div>
               </button>
             </div>
+            </>
+            )}
 
             {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+            {saved && !done && <p className="text-xs text-accent mb-3">Poll answer saved.</p>}
 
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
-              <button onClick={submit} disabled={!canSubmit}
-                className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
-                {submitting ? "Submitting…" : myAnswer !== null ? "Update" : "Submit"}
-              </button>
-            </div>
+            {request ? (
+              <div className="flex gap-3">
+                <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
+                <button onClick={submit} disabled={!canSubmit}
+                  className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                  {submitting ? "Submitting…" : myAnswer !== null ? "Update" : "Submit"}
+                </button>
+              </div>
+            ) : (
+              // Fixture answers save on tap, so there's nothing left to submit.
+              <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+            )}
           </>
         )}
       </div>

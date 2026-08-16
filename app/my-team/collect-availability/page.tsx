@@ -132,7 +132,9 @@ function CaptainResponsesView({
                     <p className="text-sm font-semibold">{opt.dayName}</p>
                     {isBest && <span className="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded-md">Best</span>}
                   </div>
-                  <p className="text-xs text-text-secondary">KO {opt.time}</p>
+                  <p className="text-xs text-text-secondary">
+                    KO {opt.time}{opt.location ? ` · ${opt.location}` : ""}
+                  </p>
                 </div>
                 <span className="text-sm font-bold text-accent">{count}/{totalMembers}</span>
               </div>
@@ -240,7 +242,9 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold">{opt.dayName}</p>
-                <p className="text-xs text-text-secondary">{opt.date} · KO {opt.time}</p>
+                <p className="text-xs text-text-secondary">
+                  {opt.date} · KO {opt.time}{opt.location ? ` · ${opt.location}` : ""}
+                </p>
               </div>
               <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSel ? "border-accent bg-accent" : "border-border"}`}>
                 {isSel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}

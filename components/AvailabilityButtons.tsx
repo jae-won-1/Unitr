@@ -34,7 +34,9 @@ export function AvailabilityButtons({
   playerId: string;
   teamId: string;
   size?: "sm" | "md";
-  onChanged?: () => void;
+  // Given the status just saved, so a caller showing an attendance list can
+  // move this player's row without re-fetching.
+  onChanged?: (status: ConfirmStatus) => void;
 }) {
   const [status, setStatus] = useState<ConfirmStatus>("pending");
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export function AvailabilityButtons({
       setError(true);
       return;
     }
-    onChanged?.();
+    onChanged?.(target);
   }
 
   if (loading) return <div className="h-8" />;

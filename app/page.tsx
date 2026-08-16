@@ -25,6 +25,8 @@ type ConfirmedFixture = {
   side: "poster" | "challenger";
   kind: "match" | "tournament";
   title?: string;
+  /** matches.id — the id Manage Match needs. `id` above is the post id. */
+  matchId?: string | null;
 };
 
 // ── Shared data ──────────────────────────────────────────────
@@ -199,6 +201,19 @@ function useConfirmedFixtures(userId: string | undefined) {
           };
         })
       );
+
+      // Both sides above only know the post id, but Manage Match is keyed by
+      // matches.id — linking with the post id landed on "Match not found".
+      // One lookup for every post, same as lib/calendar-entries.ts.
+      const matchFixtures = [...posterFixtures, ...challengerFixtures];
+      if (matchFixtures.length > 0) {
+        const { data: matchRows } = await supabase
+          .from("matches")
+          .select("id, post_id")
+          .in("post_id", matchFixtures.map((f) => f.id));
+        const matchByPost = new Map((matchRows ?? []).map((r) => [r.post_id as string, r.id as string]));
+        for (const f of matchFixtures) f.matchId = matchByPost.get(f.id) ?? null;
+      }
 
       // Resolve this user's team (captain or approved member) to pull in
       // tournament fixtures — entered or hosted — alongside matches.
@@ -474,10 +489,18 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
           <div className="space-y-2">
             <ConfirmedFixtureCard fixture={next} />
             {next.kind === "match" && (
-              <a href={`/my-team/match/${next.id}`}
-                className="block w-full py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold text-center">
-                Manage match
-              </a>
+              next.matchId ? (
+                <a href={`/my-team/match/${next.matchId}`}
+                  className="block w-full py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold text-center">
+                  Manage match
+                </a>
+              ) : (
+                /* Greyed, not hidden — a missing button shifts the card below it. */
+                <div className="w-full py-2.5 rounded-xl border border-border text-text-secondary text-sm font-bold text-center">
+                  Manage match
+                  <span className="block text-[10px] font-normal mt-0.5">Available once the match record is created</span>
+                </div>
+              )
             )}
           </div>
         )}

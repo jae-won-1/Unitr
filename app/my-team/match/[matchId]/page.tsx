@@ -35,10 +35,13 @@ type Confirmation = {
 
 type OriginalPost = { match_date: string; match_time: string };
 
-// status to use for display/payment purposes when no final confirmation is required
-function effectiveStatus(status: string, timeChanged: boolean) {
-  return timeChanged ? status : "confirmed";
-}
+// Attendance used to run through an effectiveStatus() helper that reported
+// everyone as "confirmed" unless the kickoff had moved. A squad member gets a
+// pending match_confirmations row the moment a challenge is accepted
+// (ChallengePanel), so that read the whole squad back as attending even when
+// one player had actually said yes — the captain saw eleven names in green and
+// eleven shirts that never turned up. Nothing is assumed now: a row says
+// confirmed, declined, or pending, and pending means pending.
 
 // Info · Attendance · Lineup · Tactics — mirroring how a matchday screen is
 // normally read: what is this game, who's coming, who's playing, how we play.
@@ -61,6 +64,45 @@ function ConfirmBadge({ status }: { status: string }) {
   if (status === "confirmed") return <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">In</span>;
   if (status === "declined") return <span className="text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">Out</span>;
   return <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>;
+}
+
+// One team's replies, headed by whose they are. The two squads used to be one
+// undifferentiated list of names, which reads fine right up until both teams
+// have a Jack and you're counting shirts.
+function AttendanceGroup({ title, subtitle, rows, highlight = false }: {
+  title: string;
+  subtitle: string;
+  rows: Confirmation[];
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`border rounded-2xl p-4 ${highlight ? "bg-surface-2 border-accent/30" : "bg-surface-2 border-border"}`}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-bold truncate">{title}</p>
+        <span className="text-[10px] text-text-secondary flex-shrink-0 ml-2">{subtitle}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-text-secondary">No replies yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((c) => (
+            <div key={c.player_id} className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                <span className="text-[10px] font-semibold text-text-secondary">
+                  {c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+              <p className="flex-1 text-sm truncate">{c.full_name}</p>
+              {c.is_ringer && (
+                <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+              )}
+              <ConfirmBadge status={c.status} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Ringer request (captain) ──────────────────────────────────
@@ -615,21 +657,25 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const opponentName = myTeamId === match.postingTeamId ? match.challengingTeamName : match.postingTeamName;
   const players = slotsFor(formation);
 
-  // My team's matchday squad — everyone confirmed for the (possibly retimed) slot.
+  // Who's pickable for the lineup: anyone who hasn't ruled themselves out.
+  // Not the confirmed-only set — a captain builds a shape before the last
+  // replies land, and a pending player is still a candidate. Each row carries
+  // its own badge below so the difference stays visible.
   const myParticipants = confirmations.filter(
-    (c) => c.team_id === myTeamId && effectiveStatus(c.status, timeChanged) === "confirmed"
+    (c) => c.team_id === myTeamId && c.status !== "declined"
   );
 
   // ── Attendance tab figures ───────────────────────────────────
-  // Only my team's rows: the opposing captain's squad is their business, and
-  // the screenshot's Attendees / Awaiting reply / Unavailable trio is about
-  // who WE can field.
+  // Split by team. The trio of counters stays about who WE can field — the
+  // opposing squad is the other captain's problem — but their replies are
+  // listed underneath, because "have they got a team?" is a fair question the
+  // day before a friendly.
   const myTeamConfs = confirmations.filter((c) => c.team_id === myTeamId);
-  const attIn = myTeamConfs.filter((c) => effectiveStatus(c.status, timeChanged) === "confirmed");
+  const oppTeamConfs = confirmations.filter((c) => c.team_id === opponentTeamId);
+  const attIn = myTeamConfs.filter((c) => c.status === "confirmed");
   const attOut = myTeamConfs.filter((c) => c.status === "declined");
-  const attPending = myTeamConfs.filter(
-    (c) => effectiveStatus(c.status, timeChanged) !== "confirmed" && c.status !== "declined"
-  );
+  const attPending = myTeamConfs.filter((c) => c.status !== "confirmed" && c.status !== "declined");
+  const oppIn = oppTeamConfs.filter((c) => c.status === "confirmed").length;
 
   // ── Result-view derived data ──────────────────────────────────
   const pitchPositions = slotsFor(formation);
@@ -677,7 +723,16 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           has been played and a result exists. */}
       {!hasResult && myTeamId && user && (
         <div className="mb-4">
-          <AvailabilityButtons matchId={params.matchId} playerId={user.id} teamId={myTeamId} />
+          {/* Your own tap has to move your own row in the attendance list, or
+              the tab a scroll away still calls you Pending. */}
+          <AvailabilityButtons
+            matchId={params.matchId} playerId={user.id} teamId={myTeamId}
+            onChanged={(status) => setConfirmations((prev) =>
+              prev.some((c) => c.player_id === user.id)
+                ? prev.map((c) => (c.player_id === user.id ? { ...c, status } : c))
+                : [...prev, { player_id: user.id, team_id: myTeamId, status, full_name: "You", is_ringer: false }]
+            )}
+          />
         </div>
       )}
 
@@ -765,6 +820,9 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       {/* ══ ATTENDANCE ════════════════════════════════════════ */}
       {tab === "attendance" && (
         <div className="space-y-4">
+          <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+            {myTeamName} · your squad
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {([["Attendees", attIn.length], ["Awaiting reply", attPending.length], ["Unavailable", attOut.length]] as const).map(([label, n]) => (
               <div key={label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
@@ -774,28 +832,29 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             ))}
           </div>
 
-          {myTeamConfs.length === 0 ? (
+          {timeChanged && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5">
+              <p className="text-xs text-yellow-400">
+                Kickoff moved since this match was posted — replies below may predate the change.
+                Worth asking your squad to confirm again.
+              </p>
+            </div>
+          )}
+
+          {myTeamConfs.length === 0 && oppTeamConfs.length === 0 ? (
             <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
               <p className="text-sm font-semibold mb-1">No squad yet</p>
               <p className="text-xs text-text-secondary">Attendance appears once the match is confirmed and your squad is attached.</p>
             </div>
           ) : (
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-2">
-              {myTeamConfs.map((c) => (
-                <div key={c.player_id} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-semibold text-text-secondary">
-                      {c.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                    </span>
-                  </div>
-                  <p className="flex-1 text-sm truncate">{c.full_name}</p>
-                  {c.is_ringer && (
-                    <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
-                  )}
-                  <ConfirmBadge status={effectiveStatus(c.status, timeChanged)} />
-                </div>
-              ))}
-            </div>
+            <>
+              <AttendanceGroup
+                title={myTeamName} subtitle="Your squad" rows={myTeamConfs} highlight
+              />
+              <AttendanceGroup
+                title={opponentName} subtitle={`${oppIn} confirmed`} rows={oppTeamConfs}
+              />
+            </>
           )}
         </div>
       )}
@@ -854,9 +913,11 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {/* Players in the matchday squad + who's starting */}
           <div className="mt-3 bg-surface-2 border border-border rounded-xl p-3">
-            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Players ({myParticipants.length})</p>
+            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
+              Available players ({myParticipants.filter((p) => p.status === "confirmed").length} of {myParticipants.length} confirmed)
+            </p>
             {myParticipants.length === 0 ? (
-              <p className="text-xs text-text-secondary">No players confirmed for this match yet.</p>
+              <p className="text-xs text-text-secondary">Nobody available for this match yet.</p>
             ) : (
               <div className="space-y-2">
                 {myParticipants.map((p) => {
@@ -870,6 +931,9 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                       <p className="flex-1 text-sm truncate">{p.full_name}</p>
                       {p.is_ringer && (
                         <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+                      )}
+                      {p.status !== "confirmed" && (
+                        <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>
                       )}
                       {inLineup
                         ? <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">Starting</span>

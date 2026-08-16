@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AvailabilityPollForm, { DateOption } from "@/components/AvailabilityPollForm";
 import AvailabilityModal from "@/components/AvailabilityModal";
+import MatchAvailabilityList, { useMatchAvailability } from "@/components/MatchAvailabilityList";
 
 // The captain's whole availability loop, run from home without a redirect:
 // post the poll, watch the votes land, and cast their own. The captain is a
@@ -112,6 +113,10 @@ type PollStatusTileProps = {
 
 export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) {
   const { request, responses, squadSize, myAnswer, loading, reload } = usePollStatus(teamId, userId);
+  // Confirmed fixtures need the captain's own answer too, and plenty of them
+  // never went through a poll — so the tile has something to show even when
+  // no poll is running.
+  const { matches, awaiting: myMatchesAwaiting, reload: reloadMatches } = useMatchAvailability(teamId, userId);
   const [view, setView] = useState<"status" | "create" | "vote" | null>(null);
 
   const replied = responses.length;
@@ -120,13 +125,17 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
 
   // The captain's own missing vote outranks the squad count in the badge: it's
   // the one number on this tile they can fix themselves, right now.
-  const badge = !request ? null
+  const badge = !request
+    ? (myMatchesAwaiting > 0 ? { label: "Your reply", tone: "bg-orange-500/10 text-orange-400 border-orange-500/30" } : null)
     : !iVoted ? { label: "Your vote", tone: "bg-accent/10 text-accent border-accent/30" }
     : waiting > 0 ? { label: `${waiting} left`, tone: "bg-orange-500/10 text-orange-400 border-orange-500/30" }
     : { label: "Complete", tone: "bg-accent/10 text-accent border-accent/30" };
 
   const subtitle = loading ? "Checking…"
-    : !request ? "No poll running · tap to start one"
+    : !request
+      ? (matches.length > 0
+          ? `${matches.length} confirmed match${matches.length === 1 ? "" : "es"} · tap to set availability`
+          : "No poll running · tap to start one")
     : !iVoted ? `${replied} of ${squadSize} replied · you haven't voted yet`
     : `${replied} of ${squadSize} replied${waiting > 0 ? ` · waiting on ${waiting}` : " · all in"}`;
 
@@ -134,7 +143,7 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
     <>
       <button
         type="button"
-        onClick={() => setView(request ? "status" : "create")}
+        onClick={() => setView(request || matches.length > 0 ? "status" : "create")}
         disabled={loading || !teamId}
         className="w-full rounded-2xl p-4 text-left border bg-surface-2 border-border disabled:opacity-60"
       >
@@ -160,6 +169,8 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
           upsert, so the captain's vote is an ordinary response row. Rendered
           instead of the status sheet rather than on top of it, to keep one
           overlay on screen at a time. */}
+      {/* Poll dates only — the confirmed fixtures live in the status sheet this
+          returns to, and listing them twice would just be noise. */}
       {view === "vote" && request && userId && (
         <AvailabilityModal
           request={request}
@@ -190,15 +201,32 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
         </Sheet>
       )}
 
-      {view === "status" && request && (
+      {view === "status" && (request || matches.length > 0) && (
         <Sheet onClose={() => setView(null)}>
           <SheetHeader
-            title="Availability Poll"
-            subtitle={`${replied} of ${squadSize} replied${waiting > 0 ? ` · still waiting on ${waiting}` : ""}`}
+            title="Availability"
+            subtitle={request
+              ? `${replied} of ${squadSize} replied${waiting > 0 ? ` · still waiting on ${waiting}` : ""}`
+              : "No poll running — these games are already confirmed."}
             onClose={() => setView(null)}
           />
 
+          {/* Confirmed fixtures first: they're happening either way, whereas a
+              poll option is still only a proposal. */}
+          {matches.length > 0 && teamId && userId && (
+            <div className="mb-5">
+              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Confirmed matches</p>
+              <MatchAvailabilityList
+                matches={matches} userId={userId} teamId={teamId} onChanged={reloadMatches}
+              />
+            </div>
+          )}
+
+          {request && (
           <div className="space-y-2 mb-4">
+            {matches.length > 0 && (
+              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Poll dates</p>
+            )}
             {request.date_options.map((opt) => {
               const votes = responses.filter((r) => r.available_date_ids.includes(opt.id)).length;
               const pct = replied > 0 ? Math.round((votes / replied) * 100) : 0;
@@ -215,7 +243,9 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
                   <div className="w-full h-1.5 bg-background rounded-full">
                     <div className="h-1.5 bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
-                  <p className="text-[10px] text-text-secondary mt-1">{opt.date}</p>
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    {opt.date}{opt.location ? ` · ${opt.location}` : ""}
+                  </p>
                 </div>
               );
             })}
@@ -238,24 +268,29 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
 
             {replied === 0 && <p className="text-xs text-text-secondary py-1">No responses yet.</p>}
           </div>
+          )}
 
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setView("vote")}
-              disabled={!userId}
-              className={`w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 ${
-                iVoted ? "border border-border text-text-secondary" : "bg-accent text-black"
-              }`}
-            >
-              {iVoted ? "Change your vote" : "Add your availability"}
-            </button>
+            {request && (
+              <button
+                type="button"
+                onClick={() => setView("vote")}
+                disabled={!userId}
+                className={`w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 ${
+                  iVoted ? "border border-border text-text-secondary" : "bg-accent text-black"
+                }`}
+              >
+                {iVoted ? "Change your vote" : "Add your availability"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setView("create")}
-              className="w-full py-3 rounded-xl border border-accent/40 text-accent text-sm font-bold"
+              className={`w-full py-3 rounded-xl text-sm font-bold ${
+                request ? "border border-accent/40 text-accent" : "bg-accent text-black"
+              }`}
             >
-              Post new dates
+              {request ? "Post new dates" : "Start a poll"}
             </button>
             <a href="/my-team/collect-availability"
               className="block w-full py-2 text-center text-xs font-medium text-text-secondary">

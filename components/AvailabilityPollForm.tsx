@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
@@ -17,18 +17,24 @@ export type DateOption = {
   day: string;
   month: string;
   dayName: string;
+  // Where the captain intends to play this slot. Optional and free text —
+  // a poll option is a proposal, not a booking, and the pitch often isn't
+  // reserved until the squad has said which slot works. Older polls have no
+  // location key at all, so every reader must treat it as possibly absent.
+  location?: string;
 };
 
 const MONTH_NAMES = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
 const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
-export function parseDateOption(dateStr: string, timeStr: string): DateOption {
+export function parseDateOption(dateStr: string, timeStr: string, location?: string): DateOption {
   const d = new Date(dateStr + "T" + timeStr);
   const day = String(d.getDate()).padStart(2, "0");
   const month = MONTH_NAMES[d.getMonth()];
   const dayName = DAY_NAMES[d.getDay()];
   const display = `${dayName.slice(0, 3)}, ${day} ${month} ${d.getFullYear()}`;
-  return { id: crypto.randomUUID(), date: display, time: timeStr, day, month, dayName };
+  const loc = location?.trim();
+  return { id: crypto.randomUUID(), date: display, time: timeStr, day, month, dayName, ...(loc ? { location: loc } : {}) };
 }
 
 function isWithin24h(date: string, time: string): boolean {
@@ -46,11 +52,20 @@ export default function AvailabilityPollForm({
   onCreated: () => void;
   showIntro?: boolean;
 }) {
-  const [rows, setRows] = useState([{ date: "", time: "" }]);
+  const [rows, setRows] = useState([{ date: "", time: "", location: "" }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Pitch names as autocomplete suggestions, not a hard picker: captains often
+  // propose a ground that isn't platform inventory ("the astro behind the
+  // leisure centre"), so the field stays free text.
+  const [pitchNames, setPitchNames] = useState<string[]>([]);
 
-  const updateRow = (i: number, field: "date" | "time", value: string) =>
+  useEffect(() => {
+    supabase.from("pitches").select("name").limit(50)
+      .then(({ data }) => setPitchNames([...new Set((data ?? []).map((p) => p.name as string))]));
+  }, []);
+
+  const updateRow = (i: number, field: "date" | "time" | "location", value: string) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
 
   const handleSubmit = async () => {
@@ -70,7 +85,7 @@ export default function AvailabilityPollForm({
       });
     }
 
-    const date_options = filled.map((r) => parseDateOption(r.date, r.time));
+    const date_options = filled.map((r) => parseDateOption(r.date, r.time, r.location));
     const { error: insertError } = await supabase
       .from("availability_requests")
       .insert({ team_id: teamId, captain_id: captainId, date_options });
@@ -120,6 +135,17 @@ export default function AvailabilityPollForm({
                 </div>
               )}
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-secondary">Location <span className="opacity-60">(optional)</span></label>
+              <input
+                type="text"
+                value={row.location}
+                list="unitr-pitch-names"
+                onChange={(e) => updateRow(i, "location", e.target.value)}
+                placeholder="Where you'd play this slot"
+                className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border text-sm placeholder:text-text-secondary/60 focus:outline-none focus:border-accent/60"
+              />
+            </div>
             {isWithin24h(row.date, row.time) && (
               <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0 mt-0.5">
@@ -133,8 +159,12 @@ export default function AvailabilityPollForm({
         ))}
       </div>
 
+      <datalist id="unitr-pitch-names">
+        {pitchNames.map((n) => <option key={n} value={n} />)}
+      </datalist>
+
       {rows.length < 5 && (
-        <button onClick={() => setRows((p) => [...p, { date: "", time: "" }])}
+        <button onClick={() => setRows((p) => [...p, { date: "", time: "", location: "" }])}
           className="flex items-center gap-2 text-sm text-accent font-medium py-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Add date option

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import AvailabilityModal, { useAvailabilityPoll } from "@/components/AvailabilityModal";
+import { useMatchAvailability } from "@/components/MatchAvailabilityList";
 
 // The two things a captain actually asks of a squad player: answer the
 // availability poll, and put money in. Both resolve in a popup — a player who
@@ -11,6 +12,9 @@ import AvailabilityModal, { useAvailabilityPoll } from "@/components/Availabilit
 
 export default function PlayerActionStrip({ teamId, userId }: { teamId: string | null; userId: string }) {
   const { request, myAnswer, loading, reload } = useAvailabilityPoll(teamId, userId);
+  // Games that were matched without a poll still need an answer from this
+  // player, so the tile opens even when there's no poll running.
+  const { matches, awaiting, loading: matchesLoading, reload: reloadMatches } = useMatchAvailability(teamId, userId);
   const { owedPence, reload: reloadDues } = useMyDues(teamId, userId);
   const [balancePence, setBalancePence] = useState<number | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
@@ -22,7 +26,8 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
       .then(({ data }) => setBalancePence(data?.balance_pence ?? 0));
   }, [teamId]);
 
-  const needsAnswer = !!request && myAnswer === null;
+  const hasSomething = !!request || matches.length > 0;
+  const needsAnswer = (!!request && myAnswer === null) || awaiting > 0;
 
   return (
     <>
@@ -30,13 +35,13 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
         {/* ── Availability ── */}
         <button
           type="button"
-          onClick={() => request && setShowAvailability(true)}
-          disabled={!request}
+          onClick={() => hasSomething && setShowAvailability(true)}
+          disabled={!hasSomething}
           className={`relative rounded-2xl p-4 text-left border transition-colors ${
             needsAnswer
               ? "bg-orange-500/10 border-orange-500/30"
               : "bg-surface-2 border-border"
-          } ${!request ? "opacity-60 cursor-default" : ""}`}
+          } ${!hasSomething ? "opacity-60 cursor-default" : ""}`}
         >
           {needsAnswer && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-orange-400" />}
           <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${needsAnswer ? "bg-orange-500/20" : "bg-accent/10 border border-accent/30"}`}>
@@ -45,9 +50,12 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
             </svg>
           </div>
           <p className="text-sm font-bold leading-tight">Submit Availability</p>
+          {/* An unanswered fixture outranks the poll: it's a game that is
+              definitely happening, and the captain is picking a squad from it. */}
           <p className="text-[11px] text-text-secondary mt-1 leading-tight">
-            {loading ? "Checking…"
-              : !request ? "No open request"
+            {loading || matchesLoading ? "Checking…"
+              : awaiting > 0 ? `${awaiting} match${awaiting === 1 ? "" : "es"} need your reply`
+              : !request ? (matches.length > 0 ? "Replied to every match · tap to change" : "No open request")
               : myAnswer === null ? "Captain is waiting on you"
               : myAnswer.length === 0 ? "You said none work · tap to change"
               : `${myAnswer.length} date${myAnswer.length === 1 ? "" : "s"} sent · tap to change`}
@@ -78,12 +86,15 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
         </button>
       </div>
 
-      {showAvailability && request && (
+      {showAvailability && hasSomething && (
         <AvailabilityModal
           request={request}
           myAnswer={myAnswer}
           userId={userId}
-          onClose={() => { setShowAvailability(false); reload(); }}
+          teamId={teamId}
+          matches={matches}
+          onMatchChanged={reloadMatches}
+          onClose={() => { setShowAvailability(false); reload(); reloadMatches(); }}
           onSubmitted={() => reload()}
         />
       )}
