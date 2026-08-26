@@ -7,16 +7,20 @@ import { supabase } from "@/lib/supabase";
 import TournamentInvitePanel from "@/components/TournamentInvitePanel";
 import EnterTournamentPanel from "@/components/EnterTournamentPanel";
 import { isKickoffPast } from "@/lib/match-dates";
+import { computeStandings } from "@/lib/standings";
 
-// Tournament detail + management. The organiser (the hosting team's captain, or
-// the venue owner for venue-hosted tournaments) can generate a schedule of
-// fixtures between the joined teams — manually or randomly. Every fixture is
-// assigned a referee: a randomly chosen player from a team NOT in that fixture,
-// who is notified. Everyone can view the schedule, results and referees.
+// Event detail + management — tournaments, leagues and admin-hosted friendlies
+// (all open_matches rows). The organiser (the hosting team's captain, the venue
+// owner, or the Unitr admin who posted it) can generate a schedule of fixtures
+// between the joined teams — manually or randomly — save results, and rate
+// players. Every fixture is assigned a referee: a randomly chosen player from a
+// team NOT in that fixture, who is notified. Everyone can view the schedule,
+// results, referees and standings.
 
 type Tournament = {
   id: string;
   title: string;
+  match_type: string; // 'tournament' | 'league' | 'match'
   pitch_name: string;
   match_date: string;
   start_time: string;
@@ -28,7 +32,9 @@ type Tournament = {
   status: string;
   organiser_team_id: string | null;
   organiser_team_name: string | null;
-  venue_owner_id: string;
+  venue_owner_id: string | null;
+  organiser_admin_id: string | null;
+  organiser_admin_name: string | null;
 };
 
 type JoinedTeam = { team_id: string; team_name: string };
@@ -83,10 +89,23 @@ export default function TournamentDetailPage() {
   const [mAway, setMAway] = useState("");
   const [mTime, setMTime] = useState("");
 
+  // Result entry (organiser): per-fixture score drafts.
+  const [scoreDraft, setScoreDraft] = useState<Record<string, { h: string; a: string }>>({});
+
+  // Player ratings (organiser): drafts + already-saved ratings for this event.
+  const [ratingDraft, setRatingDraft] = useState<Record<string, { rating: string; note: string }>>({});
+  const [savedRatings, setSavedRatings] = useState<Record<string, number>>({});
+
   const load = useCallback(async () => {
-    const { data: om } = await supabase.from("open_matches")
-      .select("id, title, pitch_name, match_date, start_time, end_time, format, skill_level, max_teams, price_per_team_pence, status, organiser_team_id, organiser_team_name, venue_owner_id")
+    const baseCols = "id, title, match_type, pitch_name, match_date, start_time, end_time, format, skill_level, max_teams, price_per_team_pence, status, organiser_team_id, organiser_team_name, venue_owner_id";
+    let { data: om, error: omErr } = await supabase.from("open_matches")
+      .select(`${baseCols}, organiser_admin_id, organiser_admin_name`)
       .eq("id", params.id).maybeSingle();
+    // 42703: supabase_admin_hosting.sql not run yet — fall back to the old shape.
+    if (omErr?.code === "42703") {
+      const { data: legacy } = await supabase.from("open_matches").select(baseCols).eq("id", params.id).maybeSingle();
+      om = legacy ? { ...legacy, organiser_admin_id: null, organiser_admin_name: null } : null;
+    }
     if (!om) { setT(null); return; }
     setT(om as Tournament);
 
@@ -129,6 +148,12 @@ export default function TournamentDetailPage() {
       .select("id, slot_index, scheduled_time, home_team_id, home_team_name, away_team_id, away_team_name, referee_player_id, referee_name, referee_team_name, home_score, away_score, status")
       .eq("open_match_id", params.id).order("slot_index", { ascending: true });
     setFixtures((fx ?? []) as Fixture[]);
+
+    // Saved event ratings — table may not exist yet (migration not run): the
+    // query just errors and data stays null, so this degrades silently.
+    const { data: rt } = await supabase.from("admin_player_ratings")
+      .select("player_id, rating").eq("open_match_id", params.id);
+    setSavedRatings(Object.fromEntries((rt ?? []).map((r) => [r.player_id as string, r.rating as number])));
   }, [params.id]);
 
   useEffect(() => { load(); }, [load]);
@@ -148,8 +173,13 @@ export default function TournamentDetailPage() {
   }, [myTeamId, params.id]);
 
   const canManage = Boolean(t && user && (
-    (t.organiser_team_id && t.organiser_team_id === myTeamId) || t.venue_owner_id === user.id
+    (t.organiser_team_id && t.organiser_team_id === myTeamId) ||
+    (t.venue_owner_id && t.venue_owner_id === user.id) ||
+    (t.organiser_admin_id && t.organiser_admin_id === user.id)
   ));
+
+  // Cosmetic noun for copy — the page manages all three event shapes.
+  const noun = t?.match_type === "league" ? "League" : t?.match_type === "match" ? "Friendly" : "Tournament";
 
   // Pick a random referee from a team not playing in this fixture.
   const pickReferee = (homeId: string, awayId: string): RosterPlayer | null => {
@@ -260,8 +290,48 @@ export default function TournamentDetailPage() {
     setBusy(false);
   };
 
+  // Save a fixture's final score (organiser). Nothing else writes results —
+  // standings below are computed from these rows.
+  const saveResult = async (fx: Fixture) => {
+    const d = scoreDraft[fx.id];
+    const h = Number(d?.h), a = Number(d?.a);
+    if (!d || d.h === "" || d.a === "" || Number.isNaN(h) || Number.isNaN(a) || h < 0 || a < 0) {
+      setError("Enter both scores to save a result."); return;
+    }
+    setBusy(true); setError(null);
+    const { error: upErr } = await supabase.from("tournament_matches")
+      .update({ home_score: h, away_score: a, status: "played" }).eq("id", fx.id);
+    if (upErr) { setBusy(false); setError(upErr.message); return; }
+    await load();
+    setBusy(false);
+  };
+
+  // Rate one player 1–10 for this event (organiser). Upsert: re-rating replaces.
+  const saveRating = async (p: RosterPlayer) => {
+    if (!t || !user) return;
+    const d = ratingDraft[p.player_id];
+    const rating = Number(d?.rating);
+    if (!rating) return;
+    setError(null);
+    const { error: rErr } = await supabase.from("admin_player_ratings").upsert({
+      open_match_id: t.id,
+      player_id: p.player_id,
+      team_id: p.team_id,
+      team_name: p.team_name,
+      rated_by: user.id,
+      rating,
+      note: d?.note?.trim() || null,
+    }, { onConflict: "open_match_id,player_id" });
+    if (rErr) {
+      setError(rErr.code === "42P01" ? "Run supabase_admin_hosting.sql in Supabase first." : rErr.message);
+      return;
+    }
+    setSavedRatings((prev) => ({ ...prev, [p.player_id]: rating }));
+    setRatingDraft((prev) => ({ ...prev, [p.player_id]: { rating: "", note: "" } }));
+  };
+
   if (t === undefined) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
-  if (!t) return <div className="flex items-center justify-center min-h-screen px-4"><p className="text-text-secondary">Tournament not found.</p></div>;
+  if (!t) return <div className="flex items-center justify-center min-h-screen px-4"><p className="text-text-secondary">Event not found.</p></div>;
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
@@ -308,7 +378,7 @@ export default function TournamentDetailPage() {
               {alreadyIn ? (
                 <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
               ) : isFull ? (
-                <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
+                <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">{noun} full</div>
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-3">
@@ -320,9 +390,9 @@ export default function TournamentDetailPage() {
                   </div>
                   <button onClick={() => setShowEnter(true)} disabled={!myTeamId}
                     className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
-                    {inviteDiscountPence > 0 ? `Accept invitation — £${(discounted / 100).toFixed(2)}` : "Enter Tournament"}
+                    {inviteDiscountPence > 0 ? `Accept invitation — £${(discounted / 100).toFixed(2)}` : `Enter ${noun}`}
                   </button>
-                  {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}
+                  {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter.</p>}
                 </>
               )}
             </section>
@@ -336,7 +406,7 @@ export default function TournamentDetailPage() {
           <section className="bg-surface-2 border border-border rounded-2xl p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Invite teams</p>
-              <p className="text-[11px] text-text-secondary">Invite good-fit teams{t.venue_owner_id === user?.id ? " with an optional discount" : ""} to fill the {Math.max(0, t.max_teams - teams.length)} open spot{t.max_teams - teams.length !== 1 ? "s" : ""}.</p>
+              <p className="text-[11px] text-text-secondary">Invite good-fit teams{t.venue_owner_id === user?.id || t.organiser_admin_id === user?.id ? " with an optional discount" : ""} to fill the {Math.max(0, t.max_teams - teams.length)} open spot{t.max_teams - teams.length !== 1 ? "s" : ""}.</p>
             </div>
             <button onClick={() => setShowInvite(true)}
               className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex-shrink-0">Invite</button>
@@ -389,29 +459,132 @@ export default function TournamentDetailPage() {
             <p className="text-xs text-text-secondary text-center py-6">No fixtures scheduled yet{canManage ? " — generate a schedule above." : "."}</p>
           ) : (
             <div className="space-y-2">
-              {fixtures.map((fx, i) => (
-                <div key={fx.id} className="bg-background border border-border rounded-xl px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-text-secondary w-12 flex-shrink-0">{fx.scheduled_time ?? `#${i + 1}`}</span>
-                    <span className="flex-1 text-right text-sm font-semibold truncate">{fx.home_team_name}</span>
-                    <span className="text-xs font-bold text-text-secondary px-2">vs</span>
-                    <span className="flex-1 text-left text-sm font-semibold truncate">{fx.away_team_name}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1.5 pl-14">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
-                    <span className="text-[11px] text-text-secondary">
-                      Ref: {fx.referee_name ? <span className="text-text-primary font-medium">{fx.referee_name}</span> : "unassigned"}
-                      {fx.referee_team_name ? ` (${fx.referee_team_name})` : ""}
-                    </span>
-                    {canManage && (
-                      <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent font-semibold">Reshuffle</button>
+              {fixtures.map((fx, i) => {
+                const played = fx.status === "played" && fx.home_score != null && fx.away_score != null;
+                const d = scoreDraft[fx.id] ?? { h: "", a: "" };
+                return (
+                  <div key={fx.id} className="bg-background border border-border rounded-xl px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-text-secondary w-12 flex-shrink-0">{fx.scheduled_time ?? `#${i + 1}`}</span>
+                      <span className="flex-1 text-right text-sm font-semibold truncate">{fx.home_team_name}</span>
+                      <span className={`text-xs font-bold px-2 ${played ? "text-accent" : "text-text-secondary"}`}>
+                        {played ? `${fx.home_score}–${fx.away_score}` : "vs"}
+                      </span>
+                      <span className="flex-1 text-left text-sm font-semibold truncate">{fx.away_team_name}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5 pl-14">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
+                      <span className="text-[11px] text-text-secondary">
+                        Ref: {fx.referee_name ? <span className="text-text-primary font-medium">{fx.referee_name}</span> : "unassigned"}
+                        {fx.referee_team_name ? ` (${fx.referee_team_name})` : ""}
+                      </span>
+                      {canManage && (
+                        <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent font-semibold">Reshuffle</button>
+                      )}
+                    </div>
+                    {/* Organiser result entry — the only place scores are written. */}
+                    {canManage && !played && (
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
+                        <input type="number" min="0" inputMode="numeric" placeholder="0" value={d.h}
+                          onChange={(e) => setScoreDraft((prev) => ({ ...prev, [fx.id]: { ...d, h: e.target.value } }))}
+                          className="w-14 bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-sm text-center outline-none focus:border-accent/50" />
+                        <span className="text-xs text-text-secondary">–</span>
+                        <input type="number" min="0" inputMode="numeric" placeholder="0" value={d.a}
+                          onChange={(e) => setScoreDraft((prev) => ({ ...prev, [fx.id]: { ...d, a: e.target.value } }))}
+                          className="w-14 bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-sm text-center outline-none focus:border-accent/50" />
+                        <button onClick={() => saveResult(fx)} disabled={busy || d.h === "" || d.a === ""}
+                          className="ml-auto px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-50">
+                          Save result
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
+
+        {/* Standings — computed from played fixtures, visible to everyone. */}
+        {teams.length > 2 && fixtures.some((f) => f.status === "played") && (
+          <section className="bg-surface-2 border border-border rounded-2xl p-4">
+            <p className="text-sm font-semibold mb-3">Standings</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-text-secondary">
+                    <th className="text-left font-semibold pb-2">Team</th>
+                    <th className="text-center font-semibold pb-2 px-1.5">P</th>
+                    <th className="text-center font-semibold pb-2 px-1.5">W</th>
+                    <th className="text-center font-semibold pb-2 px-1.5">D</th>
+                    <th className="text-center font-semibold pb-2 px-1.5">L</th>
+                    <th className="text-center font-semibold pb-2 px-1.5">GD</th>
+                    <th className="text-center font-semibold pb-2 pl-1.5">Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {computeStandings(teams, fixtures).map((r, i) => (
+                    <tr key={r.name} className="border-t border-border">
+                      <td className="py-2 font-semibold truncate max-w-[140px]">{i + 1}. {r.name}</td>
+                      <td className="text-center py-2 px-1.5 text-text-secondary">{r.played}</td>
+                      <td className="text-center py-2 px-1.5 text-text-secondary">{r.w}</td>
+                      <td className="text-center py-2 px-1.5 text-text-secondary">{r.d}</td>
+                      <td className="text-center py-2 px-1.5 text-text-secondary">{r.l}</td>
+                      <td className="text-center py-2 px-1.5 text-text-secondary">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
+                      <td className="text-center py-2 pl-1.5 font-bold text-accent">{r.pts}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* Organiser: rate players (1–10) — feeds the profile "Event rating". */}
+        {canManage && roster.length > 0 && (
+          <section className="bg-surface-2 border border-border rounded-2xl p-4">
+            <p className="text-sm font-semibold">Rate players</p>
+            <p className="text-[11px] text-text-secondary mt-0.5 mb-3">1–10 per player. Saving again replaces the previous rating for this event.</p>
+            <div className="space-y-4">
+              {teams.map((tm) => {
+                const players = roster.filter((p) => p.team_id === tm.team_id);
+                if (players.length === 0) return null;
+                return (
+                  <div key={tm.team_id}>
+                    <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">{tm.team_name}</p>
+                    <div className="space-y-1.5">
+                      {players.map((p) => {
+                        const d = ratingDraft[p.player_id] ?? { rating: "", note: "" };
+                        const saved = savedRatings[p.player_id];
+                        return (
+                          <div key={p.player_id} className="flex items-center gap-2 bg-background border border-border rounded-xl px-3 py-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{p.name}</p>
+                              {saved != null && <p className="text-[10px] text-accent font-semibold">Rated {saved}/10</p>}
+                            </div>
+                            <select value={d.rating}
+                              onChange={(e) => setRatingDraft((prev) => ({ ...prev, [p.player_id]: { ...d, rating: e.target.value } }))}
+                              className="bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-sm outline-none text-text-primary">
+                              <option value="">–</option>
+                              {Array.from({ length: 10 }, (_, n) => n + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                            <input value={d.note} placeholder="Note"
+                              onChange={(e) => setRatingDraft((prev) => ({ ...prev, [p.player_id]: { ...d, note: e.target.value } }))}
+                              className="w-24 bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-accent/50" />
+                            <button onClick={() => saveRating(p)} disabled={!d.rating}
+                              className="px-2.5 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40 flex-shrink-0">
+                              Save
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {showInvite && user && (
@@ -420,8 +593,8 @@ export default function TournamentDetailPage() {
           tournamentTitle={t.title}
           buyInPence={t.price_per_team_pence}
           inviterUserId={user.id}
-          inviterKind={t.venue_owner_id === user.id ? "venue" : "team"}
-          inviterName={t.organiser_team_name ?? t.pitch_name}
+          inviterKind={t.venue_owner_id === user.id ? "venue" : t.organiser_admin_id === user.id ? "admin" : "team"}
+          inviterName={t.organiser_team_name ?? t.organiser_admin_name ?? t.pitch_name}
           onClose={() => setShowInvite(false)}
           onSent={load}
         />
@@ -434,7 +607,7 @@ export default function TournamentDetailPage() {
             matchDate: t.match_date, startTime: t.start_time,
             pricePerTeamPence: t.price_per_team_pence, maxTeams: t.max_teams,
             joinedCount: teams.length,
-            organiserName: t.organiser_team_name ?? t.pitch_name,
+            organiserName: t.organiser_team_name ?? t.organiser_admin_name ?? t.pitch_name,
             inviteDiscountPence,
           }}
           myTeamId={myTeamId}

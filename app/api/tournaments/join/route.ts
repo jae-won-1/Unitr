@@ -12,6 +12,9 @@ import { adminSupabase } from "@/lib/supabase-admin";
 //     buy-in reimburses the ORGANISER team's credit here (hostType 'team'). If the
 //     organiser is joining its OWN tournament, no payout and no reimbursement happen —
 //     they already paid the venue in full when they created it.
+//   - Admin-hosted (organiser_admin_id set): Unitr staff booked the pitch outside the
+//     app, so the debited buy-in stays with the platform (hostType 'admin') — nothing
+//     moves after the debit.
 //
 // After the debit we pre-create pending 'replenish' player_payments for the joining
 // team's squad so each player later refills their team's credit off their saved card —
@@ -26,7 +29,7 @@ export async function POST(req: NextRequest) {
     // 1) Load the tournament listing.
     const { data: om } = await adminSupabase
       .from("open_matches")
-      .select("id, pitch_id, price_per_team_pence, max_teams, status, booking_id, title, organiser_team_id")
+      .select("id, pitch_id, price_per_team_pence, max_teams, status, booking_id, title, organiser_team_id, organiser_admin_id")
       .eq("id", openMatchId)
       .maybeSingle();
     if (!om) return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -115,6 +118,11 @@ export async function POST(req: NextRequest) {
     //    they already paid the venue in full at creation time.
     const isOrganiserSelfJoin = Boolean(om.organiser_team_id) && om.organiser_team_id === teamId;
     const isTeamHosted = Boolean(om.organiser_team_id) && !isOrganiserSelfJoin;
+    // Admin-hosted (Unitr staff): the admin already paid the venue in cash
+    // outside the app, so after the debit above the buy-in simply stays with
+    // the platform — no reimbursement, no venue transfer. The ledger's
+    // booking_capture row is the record of it.
+    const isAdminHosted = Boolean(om.organiser_admin_id);
     if (buyIn > 0 && isTeamHosted) {
       const { error: reimburseErr } = await adminSupabase.rpc("reimburse_team", {
         p_team_id: om.organiser_team_id,
@@ -133,7 +141,7 @@ export async function POST(req: NextRequest) {
     // already paid to the venue when the tournament was created.
     let transferStatus: "paid" | "failed" | "skipped" = "skipped";
     let transferError: string | null = null;
-    if (buyIn > 0 && !om.organiser_team_id) {
+    if (buyIn > 0 && !om.organiser_team_id && !isAdminHosted && om.pitch_id) {
       try {
         const transferRes = await fetch(new URL("/api/connect/venue-transfer", req.url), {
           method: "POST",
@@ -204,7 +212,7 @@ export async function POST(req: NextRequest) {
       buyInPence: buyIn,
       pitchId: om.pitch_id,
       bookingId: om.booking_id,
-      hostType: isOrganiserSelfJoin ? "organiser" : isTeamHosted ? "team" : "venue",
+      hostType: isOrganiserSelfJoin ? "organiser" : isTeamHosted ? "team" : isAdminHosted ? "admin" : "venue",
       transferStatus,
       transferError,
     });

@@ -46,7 +46,9 @@ export async function loadTournamentFixtures(
     ? await supabase.from("open_matches")
         .select(COLUMNS)
         .in("id", enteredIds)
-        .eq("match_type", "tournament")
+        // Entered events include admin-hosted leagues and friendlies, not just
+        // tournaments — anything the team bought into belongs on its calendar.
+        .in("match_type", ["tournament", "league", "match"])
         .neq("status", "cancelled")
     : { data: [] as Row[] };
 

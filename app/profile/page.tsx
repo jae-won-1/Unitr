@@ -208,12 +208,21 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
   const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
   const [modal, setModal] = useState<"friends" | "teams" | null>(null);
   const [myStats, setMyStats] = useState<PlayerStats | null>(null);
+  const [eventRating, setEventRating] = useState<{ avg: number; count: number } | null>(null);
 
   // Career totals, not team-scoped — a player's own record shouldn't reset
   // when they transfer.
   useEffect(() => {
     if (!user) return;
     loadPlayerStats(user.id).then(setMyStats);
+    // Organiser ratings from hosted events — table may not exist yet
+    // (supabase_admin_hosting.sql not run): data stays null and nothing renders.
+    supabase.from("admin_player_ratings").select("rating").eq("player_id", user.id)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setEventRating({ avg: data.reduce((s, r) => s + r.rating, 0) / data.length, count: data.length });
+        }
+      });
   }, [user]);
 
   return (
@@ -350,6 +359,15 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
           <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
             <p className="text-sm font-semibold mb-1">No stats yet</p>
             <p className="text-xs text-text-secondary">Your record starts once you&apos;re named in a submitted match result.</p>
+          </div>
+        )}
+        {eventRating && (
+          <div className="mt-2 bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center justify-between">
+            <p className="text-xs text-text-secondary">Event rating <span className="text-text-secondary/70">· from organisers of hosted events</span></p>
+            <p className="text-sm font-bold text-accent">
+              {eventRating.avg.toFixed(1)}/10
+              <span className="text-xs text-text-secondary font-normal"> · {eventRating.count} event{eventRating.count === 1 ? "" : "s"}</span>
+            </p>
           </div>
         )}
       </section>

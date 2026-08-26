@@ -26,6 +26,8 @@ type Tab = "ringer" | "matches" | "tournaments";
 type Tournament = {
   id: string;
   title: string;
+  // 'tournament' | 'league' | 'match' — this tab carries all multi-team events.
+  matchType: string;
   pitchName: string;
   matchDate: string;
   startTime: string;
@@ -36,6 +38,8 @@ type Tournament = {
   joinedCount: number;
   // Null for venue-hosted tournaments.
   organiserTeamName: string | null;
+  // Set on admin-hosted (Unitr staff) events.
+  organiserAdminName: string | null;
   // Teams already bought in — so the card can say "you're entered" instead of
   // offering the buy-in again.
   joinedTeamIds: string[];
@@ -153,14 +157,26 @@ function useOpenTournaments(teamId: string | null) {
 
   useEffect(() => {
     async function load() {
-      const { data: oms } = await supabase.from("open_matches")
-        .select("id, title, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id, organiser_team_name")
-        .eq("match_type", "tournament")
+      const baseCols = "id, title, match_type, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id, organiser_team_name";
+      let { data: oms, error: omErr } = await supabase.from("open_matches")
+        .select(`${baseCols}, organiser_admin_name`)
+        .in("match_type", ["tournament", "league", "match"])
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });
+      // 42703: supabase_admin_hosting.sql not run yet — retry without the admin column.
+      if (omErr?.code === "42703") {
+        const { data: legacy } = await supabase.from("open_matches")
+          .select(baseCols)
+          .in("match_type", ["tournament", "league", "match"])
+          .neq("status", "cancelled")
+          .order("match_date", { ascending: true });
+        oms = (legacy ?? []).map((m) => ({ ...m, organiser_admin_name: null }));
+      }
 
+      // Hide the viewer's own hosted events; the !teamId branch keeps venue- and
+      // admin-hosted posts (organiser_team_id null) visible to teamless viewers.
       const active = (oms ?? []).filter(
-        (m) => m.organiser_team_id !== teamId && !isKickoffPast(m.match_date, m.start_time)
+        (m) => (!teamId || m.organiser_team_id !== teamId) && !isKickoffPast(m.match_date, m.start_time)
       );
 
       // Pending invitations for the viewer's team → discount per tournament.
@@ -178,6 +194,7 @@ function useOpenTournaments(teamId: string | null) {
         return {
           id: m.id,
           title: m.title,
+          matchType: m.match_type ?? "tournament",
           pitchName: m.pitch_name,
           matchDate: m.match_date,
           startTime: m.start_time,
@@ -187,6 +204,7 @@ function useOpenTournaments(teamId: string | null) {
           maxTeams: m.max_teams,
           joinedCount: joinedTeamIds.length,
           organiserTeamName: m.organiser_team_name ?? null,
+          organiserAdminName: ("organiser_admin_name" in m ? m.organiser_admin_name : null) ?? null,
           joinedTeamIds,
           inviteDiscountPence: discountByTournament.get(m.id) ?? 0,
         } as Tournament;
@@ -268,6 +286,8 @@ function ChallengeButton({ post, onMatched }: { post: MatchPost; onMatched: (id:
   );
 }
 
+const EVENT_TYPE_LABEL: Record<string, string> = { tournament: "Tournament", league: "League", match: "Friendly" };
+
 function TournamentPostCard({ t, children }: { t: Tournament; children: React.ReactNode }) {
   const spotsLeft = Math.max(0, t.maxTeams - t.joinedCount);
   return (
@@ -282,13 +302,18 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
           <p className="text-sm font-bold truncate">{t.title}</p>
           <p className="text-xs text-text-secondary truncate mt-0.5">{t.pitchName}</p>
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 border ${
-          spotsLeft === 0
-            ? "bg-surface text-text-secondary border-border"
-            : "bg-accent/10 text-accent border-accent/30"
-        }`}>
-          {spotsLeft === 0 ? "Full" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
-        </span>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-surface text-text-secondary border-border">
+            {EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+            spotsLeft === 0
+              ? "bg-surface text-text-secondary border-border"
+              : "bg-accent/10 text-accent border-accent/30"
+          }`}>
+            {spotsLeft === 0 ? "Full" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
+          </span>
+        </div>
       </div>
 
       <div className="space-y-1 mb-3">
@@ -333,13 +358,13 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
       {alreadyIn ? (
         <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
       ) : isFull ? (
-        <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">Tournament full</div>
+        <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">{EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"} full</div>
       ) : (
         <button onClick={() => setOpen(true)}
           className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
           {t.inviteDiscountPence > 0
             ? `Accept invitation — £${(discounted / 100).toFixed(2)}`
-            : "Enter Tournament"}
+            : `Enter ${EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}`}
         </button>
       )}
       <a href={`/play/tournament/${t.id}`}
@@ -355,7 +380,7 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
             matchDate: t.matchDate, startTime: t.startTime,
             pricePerTeamPence: t.pricePerTeamPence, maxTeams: t.maxTeams,
             joinedCount: t.joinedCount,
-            organiserName: t.organiserTeamName ?? t.pitchName,
+            organiserName: t.organiserTeamName ?? t.organiserAdminName ?? t.pitchName,
             inviteDiscountPence: t.inviteDiscountPence,
           }}
           myTeamId={teamId}
@@ -462,12 +487,12 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
             {visibleTournaments.length === 0 ? (
               <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
                 <p className="text-sm text-text-secondary">
-                  {tournaments.length > 0 ? "No tournaments on this day." : "No tournaments right now."}
+                  {tournaments.length > 0 ? "No events on this day." : "No events right now."}
                 </p>
                 <p className="text-xs text-text-secondary mt-1">
                   {tournaments.length > 0
                     ? "Try another date, or pick All to see everything."
-                    : "Venue and team-hosted tournaments show up here."}
+                    : "Tournaments, leagues and hosted friendlies show up here."}
                 </p>
               </div>
             ) : (

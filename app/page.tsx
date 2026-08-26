@@ -519,6 +519,28 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
   );
 }
 
+function AdminHome({ userId }: { userId: string | undefined }) {
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Hosting hub CTA — admins post events from /admin, not /play/create */}
+      <section className="bg-surface-2 border border-border rounded-2xl p-5">
+        <h2 className="text-lg font-bold">Unitr Admin</h2>
+        <p className="text-sm text-text-secondary mt-1">
+          Host and manage tournaments, leagues and friendlies on pitches booked
+          outside the app.
+        </p>
+        <a href="/admin"
+          className="inline-block mt-3 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-bold">
+          Open the Admin hub
+        </a>
+      </section>
+
+      {/* The feed exactly as players see it — read-only, no team behind it */}
+      {userId && <GameFeed teamId={null} userId={userId} />}
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────
 export default function HomePage() {
   const { role, roleLoading } = useRole();
@@ -533,6 +555,7 @@ export default function HomePage() {
       {role === "new_user" && <NewUserHome />}
       {role === "player" && <PlayerHome userId={user?.id} />}
       {role === "captain" && <CaptainHome userId={user?.id} />}
+      {role === "admin" && <AdminHome userId={user?.id} />}
     </div>
   );
 }

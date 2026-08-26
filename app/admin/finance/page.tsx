@@ -5,7 +5,7 @@
 //      moves between teams; no bank involved.
 //   2) Real CASH activity via Stripe — actual card charges in (player_payments,
 //      credit top-ups) and payouts out to venues (venue_transfers).
-// Prototype view, reachable at /admin/finance (not yet role-guarded).
+// Reachable at /admin/finance; app/admin/layout.tsx gates it to admin accounts.
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -107,11 +107,8 @@ export default function AdminFinancePage() {
   const netUnitr = cashIn - cash.payoutsPence;
 
   return (
-    <div className="px-4 md:px-8 pt-16 pb-10 max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">Finance</h1>
-        <p className="text-xs text-text-secondary mt-0.5">In-app credit and real Stripe cash, tracked separately.</p>
-      </div>
+    <div className="space-y-6">
+      <p className="text-xs text-text-secondary">In-app credit and real Stripe cash, tracked separately.</p>
 
       {/* ── 1) In-app credit ── */}
       <div className="bg-surface-2 border border-border rounded-2xl p-5">

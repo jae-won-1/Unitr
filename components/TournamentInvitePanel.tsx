@@ -24,7 +24,7 @@ export default function TournamentInvitePanel({
   tournamentTitle: string;
   buyInPence: number;
   inviterUserId: string;
-  inviterKind: "team" | "venue";
+  inviterKind: "team" | "venue" | "admin";
   inviterName: string;
   onClose: () => void;
   onSent?: () => void;

@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-export type Role = "new_user" | "player" | "captain" | "venue_manager";
+export type Role = "new_user" | "player" | "captain" | "venue_manager" | "admin";
 
 type RoleContextType = {
   role: Role;
@@ -41,6 +41,14 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       .then(({ data: profile }) => {
         if (profile?.account_type === "venue_manager") {
           setRole("venue_manager");
+          setRoleLoading(false);
+          return;
+        }
+
+        // Unitr staff (set by hand in the Supabase dashboard). Admin wins even
+        // if the account also captains a team — they get the admin Home.
+        if (profile?.account_type === "admin") {
+          setRole("admin");
           setRoleLoading(false);
           return;
         }
