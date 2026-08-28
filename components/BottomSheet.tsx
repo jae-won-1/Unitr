@@ -16,13 +16,21 @@ import { useEffect } from "react";
 // are z-40 chrome, and at an equal z the nav paints over the sheet's bottom
 // edge — which is exactly where the primary button lives.
 
-export default function BottomSheet({ title, subtitle, onClose, children, footer }: {
+export default function BottomSheet({ title, subtitle, onClose, children, footer, clipBody = true }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
   /** Pinned below the scrolling body — for a sheet whose action must stay put. */
   footer?: React.ReactNode;
+  /**
+   * False when the body contains absolutely-positioned dropdowns — the
+   * date/time pickers in the poll composer, for one. Scrolling the body means
+   * `overflow-y-auto`, and that clips any child escaping the panel's bounds.
+   * With this off the panel grows to its content and the backdrop scrolls
+   * instead, so a dropdown can overhang freely.
+   */
+  clipBody?: boolean;
 }) {
   // Escape closes, matching the scrim tap. Without it a sheet opened by keyboard
   // can only be dismissed by pointing at the backdrop.
@@ -34,14 +42,14 @@ export default function BottomSheet({ title, subtitle, onClose, children, footer
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center"
+      className={`fixed inset-0 z-[60] flex justify-center ${clipBody ? "items-end" : "items-end overflow-y-auto"}`}
       style={{ background: "rgba(11,21,38,0.55)" }}
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-lg bg-surface rounded-t-[24px] px-5 pt-2.5 pb-6 max-h-[88dvh] flex flex-col gap-4"
+        className={`w-full max-w-lg bg-surface rounded-t-[24px] px-5 pt-2.5 pb-6 flex flex-col gap-4 ${clipBody ? "max-h-[88dvh]" : "mt-16"}`}
         style={{ boxShadow: "0 -8px 32px rgba(11,21,38,0.18)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -57,7 +65,7 @@ export default function BottomSheet({ title, subtitle, onClose, children, footer
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 flex flex-col gap-4">{children}</div>
+        <div className={`flex flex-col gap-4 ${clipBody ? "overflow-y-auto flex-1" : ""}`}>{children}</div>
 
         {footer && <div className="flex-none">{footer}</div>}
       </div>

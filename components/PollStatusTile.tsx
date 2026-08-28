@@ -167,6 +167,8 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
       {view === "create" && teamId && userId && (
         <BottomSheet
           onClose={() => setView(null)}
+          // The composer's date and time fields open absolute dropdowns.
+          clipBody={false}
           title={request ? "New poll" : "Start a poll"}
           subtitle={request
             ? "Posting new dates replaces the current poll and clears its votes."
