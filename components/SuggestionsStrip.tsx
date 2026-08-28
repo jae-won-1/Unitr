@@ -125,7 +125,7 @@ function SuggestionRow({ suggestion, onResolve }: {
   const s = suggestion;
 
   return (
-    <div className="bg-surface-2 border border-border rounded-xl p-3">
+    <div className="bg-surface border border-border rounded-btn p-3">
       <p className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-1.5">
         {s.suggestedBy} suggested
       </p>
@@ -141,7 +141,7 @@ function SuggestionRow({ suggestion, onResolve }: {
               Dismiss
             </button>
             <button type="button" onClick={() => setChallenging(true)}
-              className="flex-[2] py-2 rounded-lg bg-accent text-black text-xs font-bold">
+              className="flex-[2] py-2 rounded-lg bg-accent text-white text-xs font-bold">
               {s.post.pitchSecured ? "Join — Pitch Secured" : "Challenge Team"}
             </button>
           </div>
@@ -166,7 +166,7 @@ function SuggestionRow({ suggestion, onResolve }: {
               Dismiss
             </button>
             <a href={`/play/tournament/${s.tournament.id}`}
-              className="flex-[2] py-2 rounded-lg bg-accent text-black text-xs font-bold text-center">
+              className="flex-[2] py-2 rounded-lg bg-accent text-white text-xs font-bold text-center">
               Enter Tournament
             </a>
           </div>
@@ -197,18 +197,18 @@ export default function SuggestionsStrip({ teamId }: { teamId: string | null }) 
           </p>
           <p className="text-xs text-text-secondary mt-0.5 truncate">Review and decide whether to enter</p>
         </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-scrim px-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
               <p className="font-bold text-lg">Squad Suggestions</p>
               <button onClick={() => setOpen(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <p className="text-xs text-text-secondary mb-4">Games your players want the team to enter.</p>

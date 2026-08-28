@@ -24,7 +24,7 @@ function renderHighlighted(text: string, roster: RosterPlayer[]) {
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, m.index)}</span>);
-    parts.push(<span key={key++} className="text-blue-400">{m[0]}</span>);
+    parts.push(<span key={key++} className="text-blue-600">{m[0]}</span>);
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
@@ -141,10 +141,10 @@ export default function CreateAnnouncementPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
         </button>
         <div>
-          <h1 className="text-xl font-bold">Post Announcement</h1>
+          <h1 className="text-xl font-extrabold">Post Announcement</h1>
           <p className="text-xs text-text-secondary mt-0.5">Announce something to your whole squad</p>
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function CreateAnnouncementPage() {
       <div className="flex flex-col gap-4">
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
@@ -163,13 +163,13 @@ export default function CreateAnnouncementPage() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Training moved to Tuesday"
             maxLength={80}
-            className="bg-surface-2 border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50"
+            className="bg-surface border border-border rounded-btn px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold">Message</label>
-          <div className="relative bg-surface-2 border border-border rounded-xl focus-within:border-accent/50">
+          <div className="relative bg-surface border border-border rounded-btn focus-within:border-accent/50">
             <div aria-hidden className="px-4 py-3 text-sm whitespace-pre-wrap break-words min-h-[140px] leading-relaxed">
               {renderHighlighted(body, roster) ?? <span className="text-text-secondary">Training moved to Tuesday this week, bring both kits to Saturday&apos;s match... Type @ to mention a player.</span>}
             </div>
@@ -192,7 +192,7 @@ export default function CreateAnnouncementPage() {
                   <button key={p.player_id} type="button" onClick={() => selectMention(p)}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors">
                     <div className="w-6 h-6 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[9px] font-bold text-accent">{p.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
+                      <span className="text-[9px] font-bold text-accent-ink">{p.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
                     </div>
                     <span className="text-sm">{p.name}</span>
                   </button>
@@ -210,7 +210,7 @@ export default function CreateAnnouncementPage() {
         </p>
 
         <button onClick={handlePost} disabled={posting}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
           {posting ? (
             <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Posting…</>
           ) : "Post Announcement"}

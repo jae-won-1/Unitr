@@ -146,11 +146,14 @@ export default function TopBar() {
   return (
     // z-40 alongside BottomNav — chrome sits below the z-50 overlay floor so a
     // tall sheet can use the full viewport height instead of being clipped.
-    <div className="fixed top-0 left-0 right-0 z-40 h-16 w-full bg-background flex items-center justify-between gap-2 px-4">
+    // The bar is now a solid accent-green band rather than page-coloured chrome,
+    // so everything inside it is white — including the icons, whose stroke is a
+    // literal attribute rather than a class.
+    <div className="fixed top-0 left-0 right-0 z-40 h-16 w-full bg-accent flex items-center justify-between gap-2 px-4">
 
       {/* ── Logo ── */}
-      <a href="/" className="text-xl font-bold tracking-tight flex-shrink-0">
-        Unitr<span className="text-accent">.</span>
+      <a href="/" className="text-[19px] font-extrabold tracking-[0.01em] text-white flex-shrink-0">
+        UNITR
       </a>
 
       <div className="flex items-center gap-2">
@@ -162,12 +165,12 @@ export default function TopBar() {
           onClick={() => { setNotifOpen((o) => !o); setProfileOpen(false); }}
           className="w-9 h-9 flex items-center justify-center relative"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent border-2 border-background" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-2 border-2 border-accent" />
           )}
         </button>
 
@@ -183,7 +186,7 @@ export default function TopBar() {
               <button key={n.id} onClick={() => openNotif(n)}
                 className={`w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border ${!n.read ? "bg-accent/[0.04]" : ""}`}>
                 <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
@@ -200,14 +203,14 @@ export default function TopBar() {
               <a href="/my-team" onClick={() => setNotifOpen(false)}
                 className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
                 <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
                     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold">Pay Your Share</p>
-                    <span className="text-[10px] font-bold bg-accent text-black px-1.5 py-0.5 rounded-full">{matchDues}</span>
+                    <span className="text-[10px] font-bold bg-accent text-white px-1.5 py-0.5 rounded-full">{matchDues}</span>
                   </div>
                   <p className="text-[11px] text-text-secondary mt-0.5">
                     {matchDues} played {matchDues > 1 ? "matches" : "match"} awaiting your share · settle in Team Credits → Dues
@@ -220,7 +223,7 @@ export default function TopBar() {
             <a href="/my-team/transfer" onClick={() => setNotifOpen(false)}
               className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
               <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
                   <line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>
                 </svg>
@@ -229,7 +232,7 @@ export default function TopBar() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold">Join Requests</p>
                   {joinRequests > 0 && (
-                    <span className="text-[10px] font-bold bg-accent text-black px-1.5 py-0.5 rounded-full">{joinRequests}</span>
+                    <span className="text-[10px] font-bold bg-accent text-white px-1.5 py-0.5 rounded-full">{joinRequests}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-0.5">
@@ -269,11 +272,11 @@ export default function TopBar() {
       {user && (
         <a href="/messages" aria-label="Messages"
           className="w-9 h-9 flex items-center justify-center relative">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           {unreadMessages > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent border-2 border-background" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-2 border-2 border-accent" />
           )}
         </a>
       )}
@@ -283,9 +286,9 @@ export default function TopBar() {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); }}
-            className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center"
+            className="w-11 h-11 rounded-full bg-accent-2 flex items-center justify-center"
           >
-            <span className="text-base font-bold text-accent">{initials}</span>
+            <span className="text-sm font-extrabold text-white">{initials}</span>
           </button>
 
           {profileOpen && (
@@ -301,7 +304,7 @@ export default function TopBar() {
                 Settings
               </a>
               <button onClick={() => { setProfileOpen(false); signOut(); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-surface-2 transition-colors border-t border-border">
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-surface-2 transition-colors border-t border-border">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Sign Out
               </button>
@@ -309,7 +312,8 @@ export default function TopBar() {
           )}
         </div>
       ) : (
-        <a href="/login" className="px-4 py-2 rounded-full bg-accent text-black text-sm font-bold">
+        // Sitting on the accent bar, so this inverts: white fill, green label.
+        <a href="/login" className="px-4 py-2 rounded-full bg-surface text-accent-ink text-sm font-bold">
           Sign In
         </a>
       )}

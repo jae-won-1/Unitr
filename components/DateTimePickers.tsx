@@ -60,7 +60,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-left flex items-center gap-2 outline-none focus:border-accent/50">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
           <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
         </svg>
         <span className={value ? "text-text-primary" : "text-text-secondary"}>{display}</span>
@@ -70,11 +70,11 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
         <div className="absolute top-full left-0 mt-1 z-50 bg-surface border border-border rounded-2xl p-3 shadow-xl w-64">
           <div className="flex items-center justify-between mb-3">
             <button type="button" onClick={prevMonth} className="w-7 h-7 rounded-lg bg-surface-2 flex items-center justify-center">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <p className="text-sm font-bold">{monthNames[viewMonth]} {viewYear}</p>
             <button type="button" onClick={nextMonth} className="w-7 h-7 rounded-lg bg-surface-2 flex items-center justify-center">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           </div>
           <div className="grid grid-cols-7 mb-1">
@@ -91,7 +91,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (d: s
               const todayDay = isToday(day);
               return (
                 <button key={day} type="button" onClick={() => !past && select(day)} disabled={past}
-                  className={`w-full aspect-square rounded-lg text-xs font-semibold transition-colors ${selected ? "bg-accent text-black" : todayDay ? "border border-accent/50 text-accent" : past ? "text-text-secondary opacity-30 cursor-not-allowed" : "text-text-primary hover:bg-surface-2"}`}>
+                  className={`w-full aspect-square rounded-lg text-xs font-semibold transition-colors ${selected ? "bg-accent text-white" : todayDay ? "border border-accent/50 text-accent-ink" : past ? "text-text-secondary opacity-30 cursor-not-allowed" : "text-text-primary hover:bg-surface-2"}`}>
                   {day}
                 </button>
               );
@@ -167,7 +167,7 @@ export function TimePicker({
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-left flex items-center gap-2 outline-none focus:border-accent/50">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
         <span className={value ? "text-text-primary" : "text-text-secondary"}>{display}</span>
@@ -180,7 +180,7 @@ export function TimePicker({
           {/* Clock dial */}
           <svg width={SIZE} height={SIZE} style={{ display: "block" }}>
             {/* Face ring */}
-            <circle cx={C} cy={C} r={C - 2} fill="none" stroke="#2a2a2a" strokeWidth="1.5" />
+            <circle cx={C} cy={C} r={C - 2} fill="none" stroke="#DCE2EF" strokeWidth="1.5" />
 
             {/* Hand — only when a valid (non-past) hour is selected */}
             {!isHourPast(hour, ampm) && (() => {
@@ -190,13 +190,13 @@ export function TimePicker({
                   x1={C} y1={C}
                   x2={C + (R - BR - 2) * Math.cos(a)}
                   y2={C + (R - BR - 2) * Math.sin(a)}
-                  stroke="#00E676" strokeWidth="1.5" strokeLinecap="round"
+                  stroke="#0E7A3C" strokeWidth="1.5" strokeLinecap="round"
                 />
               );
             })()}
 
             {/* Center dot */}
-            <circle cx={C} cy={C} r={3.5} fill="#00E676" />
+            <circle cx={C} cy={C} r={3.5} fill="#0E7A3C" />
 
             {/* Hour markers */}
             {DIAL_HOURS.map((h) => {
@@ -210,10 +210,10 @@ export function TimePicker({
                   onClick={() => { if (past) return; setHour(h); emit(h, ampm); }}
                   style={{ cursor: past ? "not-allowed" : "pointer" }}>
                   <circle cx={x} cy={y} r={BR}
-                    fill={selected ? "#00E676" : past ? "#1e1e1e" : "transparent"} />
+                    fill={selected ? "#0E7A3C" : past ? "#E9EDF6" : "transparent"} />
                   <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
                     fontSize="12" fontWeight="700"
-                    fill={selected ? "#000000" : past ? "#333333" : "#9E9E9E"}
+                    fill={selected ? "#000000" : past ? "#333333" : "#5A6478"}
                     style={{ userSelect: "none", pointerEvents: "none" }}>
                     {h}
                   </text>
@@ -233,7 +233,7 @@ export function TimePicker({
                   emit(hour, a);
                 }
               }}
-                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-colors ${ampm === a ? "bg-accent text-black" : "bg-surface-2 text-text-secondary"}`}>
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-colors ${ampm === a ? "bg-accent text-white" : "bg-surface-2 text-text-secondary"}`}>
                 {a}
               </button>
             ))}

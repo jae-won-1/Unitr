@@ -38,21 +38,36 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
-      <header className="flex items-center gap-3 mb-8">
-        <a href="/" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="flex flex-col min-h-screen pb-8">
+      {/* Green hero. The auth screens are the only place the wordmark appears at
+          full size, so they carry the brand rather than the app chrome — the
+          TopBar is suppressed on these routes (see components/TopBar.tsx). */}
+      <div className="relative overflow-hidden bg-accent px-6 pt-12 pb-8">
+        <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(90deg,rgba(255,255,255,0.05) 0 40px,rgba(0,0,0,0.05) 40px 80px)" }} />
+        <span className="relative flex items-center gap-1.5">
+          <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITR</span>
+          <span className="w-[11px] h-6 bg-accent-2 -skew-x-12" />
+        </span>
+        <p className="relative mt-2.5 max-w-[280px] text-sm font-semibold leading-relaxed text-white/80">
+          Sort the pitch, the squad and the money in one place.
+        </p>
+      </div>
+
+      <div className="flex flex-col px-6 pt-6">
+      <header className="flex items-center gap-3 mb-6">
+        <a href="/" className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </a>
-        <h1 className="text-xl font-bold">Sign In</h1>
+        <h1 className="text-[22px] font-extrabold tracking-[-0.01em]">Sign in</h1>
       </header>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
@@ -68,7 +83,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
@@ -81,15 +96,15 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Your password"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
-          <a href="/forgot-password" className="text-xs text-accent font-medium self-end mt-0.5">Forgot password?</a>
+          <a href="/forgot-password" className="text-xs text-accent-ink font-medium self-end mt-0.5">Forgot password?</a>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>
@@ -101,9 +116,10 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-text-secondary">
           Don&apos;t have an account?{" "}
-          <a href="/register" className="text-accent font-medium">Create one</a>
+          <a href="/register" className="text-accent-ink font-medium">Create one</a>
         </p>
       </form>
+      </div>
     </div>
   );
 }

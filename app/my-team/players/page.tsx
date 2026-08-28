@@ -26,13 +26,13 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
   const initials = player.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-scrim flex items-end" onClick={onClose}>
       <div className="w-full bg-surface rounded-t-2xl p-5 max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
 
         <div className="flex items-center gap-4 mb-5">
           <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-bold text-accent">{initials}</span>
+            <span className="text-lg font-bold text-accent-ink">{initials}</span>
           </div>
           <div>
             <p className="font-bold text-lg">{player.full_name}</p>
@@ -47,14 +47,14 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
             { label: "Assists", value: "—" },
             { label: "Win Rate", value: "—" },
           ].map((s) => (
-            <div key={s.label} className="bg-surface-2 border border-border rounded-xl p-3">
-              <p className="text-lg font-bold text-accent">{s.value}</p>
+            <div key={s.label} className="bg-surface border border-border rounded-btn p-3">
+              <p className="text-lg font-bold text-accent-ink">{s.value}</p>
               <p className="text-xs text-text-secondary">{s.label}</p>
             </div>
           ))}
         </div>
 
-        <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4 space-y-3">
+        <div className="bg-surface border border-border rounded-btn p-4 mb-4 space-y-3">
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Profile</p>
           <div className="flex justify-between text-xs">
             <span className="text-text-secondary">Location</span>
@@ -70,7 +70,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </div>
         </div>
 
-        <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4 space-y-3">
+        <div className="bg-surface border border-border rounded-btn p-4 mb-4 space-y-3">
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Performance</p>
           <p className="text-xs text-text-secondary italic">Stats will populate after matches are played.</p>
           {[
@@ -142,15 +142,15 @@ export default function PlayersPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <a href="/my-team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Players</h1>
+          <h1 className="text-xl font-extrabold">Players</h1>
           <p className="text-xs text-text-secondary">{teamName || "Your team"} · {players.length} players</p>
         </div>
       </div>
 
-      <a href="/my-team/transfer" className="flex items-center justify-between bg-surface-2 border border-border rounded-xl px-4 py-3 mb-4">
+      <a href="/my-team/transfer" className="flex items-center justify-between bg-surface border border-border rounded-btn px-4 py-3 mb-4">
         <div className="flex items-center gap-3">
           <span className="text-xl">🔄</span>
           <div>
@@ -158,7 +158,7 @@ export default function PlayersPage() {
             <p className="text-xs text-text-secondary">Scout &amp; sign new players</p>
           </div>
         </div>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
       </a>
 
       <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
@@ -166,7 +166,7 @@ export default function PlayersPage() {
           <button
             key={pos}
             onClick={() => setPosFilter(pos)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${posFilter === pos ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${posFilter === pos ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}
           >
             {pos}
           </button>
@@ -191,16 +191,16 @@ export default function PlayersPage() {
             <button
               key={player.id}
               onClick={() => setSelected(player)}
-              className="w-full bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center gap-3 text-left"
+              className="w-full bg-surface border border-border rounded-btn px-4 py-3 flex items-center gap-3 text-left"
             >
               <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-accent">{initials}</span>
+                <span className="text-xs font-bold text-accent-ink">{initials}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{player.full_name}</p>
                 <p className="text-xs text-text-secondary">{player.position} · {player.experience}</p>
               </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           );
         })}

@@ -33,11 +33,14 @@ export default function DateDial({ value, onChange, counts, days = 14 }: {
 }) {
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Selection here is dark navy rather than the accent green: the dial sits
+          directly under the green category pills, and a second green would make
+          "which day" and "which category" read as one control. */}
       <button
         type="button"
         onClick={() => onChange(null)}
-        className={`flex-shrink-0 px-4 h-16 rounded-xl text-xs font-bold border transition-colors ${
-          value === null ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+        className={`flex-shrink-0 px-4 h-16 rounded-btn text-xs font-bold border transition-colors ${
+          value === null ? "bg-text-primary text-white border-text-primary" : "bg-surface text-text-primary border-border"
         }`}
       >
         All
@@ -50,13 +53,13 @@ export default function DateDial({ value, onChange, counts, days = 14 }: {
             key={d.key}
             type="button"
             onClick={() => onChange(active ? null : d.key)}
-            className={`flex-shrink-0 w-14 h-16 rounded-xl flex flex-col items-center justify-center gap-0.5 border transition-colors ${
-              active ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+            className={`flex-shrink-0 w-14 h-16 rounded-btn flex flex-col items-center justify-center gap-0.5 border transition-colors ${
+              active ? "bg-text-primary border-text-primary" : "bg-surface border-border"
             }`}
           >
-            <span className="text-[10px] font-semibold">{d.label}</span>
-            <span className={`text-base font-bold ${active ? "" : "text-text-primary"}`}>{d.day}</span>
-            <span className={`w-1 h-1 rounded-full ${has ? (active ? "bg-black/50" : "bg-accent") : "bg-transparent"}`} />
+            <span className={`text-[10px] font-semibold ${active ? "text-white/75" : "text-text-secondary"}`}>{d.label}</span>
+            <span className={`text-base font-bold ${active ? "text-white" : "text-text-primary"}`}>{d.day}</span>
+            <span className={`w-1 h-1 rounded-full ${has ? (active ? "bg-white/60" : "bg-accent-ink") : "bg-transparent"}`} />
           </button>
         );
       })}

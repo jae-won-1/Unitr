@@ -59,7 +59,7 @@ function PitchPreview({ formation }: { formation: string }) {
       <rect x="30" y="113" width="40" height="16" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
       {slots.map((s, i) => (
         <g key={i}>
-          <circle cx={s.x} cy={(s.y / 100) * 130} r="5" fill="#00E676" />
+          <circle cx={s.x} cy={(s.y / 100) * 130} r="5" fill="#0E7A3C" />
           <text x={s.x} y={(s.y / 100) * 130 + 1.8} textAnchor="middle" fontSize="3.4" fontWeight="700" fill="#000">
             {s.position}
           </text>
@@ -118,8 +118,8 @@ function TacticEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onCancel}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onCancel}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
         <div className="p-4 space-y-4">
           <h3 className="text-base font-bold">{existing ? "Edit setup" : "New setup"}</h3>
@@ -129,7 +129,7 @@ function TacticEditor({
             <input
               value={title} onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. High press vs weak keeper"
-              className="w-full bg-surface-2 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent"
+              className="w-full bg-surface border border-border rounded-btn px-3 py-2.5 text-sm outline-none focus:border-accent"
             />
           </div>
 
@@ -139,7 +139,7 @@ function TacticEditor({
               {TACTIC_SITUATIONS.map((s) => (
                 <button key={s} type="button" onClick={() => setSituation(situation === s ? "" : s)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    situation === s ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                    situation === s ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {s}
                 </button>
               ))}
@@ -152,7 +152,7 @@ function TacticEditor({
               {FORMATION_KEYS.map((f) => (
                 <button key={f} type="button" onClick={() => setFormation(f)}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                    formation === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                    formation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {f}
                 </button>
               ))}
@@ -166,7 +166,7 @@ function TacticEditor({
               {PLAY_STYLES.map((s) => (
                 <button key={s} type="button" onClick={() => setStyle(style === s ? null : s)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    style === s ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                    style === s ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {s}
                 </button>
               ))}
@@ -179,7 +179,7 @@ function TacticEditor({
               {PRESSING_LEVELS.map((p) => (
                 <button key={p} type="button" onClick={() => setPressing(pressing === p ? null : p)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    pressing === p ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                    pressing === p ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {p}
                 </button>
               ))}
@@ -191,17 +191,17 @@ function TacticEditor({
             <textarea
               value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
               placeholder="What the squad needs to do differently in this setup."
-              className="w-full bg-surface-2 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent resize-none"
+              className="w-full bg-surface border border-border rounded-btn px-3 py-2.5 text-sm outline-none focus:border-accent resize-none"
             />
           </div>
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
           <div className="flex gap-2 pb-2">
             <button type="button" onClick={onCancel} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">
               Cancel
             </button>
-            <button type="button" onClick={save} disabled={busy} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-60">
+            <button type="button" onClick={save} disabled={busy} className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-60">
               {busy ? "Saving…" : "Save setup"}
             </button>
           </div>
@@ -222,11 +222,11 @@ function TacticCard({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={() => setOpen(!open)} className="min-w-0 text-left flex-1">
           {tactic.situation && (
-            <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 bg-accent/10 text-accent border-accent/20">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 bg-accent/10 text-accent-ink border-accent/20">
               {tactic.situation}
             </span>
           )}
@@ -247,7 +247,7 @@ function TacticCard({
               <button type="button" onClick={onEdit} className="flex-1 py-2 rounded-lg border border-border text-xs font-semibold text-text-secondary">
                 Edit
               </button>
-              <button type="button" onClick={onDelete} className="flex-1 py-2 rounded-lg border border-red-500/30 text-xs font-semibold text-red-400">
+              <button type="button" onClick={onDelete} className="flex-1 py-2 rounded-lg border border-red-500/30 text-xs font-semibold text-red-600">
                 Delete
               </button>
             </div>
@@ -306,19 +306,19 @@ export default function TacticsTab({
           disabled={!isCaptain || unavailable}
           onClick={() => setEditing(null)}
           title={!isCaptain ? "Only the captain can create setups" : unavailable ? MISSING_TABLE_MSG : undefined}
-          className="flex-shrink-0 px-3 py-2 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex-shrink-0 px-3 py-2 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed"
         >
           + New
         </button>
       </div>
 
       {unavailable ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
           <p className="text-sm font-semibold mb-1">Not set up yet</p>
           <p className="text-xs text-text-secondary">{MISSING_TABLE_MSG}</p>
         </div>
       ) : tactics.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
           <p className="text-sm font-semibold mb-1">No setups saved</p>
           <p className="text-xs text-text-secondary">
             {isCaptain

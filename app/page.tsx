@@ -101,18 +101,18 @@ function JoinRequestsStrip({ count }: { count: number }) {
     <a href="/my-team/transfer"
       className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-2xl p-4">
       <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
           <line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-accent">
+        <p className="text-sm font-semibold text-accent-ink">
           {count} player{count === 1 ? "" : "s"} want{count === 1 ? "s" : ""} to join
         </p>
         <p className="text-xs text-text-secondary mt-0.5 truncate">Review and approve them in Transfer Window</p>
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
         <path d="M5 12h14M12 5l7 7-7 7"/>
       </svg>
     </a>
@@ -129,12 +129,12 @@ function PendingRequestStrip({ request }: { request: PendingRequest }) {
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-yellow-400">Request pending</p>
+        <p className="text-sm font-semibold text-yellow-600">Request pending</p>
         <p className="text-xs text-text-secondary mt-0.5 truncate">
           Waiting on {request.teamName} to approve you
         </p>
       </div>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
         <path d="M5 12h14M12 5l7 7-7 7" />
       </svg>
     </a>
@@ -273,35 +273,35 @@ function UpcomingFixturesList({ fixtures }: { fixtures: ConfirmedFixture[] }) {
 }
 
 // ── Sub-components ───────────────────────────────────────────
-function ConfirmedFixtureCard({ fixture }: { fixture: ConfirmedFixture }) {
+// The rebrand's hero card: a stylised pitch banner carrying the status badge,
+// then the fixture in a display face over a plain white body. `action` is the
+// management CTA the viewer is entitled to — it lives inside the card in the
+// new design rather than as a separate button underneath, so a card with no
+// action simply ends after the venue line.
+function ConfirmedFixtureCard({ fixture, action }: { fixture: ConfirmedFixture; action?: React.ReactNode }) {
   const isTournament = fixture.kind === "tournament";
   const Wrapper = isTournament ? "a" : "div";
   return (
     <Wrapper {...(isTournament ? { href: `/play/tournament/${fixture.id}` } : {})}
-      className="block bg-surface-2 border border-border rounded-2xl p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{isTournament ? fixture.title : `vs ${fixture.opponent}`}</p>
-          <p className="text-xs text-text-secondary mt-0.5">
-            {isTournament ? "Tournament" : fixture.side === "poster" ? "You posted · they challenged" : "You challenged"}
-          </p>
-        </div>
-        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
-          {isTournament ? "Tournament" : "Confirmed"}
+      className="block bg-surface border border-border rounded-card shadow-card overflow-hidden">
+      <div className="pitch-art pitch-art-line h-[110px]">
+        <span className="pitch-halfway" />
+        <span className="absolute top-2.5 left-2.5 bg-accent-2 text-white text-[10px] font-extrabold tracking-[0.06em] px-2.5 py-1 rounded-full">
+          {isTournament ? "TOURNAMENT" : "CONFIRMED"}
         </span>
       </div>
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <div className="px-4 pt-3.5 pb-4 flex flex-col gap-2.5">
+        <span className="text-[13px] font-extrabold text-accent-ink uppercase">
           {fixture.date} · {fixture.time}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          {fixture.pitch}
-        </div>
+        </span>
+        <p className="text-xl font-extrabold tracking-[-0.01em] uppercase truncate">
+          {isTournament ? fixture.title : `vs ${fixture.opponent}`}
+        </p>
+        <p className="text-[13px] font-medium text-text-secondary truncate">{fixture.pitch}</p>
+        <p className="text-[11px] font-medium text-text-secondary">
+          {isTournament ? "Tournament" : fixture.side === "poster" ? "You posted · they challenged" : "You challenged"}
+        </p>
+        {action}
       </div>
     </Wrapper>
   );
@@ -316,12 +316,12 @@ function TeamlessFeedToggle({ note }: { note?: string }) {
   return (
     <div>
       <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <span className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border bg-accent text-black border-accent">
+        <span className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border bg-accent text-white border-accent">
           Fill In
         </span>
         {["Matches", "Tournaments"].map((label) => (
           <span key={label}
-            className="flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border bg-surface-2 text-text-secondary border-border opacity-40 cursor-not-allowed">
+            className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border bg-surface-2 text-text-secondary border-border opacity-60 cursor-not-allowed">
             {label}
           </span>
         ))}
@@ -348,7 +348,7 @@ function NewUserHome() {
 
         {pending.map((p) => <PendingRequestStrip key={p.teamId} request={p} />)}
 
-        <a href="/my-team/create" className="bg-accent text-black rounded-2xl p-4 flex items-center gap-3">
+        <a href="/my-team/create" className="bg-accent text-white rounded-2xl p-4 flex items-center gap-3">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
@@ -376,11 +376,11 @@ function NewUserHome() {
     <div className="flex flex-col gap-6">
       <section className="rounded-2xl bg-surface-2 border border-border p-6 text-center">
         <p className="text-text-secondary text-sm mb-2">The football platform</p>
-        <h2 className="text-2xl font-bold mb-1">Connect. Compete.</h2>
-        <h2 className="text-2xl font-bold text-accent mb-3">Conquer Together.</h2>
+        <h2 className="text-2xl font-extrabold mb-1">Connect. Compete.</h2>
+        <h2 className="text-2xl font-extrabold text-accent-ink mb-3">Conquer Together.</h2>
         <p className="text-text-secondary text-sm mb-5">Find opponents, book pitches, and build your legacy.</p>
         <div className="flex gap-3">
-          <a href="/register" className="flex-1 py-3 rounded-xl bg-accent text-black font-semibold text-sm text-center">Register</a>
+          <a href="/register" className="flex-1 py-3 rounded-btn bg-accent text-white font-semibold text-sm text-center">Register</a>
           <a href="/login" className="flex-1 py-3 rounded-xl border border-border text-text-primary font-semibold text-sm text-center">Sign In</a>
         </div>
       </section>
@@ -422,12 +422,12 @@ function PlayerHome({ userId }: { userId: string | undefined }) {
             <h3 className="font-bold">Next Fixture</h3>
             <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
           </div>
-          <a href="/calendar" className="text-xs text-accent font-medium">See all</a>
+          <a href="/calendar" className="text-xs text-accent-ink font-medium">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
         ) : !next ? (
-          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+          <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
             <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
             <p className="text-xs text-text-secondary mt-1">Matches will appear here once confirmed.</p>
           </div>
@@ -461,7 +461,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
       {/* Money: credits, top up / settle up, payment status, settle payments */}
       {userId && (
         <section>
-          <h3 className="font-bold mb-2">Team Money</h3>
+          <h3 className="text-lg font-bold tracking-[-0.01em] uppercase mb-2">Team Money</h3>
           <TeamCreditsBar userId={userId} role="captain" />
         </section>
       )}
@@ -471,38 +471,35 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
 
       {/* Next fixture only. Everything else lives in the calendar. */}
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-bold">Next Fixture</h3>
-            <p className="text-xs text-text-secondary mt-0.5">Confirmed matches only</p>
-          </div>
-          <a href="/calendar" className="text-xs text-accent font-medium">See all</a>
+        <div className="flex items-end justify-between mb-3">
+          <h3 className="text-lg font-bold tracking-[-0.01em] uppercase">Next Fixture</h3>
+          <a href="/calendar" className="text-xs text-accent-ink font-semibold">See all</a>
         </div>
         {fixturesLoading ? (
           <div className="flex justify-center py-6"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
         ) : !next ? (
-          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+          <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
             <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
-            <a href="/play/create" className="inline-block mt-2 text-xs text-accent font-medium">Post a match to get started →</a>
+            <a href="/play/create" className="inline-block mt-2 text-xs text-accent-ink font-semibold">Post a match to get started →</a>
           </div>
         ) : (
-          <div className="space-y-2">
-            <ConfirmedFixtureCard fixture={next} />
-            {next.kind === "match" && (
+          <ConfirmedFixtureCard
+            fixture={next}
+            action={next.kind === "match" && (
               next.matchId ? (
                 <a href={`/my-team/match/${next.matchId}`}
-                  className="block w-full py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold text-center">
+                  className="block w-full py-3 rounded-btn bg-accent text-white text-sm font-bold text-center">
                   Manage match
                 </a>
               ) : (
                 /* Greyed, not hidden — a missing button shifts the card below it. */
-                <div className="w-full py-2.5 rounded-xl border border-border text-text-secondary text-sm font-bold text-center">
+                <div className="w-full py-3 rounded-btn border border-border text-text-secondary text-sm font-bold text-center">
                   Manage match
                   <span className="block text-[10px] font-normal mt-0.5">Available once the match record is created</span>
                 </div>
               )
             )}
-          </div>
+          />
         )}
       </section>
 
@@ -523,14 +520,14 @@ function AdminHome({ userId }: { userId: string | undefined }) {
   return (
     <div className="flex flex-col gap-6">
       {/* Hosting hub CTA — admins post events from /admin, not /play/create */}
-      <section className="bg-surface-2 border border-border rounded-2xl p-5">
+      <section className="bg-surface border border-border shadow-card rounded-card p-5">
         <h2 className="text-lg font-bold">Unitr Admin</h2>
         <p className="text-sm text-text-secondary mt-1">
           Host and manage tournaments, leagues and friendlies on pitches booked
           outside the app.
         </p>
         <a href="/admin"
-          className="inline-block mt-3 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-bold">
+          className="inline-block mt-3 px-4 py-2.5 rounded-btn bg-accent text-white text-sm font-bold">
           Open the Admin hub
         </a>
       </section>

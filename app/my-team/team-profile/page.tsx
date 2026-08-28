@@ -65,12 +65,12 @@ export default function TeamProfileSettingsPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <header className="flex items-center gap-3 mb-8">
         <a href="/my-team" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Team Profile</h1>
+          <h1 className="text-xl font-extrabold">Team Profile</h1>
           <p className="text-xs text-text-secondary mt-0.5">Shown to players browsing {team.name}</p>
         </div>
       </header>
@@ -84,7 +84,7 @@ export default function TeamProfileSettingsPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt={team.name} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-lg font-bold text-accent">{initials}</span>
+                <span className="text-lg font-bold text-accent-ink">{initials}</span>
               )}
             </div>
             <input
@@ -92,7 +92,7 @@ export default function TeamProfileSettingsPage() {
               value={photoUrl}
               onChange={(e) => setPhotoUrl(e.target.value)}
               placeholder="https://…"
-              className="flex-1 bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+              className="flex-1 bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
             />
           </div>
         </div>
@@ -104,7 +104,7 @@ export default function TeamProfileSettingsPage() {
             value={playStyle}
             onChange={(e) => setPlayStyle(e.target.value)}
             placeholder="e.g. High press, quick transitions"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
@@ -115,14 +115,14 @@ export default function TeamProfileSettingsPage() {
             value={history}
             onChange={(e) => setHistory(e.target.value)}
             placeholder="How the team started, honours, notable seasons…"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60 resize-none"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60 resize-none"
           />
         </div>
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
             <>

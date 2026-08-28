@@ -337,17 +337,17 @@ export default function TournamentDetailPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold truncate">{t.title}</h1>
+          <h1 className="text-xl font-extrabold truncate">{t.title}</h1>
           <p className="text-xs text-text-secondary">{t.pitch_name} · {fmtDate(t.match_date)} · {t.start_time}–{t.end_time}</p>
         </div>
       </div>
 
       <div className="flex flex-col gap-5">
         {/* Teams entered */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold">Teams</p>
             <span className="text-xs text-text-secondary">{teams.length}/{t.max_teams}</span>
@@ -357,7 +357,7 @@ export default function TournamentDetailPage() {
           ) : (
             <div className="flex flex-wrap gap-2">
               {teams.map((tm) => (
-                <span key={tm.team_id} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${tm.team_id === t.organiser_team_id ? "bg-accent/10 border-accent/30 text-accent" : "bg-background border-border text-text-primary"}`}>
+                <span key={tm.team_id} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${tm.team_id === t.organiser_team_id ? "bg-accent/10 border-accent/30 text-accent-ink" : "bg-background border-border text-text-primary"}`}>
                   {tm.team_name}{tm.team_id === t.organiser_team_id ? " · host" : ""}
                 </span>
               ))}
@@ -374,9 +374,9 @@ export default function TournamentDetailPage() {
           if (canManage || past) return null;
           const discounted = Math.max(0, t.price_per_team_pence - inviteDiscountPence);
           return (
-            <section className="bg-surface-2 border border-border rounded-2xl p-4">
+            <section className="bg-surface border border-border shadow-card rounded-card p-4">
               {alreadyIn ? (
-                <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
+                <div className="w-full py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent-ink">Your team is entered ✓</div>
               ) : isFull ? (
                 <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">{noun} full</div>
               ) : (
@@ -389,7 +389,7 @@ export default function TournamentDetailPage() {
                     </span>
                   </div>
                   <button onClick={() => setShowEnter(true)} disabled={!myTeamId}
-                    className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+                    className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
                     {inviteDiscountPence > 0 ? `Accept invitation — £${(discounted / 100).toFixed(2)}` : `Enter ${noun}`}
                   </button>
                   {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter.</p>}
@@ -399,32 +399,32 @@ export default function TournamentDetailPage() {
           );
         })()}
 
-        {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-400">{error}</p></div>}
+        {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-600">{error}</p></div>}
 
         {/* Organiser: invite good-fit teams */}
         {canManage && t.status !== "full" && teams.length < t.max_teams && (
-          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex items-center justify-between gap-3">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Invite teams</p>
               <p className="text-[11px] text-text-secondary">Invite good-fit teams{t.venue_owner_id === user?.id || t.organiser_admin_id === user?.id ? " with an optional discount" : ""} to fill the {Math.max(0, t.max_teams - teams.length)} open spot{t.max_teams - teams.length !== 1 ? "s" : ""}.</p>
             </div>
             <button onClick={() => setShowInvite(true)}
-              className="px-4 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex-shrink-0">Invite</button>
+              className="px-4 py-2.5 rounded-btn bg-accent text-white text-sm font-bold flex-shrink-0">Invite</button>
           </section>
         )}
 
         {/* Organiser scheduling controls */}
         {canManage && (
-          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-4">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Schedule</p>
               {fixtures.length > 0 && (
-                <button onClick={clearSchedule} disabled={busy} className="text-xs text-red-400 font-semibold disabled:opacity-50">Clear</button>
+                <button onClick={clearSchedule} disabled={busy} className="text-xs text-red-600 font-semibold disabled:opacity-50">Clear</button>
               )}
             </div>
 
             <button onClick={generateRandom} disabled={busy || teams.length < 2}
-              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {busy ? <><svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Working…</> : "Generate random schedule"}
             </button>
             <p className="text-[11px] text-text-secondary -mt-2">Round-robin — every team plays each other once. Referees are drawn randomly from teams sitting out each game and notified.</p>
@@ -453,7 +453,7 @@ export default function TournamentDetailPage() {
         )}
 
         {/* Schedule / fixtures */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <p className="text-sm font-semibold mb-3">Fixtures</p>
           {fixtures.length === 0 ? (
             <p className="text-xs text-text-secondary text-center py-6">No fixtures scheduled yet{canManage ? " — generate a schedule above." : "."}</p>
@@ -467,19 +467,19 @@ export default function TournamentDetailPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-text-secondary w-12 flex-shrink-0">{fx.scheduled_time ?? `#${i + 1}`}</span>
                       <span className="flex-1 text-right text-sm font-semibold truncate">{fx.home_team_name}</span>
-                      <span className={`text-xs font-bold px-2 ${played ? "text-accent" : "text-text-secondary"}`}>
+                      <span className={`text-xs font-bold px-2 ${played ? "text-accent-ink" : "text-text-secondary"}`}>
                         {played ? `${fx.home_score}–${fx.away_score}` : "vs"}
                       </span>
                       <span className="flex-1 text-left text-sm font-semibold truncate">{fx.away_team_name}</span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5 pl-14">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><path d="M4 4h16v12H5.17L4 17.17V4z"/></svg>
                       <span className="text-[11px] text-text-secondary">
                         Ref: {fx.referee_name ? <span className="text-text-primary font-medium">{fx.referee_name}</span> : "unassigned"}
                         {fx.referee_team_name ? ` (${fx.referee_team_name})` : ""}
                       </span>
                       {canManage && (
-                        <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent font-semibold">Reshuffle</button>
+                        <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent-ink font-semibold">Reshuffle</button>
                       )}
                     </div>
                     {/* Organiser result entry — the only place scores are written. */}
@@ -493,7 +493,7 @@ export default function TournamentDetailPage() {
                           onChange={(e) => setScoreDraft((prev) => ({ ...prev, [fx.id]: { ...d, a: e.target.value } }))}
                           className="w-14 bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-sm text-center outline-none focus:border-accent/50" />
                         <button onClick={() => saveResult(fx)} disabled={busy || d.h === "" || d.a === ""}
-                          className="ml-auto px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-50">
+                          className="ml-auto px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-50">
                           Save result
                         </button>
                       </div>
@@ -507,7 +507,7 @@ export default function TournamentDetailPage() {
 
         {/* Standings — computed from played fixtures, visible to everyone. */}
         {teams.length > 2 && fixtures.some((f) => f.status === "played") && (
-          <section className="bg-surface-2 border border-border rounded-2xl p-4">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4">
             <p className="text-sm font-semibold mb-3">Standings</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -531,7 +531,7 @@ export default function TournamentDetailPage() {
                       <td className="text-center py-2 px-1.5 text-text-secondary">{r.d}</td>
                       <td className="text-center py-2 px-1.5 text-text-secondary">{r.l}</td>
                       <td className="text-center py-2 px-1.5 text-text-secondary">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
-                      <td className="text-center py-2 pl-1.5 font-bold text-accent">{r.pts}</td>
+                      <td className="text-center py-2 pl-1.5 font-bold text-accent-ink">{r.pts}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -542,7 +542,7 @@ export default function TournamentDetailPage() {
 
         {/* Organiser: rate players (1–10) — feeds the profile "Event rating". */}
         {canManage && roster.length > 0 && (
-          <section className="bg-surface-2 border border-border rounded-2xl p-4">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4">
             <p className="text-sm font-semibold">Rate players</p>
             <p className="text-[11px] text-text-secondary mt-0.5 mb-3">1–10 per player. Saving again replaces the previous rating for this event.</p>
             <div className="space-y-4">
@@ -560,7 +560,7 @@ export default function TournamentDetailPage() {
                           <div key={p.player_id} className="flex items-center gap-2 bg-background border border-border rounded-xl px-3 py-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{p.name}</p>
-                              {saved != null && <p className="text-[10px] text-accent font-semibold">Rated {saved}/10</p>}
+                              {saved != null && <p className="text-[10px] text-accent-ink font-semibold">Rated {saved}/10</p>}
                             </div>
                             <select value={d.rating}
                               onChange={(e) => setRatingDraft((prev) => ({ ...prev, [p.player_id]: { ...d, rating: e.target.value } }))}
@@ -572,7 +572,7 @@ export default function TournamentDetailPage() {
                               onChange={(e) => setRatingDraft((prev) => ({ ...prev, [p.player_id]: { ...d, note: e.target.value } }))}
                               className="w-24 bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-accent/50" />
                             <button onClick={() => saveRating(p)} disabled={!d.rating}
-                              className="px-2.5 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40 flex-shrink-0">
+                              className="px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-40 flex-shrink-0">
                               Save
                             </button>
                           </div>

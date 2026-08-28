@@ -59,24 +59,24 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
     entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && teamId;
 
   return (
-    <div className={`bg-surface-2 border border-border border-l-4 ${style.border} rounded-2xl p-4 ${entry.isUpcoming ? "" : "opacity-75"}`}>
+    <div className={`bg-surface border border-border border-l-4 ${style.rule} shadow-card rounded-card px-4 py-3.5 ${entry.isUpcoming ? "" : "opacity-85"}`}>
     <button type="button" onClick={() => onOpen(entry)} className="w-full text-left">
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
-          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 ${style.bg} ${style.text} ${style.border}`}>
+          <span className={`inline-block text-[10px] font-bold uppercase tracking-[0.08em] px-2.5 py-0.5 rounded-full border mb-1.5 ${style.bg} ${style.text} ${style.border}`}>
             {KIND_LABEL[entry.kind]}
           </span>
-          <p className="text-sm font-bold truncate">{entry.title}</p>
-          {entry.subtitle && <p className="text-xs text-text-secondary truncate mt-0.5">{entry.subtitle}</p>}
+          <p className="text-[15px] font-bold truncate">{entry.title}</p>
+          {entry.subtitle && <p className="text-xs font-medium text-text-secondary truncate mt-0.5">{entry.subtitle}</p>}
         </div>
         {entry.badge && (
-          <span className="text-[10px] font-semibold text-text-secondary bg-surface border border-border px-2 py-0.5 rounded-full flex-shrink-0">
+          <span className="text-[10px] font-semibold text-text-secondary bg-background border border-border px-2.5 py-0.5 rounded-full flex-shrink-0">
             {entry.badge}
           </span>
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-text-secondary">
+      <div className="flex items-center gap-2 text-xs font-medium text-text-secondary">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         {fmtKickoff(entry.date, entry.time)}
       </div>
@@ -129,10 +129,10 @@ function FilterMenu({ options, value, onChange }: {
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox" aria-expanded={open}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-btn text-sm font-bold border transition-colors ${
           value === "all"
-            ? "bg-surface-2 text-text-primary border-border"
-            : "bg-accent text-black border-accent"
+            ? "bg-surface text-text-primary border-border"
+            : "bg-accent text-white border-accent"
         }`}>
         {active.label}
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -146,14 +146,14 @@ function FilterMenu({ options, value, onChange }: {
         // z-50 — above the page but below the z-[60] sheets, so opening the
         // month picker or a fixture always covers a menu left hanging open.
         <div role="listbox"
-          className="absolute left-0 top-full mt-2 z-50 min-w-[190px] bg-surface border border-border rounded-2xl shadow-xl overflow-hidden">
+          className="absolute left-0 top-full mt-2 z-50 min-w-[190px] bg-surface border border-border rounded-card shadow-xl overflow-hidden">
           {options.map((o) => {
             const selected = o.key === value;
             return (
               <button key={o.key} type="button" role="option" aria-selected={selected}
                 onClick={() => { onChange(o.key); setOpen(false); }}
-                className={`w-full flex items-center justify-between gap-4 px-4 py-3 text-sm text-left transition-colors hover:bg-surface-2 border-b border-border last:border-b-0 ${
-                  selected ? "font-bold text-accent" : "font-medium text-text-primary"
+                className={`w-full flex items-center justify-between gap-4 px-4 py-3 text-sm text-left transition-colors hover:bg-background border-b border-border last:border-b-0 ${
+                  selected ? "font-bold text-accent-ink" : "font-medium text-text-primary"
                 }`}>
                 {o.label}
                 {selected && (
@@ -178,16 +178,16 @@ function Section({ title, entries, empty, viewerId, teamId, onOpen }: {
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="font-bold">{title}</h2>
+        <h2 className="text-[15px] font-extrabold">{title}</h2>
         {entries.length > 0 && (
-          <span className="text-[11px] font-semibold text-text-secondary bg-surface-2 border border-border px-2 py-0.5 rounded-full">
+          <span className="text-[11px] font-semibold text-text-secondary bg-surface-2 px-2.5 py-0.5 rounded-full">
             {entries.length}
           </span>
         )}
       </div>
       {entries.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl px-4 py-6 text-center">
-          <p className="text-sm text-text-secondary">{empty}</p>
+        <div className="bg-surface border border-border shadow-card rounded-card px-4 py-6 text-center">
+          <p className="text-[13px] font-medium text-text-secondary">{empty}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -268,13 +268,13 @@ export default function CalendarPage() {
     return (
       <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
         <header className="mb-5">
-          <h1 className="text-2xl font-bold mb-1">Calendar</h1>
+          <h1 className="text-2xl font-extrabold mb-1">Calendar</h1>
           <p className="text-text-secondary text-sm">Your fixtures, tournaments and bookings</p>
         </header>
-        <div className="bg-surface-2 border border-border rounded-2xl px-4 py-12 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card px-4 py-12 text-center">
           <p className="text-sm font-semibold mb-1">Sign in to see your calendar</p>
           <p className="text-xs text-text-secondary mb-4">Everything you&apos;re booked into lives here.</p>
-          <a href="/login" className="inline-block px-6 py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Sign In</a>
+          <a href="/login" className="inline-block px-6 py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Sign In</a>
         </div>
       </div>
     );
@@ -283,16 +283,16 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <header className="mb-5">
-        <h1 className="text-2xl font-bold mb-1">Calendar</h1>
-        <p className="text-text-secondary text-sm">Your fixtures, tournaments and bookings</p>
+        <h1 className="text-2xl font-extrabold mb-1">Calendar</h1>
+        <p className="text-text-secondary text-[13px] font-medium">Your fixtures, tournaments and bookings</p>
       </header>
 
       {/* Filter dropdown + the date-picker pill */}
       <div className="flex items-start justify-between gap-2 mb-4">
         <FilterMenu options={filters} value={filter} onChange={setFilter} />
         <button type="button" onClick={() => setSheetOpen(true)} aria-label="Open calendar"
-          className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border ${
-            dateKey ? "bg-accent/10 text-accent border-accent/30" : "bg-surface-2 text-text-secondary border-border"
+          className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-btn text-[13px] font-semibold border ${
+            dateKey ? "bg-success-bg text-accent-ink border-success-border" : "bg-surface text-text-secondary border-border"
           }`}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           Calendar
@@ -301,7 +301,7 @@ export default function CalendarPage() {
 
       {dateKey && (
         <button type="button" onClick={() => setDateKey(null)}
-          className="self-start flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/30 text-xs font-semibold text-accent">
+          className="self-start flex items-center gap-2 mb-4 px-3 py-1.5 rounded-full bg-success-bg border border-success-border text-xs font-semibold text-accent-ink">
           Showing {fmtDay(dateKey)}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
@@ -310,12 +310,12 @@ export default function CalendarPage() {
       {loading ? (
         <div className="flex justify-center py-16"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
       ) : entries.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl px-4 py-12 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card px-4 py-12 text-center">
           <p className="text-sm font-semibold mb-1">Nothing in your calendar yet</p>
           <p className="text-xs text-text-secondary mb-4">
             Confirmed matches, tournaments, ringer games and pitch bookings all show up here.
           </p>
-          <a href="/" className="inline-block px-6 py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Find a game</a>
+          <a href="/" className="inline-block px-6 py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Find a game</a>
         </div>
       ) : (
         <div className="space-y-6">

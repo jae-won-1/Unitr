@@ -27,7 +27,7 @@ type Pitch = {
 };
 
 function makeIcon(_label: string, picked: boolean, rank: number | null, unaffordable: boolean = false) {
-  const bg = picked ? "#00E676" : unaffordable ? "#EF4444" : "#166534";
+  const bg = picked ? "#0E7A3C" : unaffordable ? "#EF4444" : "#166534";
   const color = picked ? "#000" : "#fff";
   const content = rank !== null ? String(rank + 1) : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
   return L.divIcon({

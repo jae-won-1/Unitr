@@ -47,10 +47,10 @@ export function SaveCardPrompt({ onSave, onSkip, saving, title, blurb }: {
   title?: string; blurb?: string;
 }) {
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 px-5">
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
-        <div className="w-14 h-14 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mx-auto mb-4">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-scrim px-5">
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
+        <div className="w-14 h-14 rounded-full bg-accent/20 border-2 border-accent flex items-center justify-center mx-auto mb-4">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
             <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
           </svg>
         </div>
@@ -64,7 +64,7 @@ export function SaveCardPrompt({ onSave, onSkip, saving, title, blurb }: {
             No thanks
           </button>
           <button onClick={onSave} disabled={saving}
-            className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+            className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
             {saving ? "Saving…" : "Save card"}
           </button>
         </div>

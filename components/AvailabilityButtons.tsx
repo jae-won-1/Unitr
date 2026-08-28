@@ -103,10 +103,10 @@ export function AvailabilityButtons({
         type="button"
         disabled={busy}
         onClick={() => set("confirmed")}
-        className={`flex-1 ${pad} rounded-lg border font-semibold transition-colors disabled:opacity-60 ${
+        className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
           status === "confirmed"
-            ? "bg-accent/10 border-accent text-accent"
-            : "bg-surface-2 border-border text-text-secondary"
+            ? "bg-[#E7F8EC] border-[1.5px] border-accent-ink text-accent-ink font-bold"
+            : "bg-surface border-border text-text-secondary font-semibold"
         }`}
       >
         Available
@@ -115,10 +115,10 @@ export function AvailabilityButtons({
         type="button"
         disabled={busy}
         onClick={() => set("declined")}
-        className={`flex-1 ${pad} rounded-lg border font-semibold transition-colors disabled:opacity-60 ${
+        className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
           status === "declined"
-            ? "bg-red-500/10 border-red-400 text-red-400"
-            : "bg-surface-2 border-border text-text-secondary"
+            ? "bg-red-50 border-[1.5px] border-danger text-danger font-bold"
+            : "bg-surface border-border text-text-secondary font-semibold"
         }`}
       >
         Unavailable

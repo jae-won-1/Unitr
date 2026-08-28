@@ -91,9 +91,9 @@ function PostBookingForm({ entry, team, onPosted }: {
           placeholder="Anything the opponent should know…"
           className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
       <button onClick={handlePost} disabled={saving}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+        className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40">
         {saving ? "Posting…" : "Post Match (Pitch Secured)"}
       </button>
     </div>
@@ -117,14 +117,14 @@ function TakeDownButton({ entry, onRemoved }: { entry: CalendarEntry; onRemoved:
   if (!confirming) {
     return (
       <button onClick={() => setConfirming(true)}
-        className="w-full py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold">
+        className="w-full py-2.5 rounded-xl border border-red-500/30 text-red-600 text-sm font-semibold">
         Take Down Post
       </button>
     );
   }
 
   return (
-    <div className="bg-surface-2 border border-border rounded-xl p-3">
+    <div className="bg-surface border border-border rounded-btn p-3">
       <p className="text-xs text-text-secondary mb-3">
         Your post will no longer be visible to other teams. This can&apos;t be undone.
       </p>
@@ -170,8 +170,8 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
   const needsResult = canManageMatch && !entry.isUpcoming && !entry.resultVerified;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
 
@@ -186,11 +186,11 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
             </div>
             <button onClick={onClose} aria-label="Close"
               className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
-          <div className="bg-surface-2 border border-border rounded-xl p-4 space-y-2">
+          <div className="bg-surface border border-border rounded-btn p-4 space-y-2">
             {rows.map((r) => (
               <div key={r.label} className="flex items-start justify-between gap-3 text-xs">
                 <span className="text-text-secondary flex-shrink-0">{r.label}</span>
@@ -202,7 +202,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
           {/* Availability, for anyone in the squad. Only confirmed friendlies
               have a matches row to record it against. */}
           {entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && viewerTeamId && (
-            <div className="bg-surface-2 border border-border rounded-xl p-4">
+            <div className="bg-surface border border-border rounded-btn p-4">
               <p className="text-xs text-text-secondary mb-2">Your availability</p>
               <AvailabilityButtons
                 matchId={entry.matchId}
@@ -224,7 +224,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
               )}
               {canManageMatch ? (
                 <a href={`/my-team/match/${entry.matchId}`}
-                  className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center">
+                  className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center">
                   Manage match
                 </a>
               ) : entry.matchId ? (
@@ -243,7 +243,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
           {entry.kind === "tournament" && (
             <a href={`/play/tournament/${entry.id}`}
               className={`block w-full py-3 rounded-xl font-bold text-sm text-center ${
-                isCaptain ? "bg-accent text-black" : "border border-border text-text-secondary font-semibold"
+                isCaptain ? "bg-accent text-white" : "border border-border text-text-secondary font-semibold"
               }`}>
               {isCaptain ? "Manage schedule & referees" : "View schedule & referees"}
             </a>
@@ -252,7 +252,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
           {entry.kind === "my_post" && (
             <div className="space-y-2">
               <a href={`/play/edit/${entry.id}`}
-                className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center">
+                className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center">
                 View / edit post
               </a>
               <TakeDownButton entry={entry} onRemoved={() => { onChanged(); onClose(); }} />
@@ -281,7 +281,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
                 onPosted={() => { onChanged(); onClose(); }} />
             ) : (
               <button onClick={() => setPostingBooking(true)}
-                className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">
+                className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">
                 Turn into Match Post
               </button>
             )

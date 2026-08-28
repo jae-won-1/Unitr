@@ -71,16 +71,16 @@ export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRem
   return (
     <div className="border border-indigo-500/40 bg-indigo-500/5 rounded-2xl p-4">
       <div className="flex items-center gap-1.5 mb-3">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-indigo-400">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-indigo-600">
           <path d="M12 2a5 5 0 0 0-5 5c0 3.5 5 11 5 11s5-7.5 5-11a5 5 0 0 0-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/>
         </svg>
-        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Your Post</span>
+        <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Your Post</span>
       </div>
 
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-accent">{initials}</span>
+            <span className="text-xs font-bold text-accent-ink">{initials}</span>
           </div>
           <div>
             <p className="text-sm font-bold">{post.team}</p>
@@ -88,7 +88,7 @@ export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRem
           </div>
         </div>
         {post.pitchSecured && (
-          <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
+          <span className="text-[10px] font-semibold bg-green-500/10 text-green-600 border border-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
             Pitch Secured
           </span>
@@ -108,7 +108,7 @@ export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRem
               <div key={p.id} className="flex items-center gap-2 text-xs text-text-secondary">
                 <span className="w-4 h-4 rounded-full bg-surface-2 border border-border flex items-center justify-center text-[9px] font-bold flex-shrink-0">{i + 1}</span>
                 <span className="truncate">{p.name}</span>
-                <span className="text-accent font-medium flex-shrink-0">£{p.price}/hr</span>
+                <span className="text-accent-ink font-medium flex-shrink-0">£{p.price}/hr</span>
               </div>
             ))}
           </div>
@@ -121,20 +121,20 @@ export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRem
       </div>
       <div className="flex gap-2">
         <button onClick={() => setShowConfirm(true)}
-          className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold flex items-center justify-center gap-1.5">
+          className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-red-600 text-sm font-semibold flex items-center justify-center gap-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
           Take Down Post
         </button>
         <a href={`/play/edit/${post.id}`}
-          className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold flex items-center justify-center gap-1.5">
+          className="flex-1 py-2.5 rounded-btn bg-accent text-white text-sm font-bold flex items-center justify-center gap-1.5">
           View Your Post
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
       </div>
 
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
-          <div className="bg-surface-2 border border-border rounded-2xl p-6 w-full max-w-xs shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim px-6">
+          <div className="bg-surface border border-border shadow-card rounded-card p-6 w-full max-w-xs shadow-xl">
             <h3 className="text-base font-bold mb-1">Take Down This Post?</h3>
             <p className="text-sm text-text-secondary mb-5">
               Your post will no longer be visible to other teams. This cannot be undone.

@@ -23,7 +23,7 @@ type SquadRow = { id: string; name: string; position: string | null; stats: Play
 
 function StatTile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-surface-2 border border-border rounded-xl p-3 text-center">
+    <div className="bg-surface border border-border rounded-btn p-3 text-center">
       <p className="text-lg font-bold">{value}</p>
       <p className="text-[10px] text-text-secondary mt-0.5">{label}</p>
     </div>
@@ -47,7 +47,7 @@ function Bar({ label, value, max, suffix = "" }: { label: string; value: number;
 
 function NoResults({ isCaptain }: { isCaptain: boolean }) {
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+    <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
       <p className="text-sm font-semibold mb-1">No results submitted yet</p>
       <p className="text-xs text-text-secondary">
         {isCaptain
@@ -127,7 +127,7 @@ export default function StatsTab({
         {([["team", "Team"], ["mine", "My Stats"], ["players", "Players"]] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setSub(k)}
             className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              sub === k ? "bg-accent text-black" : "text-text-secondary"}`}>
+              sub === k ? "bg-accent text-white" : "text-text-secondary"}`}>
             {label}
           </button>
         ))}
@@ -143,13 +143,13 @@ export default function StatsTab({
             <StatTile label="Drawn" value={team.drawn} />
             <StatTile label="Lost" value={team.lost} />
           </div>
-          <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+          <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-3">
             <Bar label="Win rate" value={team.winRate} max={100} suffix="%" />
             <Bar label="Goals for" value={team.goalsFor} max={Math.max(team.goalsFor, team.goalsAgainst, 1)} />
             <Bar label="Goals against" value={team.goalsAgainst} max={Math.max(team.goalsFor, team.goalsAgainst, 1)} />
             <div className="flex items-center justify-between pt-1 border-t border-border">
               <span className="text-xs text-text-secondary">Goal difference</span>
-              <span className={`text-xs font-bold ${team.goalDifference >= 0 ? "text-accent" : "text-red-400"}`}>
+              <span className={`text-xs font-bold ${team.goalDifference >= 0 ? "text-accent-ink" : "text-red-600"}`}>
                 {team.goalDifference > 0 ? "+" : ""}{team.goalDifference}
               </span>
             </div>
@@ -160,7 +160,7 @@ export default function StatsTab({
         </div>
       ) : sub === "mine" ? (
         mine.matchesWithResults === 0 ? (
-          <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+          <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
             <p className="text-sm font-semibold mb-1">You&apos;re not in a result yet</p>
             <p className="text-xs text-text-secondary">Your stats start once you&apos;re named in a submitted result.</p>
           </div>
@@ -172,7 +172,7 @@ export default function StatsTab({
               <StatTile label="Goals" value={mine.goals} />
               <StatTile label="Assists" value={mine.assists} />
             </div>
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+            <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-3">
               <Bar label="Goals per game" value={mine.goalsPerGame} max={Math.max(1, mine.goalsPerGame)} />
               <Bar label="Start rate" value={mine.appearances > 0 ? Math.round((mine.starts / mine.appearances) * 100) : 0} max={100} suffix="%" />
             </div>
@@ -181,7 +181,7 @@ export default function StatsTab({
       ) : (
         <div className="space-y-2">
           {squad.map((r) => (
-            <div key={r.id} className="bg-surface-2 border border-border rounded-xl p-3 flex items-center gap-3">
+            <div key={r.id} className="bg-surface border border-border rounded-btn p-3 flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center text-[11px] font-bold flex-shrink-0">
                 {r.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
               </div>

@@ -359,12 +359,12 @@ export default function CreateMatchPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Create Match Post</h1>
+          <h1 className="text-xl font-extrabold">Create Match Post</h1>
           <p className="text-xs text-text-secondary mt-0.5">Post up to 3 preferred pitches — the opponent picks one</p>
         </div>
         <span className="text-[11px] font-semibold bg-surface-2 border border-border text-text-secondary px-2.5 py-1 rounded-full flex-shrink-0">Split Pay</span>
@@ -373,9 +373,9 @@ export default function CreateMatchPage() {
       <div className="flex flex-col gap-5">
 
         {/* Game type: normal match vs tournament — tournaments have their own flow */}
-        <div className="flex bg-surface-2 border border-border rounded-xl p-1">
+        <div className="flex bg-surface border border-border rounded-btn p-1">
           <button type="button"
-            className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-black">
+            className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-white">
             Match
           </button>
           <button type="button" onClick={() => router.push("/play/create-tournament")}
@@ -387,7 +387,7 @@ export default function CreateMatchPage() {
         {/* Lock in a pitch first? — Yes opens the Book tab as a popup right here */}
         <div className="bg-accent/5 border border-accent/20 rounded-2xl p-4">
           <div className="flex items-start gap-2.5">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
               <path d="M20 6L9 17l-5-5"/>
             </svg>
             <div className="flex-1">
@@ -401,11 +401,11 @@ export default function CreateMatchPage() {
               </p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => handleLockInPitch("yes")}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "yes" ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-primary"}`}>
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "yes" ? "bg-accent text-white" : "bg-surface-2 border border-border text-text-primary"}`}>
                   Yes, book a pitch
                 </button>
                 <button type="button" onClick={() => handleLockInPitch("no")}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "no" ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-primary"}`}>
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-colors ${lockInPitch === "no" ? "bg-accent text-white" : "bg-surface-2 border border-border text-text-primary"}`}>
                   No, split with opponent
                 </button>
               </div>
@@ -415,21 +415,21 @@ export default function CreateMatchPage() {
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
         {/* Dates section */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold">Match Dates</p>
             {availabilityRequest && (
-              <span className="text-xs bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full font-medium">
                 From availability poll
               </span>
             )}
             {!availabilityRequest && confirmedDates.length > 0 && (
-              <span className="text-xs bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full font-medium">
                 {confirmedDates.length} from availability
               </span>
             )}
@@ -452,9 +452,9 @@ export default function CreateMatchPage() {
                   )}
                     className={`w-full text-left border rounded-xl px-3 py-2.5 transition-colors ${picked ? "bg-accent/10 border-accent" : "bg-background border-border"}`}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
+                      <p className={`text-sm font-semibold ${picked ? "text-accent-ink" : ""}`}>{opt.dayName} · {opt.time}</p>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
+                        <span className="text-xs font-bold text-accent-ink">{votes} vote{votes !== 1 ? "s" : ""}</span>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${picked ? "border-accent bg-accent" : "border-border"}`}>
                           {picked && <span className="w-2 h-2 rounded-full bg-black" />}
                         </div>
@@ -478,7 +478,7 @@ export default function CreateMatchPage() {
             <div className="flex flex-col gap-2">
               {confirmedDates.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-accent text-black flex flex-col items-center justify-center flex-shrink-0">
+                  <div className="w-10 h-10 rounded-btn bg-accent text-white flex flex-col items-center justify-center flex-shrink-0">
                     <span className="text-[9px] font-bold uppercase">{d.month}</span>
                     <span className="text-base font-bold leading-none">{d.day}</span>
                   </div>
@@ -532,20 +532,20 @@ export default function CreateMatchPage() {
                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                         <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                       </svg>
-                      <p className="text-xs text-yellow-400">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
+                      <p className="text-xs text-yellow-600">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
                     </div>
                   )}
                 </div>
               ))}
               {manualDates.length < 5 && (
-                <button onClick={addManualDate} className="flex items-center gap-2 text-sm text-accent font-medium py-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                <button onClick={addManualDate} className="flex items-center gap-2 text-sm text-accent-ink font-medium py-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                   Add another date
                 </button>
               )}
               <a href="/calendar"
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm text-accent font-medium">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-sm text-accent-ink font-medium">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                 Collect team availability first
               </a>
             </div>
@@ -553,9 +553,9 @@ export default function CreateMatchPage() {
         </section>
 
         {/* Pitch options */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center gap-2 mb-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
             </svg>
             <p className="text-sm font-semibold">Pitch Options</p>
@@ -585,7 +585,7 @@ export default function CreateMatchPage() {
                       </svg>
                     )}
                     <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[10px] font-bold text-accent">{i + 1}</span>
+                      <span className="text-[10px] font-bold text-accent-ink">{i + 1}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{p.name}</p>
@@ -594,11 +594,11 @@ export default function CreateMatchPage() {
                       </p>
                     </div>
                     {isAlt ? (
-                      <span className="text-[9px] font-semibold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-1.5 py-0.5 rounded-full flex-shrink-0">Own post</span>
+                      <span className="text-[9px] font-semibold text-yellow-600 bg-yellow-500/10 border border-yellow-500/30 px-1.5 py-0.5 rounded-full flex-shrink-0">Own post</span>
                     ) : (
                       <span className="text-[10px] text-text-secondary flex-shrink-0">{rankLabels[i]}</span>
                     )}
-                    <button onClick={() => removePitchOption(p.id)} className="text-xs text-red-400 flex-shrink-0 ml-1">✕</button>
+                    <button onClick={() => removePitchOption(p.id)} className="text-xs text-red-600 flex-shrink-0 ml-1">✕</button>
                   </div>
                 );
               })}
@@ -619,7 +619,7 @@ export default function CreateMatchPage() {
           <label className="text-sm font-semibold">Description <span className="text-text-secondary font-normal">(optional)</span></label>
           <textarea rows={3} placeholder="Tell teams what to expect..."
             value={description} onChange={(e) => setDescription(e.target.value)}
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50 resize-none" />
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50 resize-none" />
         </section>
 
         {/* Actions */}
@@ -629,7 +629,7 @@ export default function CreateMatchPage() {
             Cancel
           </button>
           <button onClick={handleCreate} disabled={loading}
-            className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             {loading ? (
               <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Posting…</>
             ) : plannedPostCount > 1 ? `Post ${plannedPostCount} Matches` : "Post Match"}
@@ -639,14 +639,14 @@ export default function CreateMatchPage() {
 
       {/* Book a pitch popup — "Lock in a pitch first? Yes" */}
       {showBookModal && (
-        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60"
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-scrim"
           onClick={() => setShowBookModal(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 pt-4 pb-1">
               <p className="font-bold">Secure a Pitch</p>
               <button onClick={() => setShowBookModal(false)} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <BookPitchPanel

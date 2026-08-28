@@ -3,13 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --accent: #00E676;
-  --background: #0A0A0A;
-  --surface: #141414;
-  --surface-2: #1E1E1E;
-  --border: #2A2A2A;
-  --text-primary: #FFFFFF;
-  --text-secondary: #9E9E9E;
+  /* Mirrors the colors block in tailwind.config.ts — see the note there for what
+     separates accent (fills) from accent-ink (text/icons). */
+  --accent: #008000;
+  --accent-2: #335fff;
+  --accent-ink: #0e7a3c;
+  --background: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #e9edf6;
+  --border: #dce2ef;
+  --text-primary: #0b1526;
+  --text-secondary: #5a6478;
 }
 
 * {
@@ -24,6 +28,61 @@ body {
   overflow-x: hidden;
   background-color: var(--background);
   color: var(--text-primary);
+}
+
+/* ── Pitch artwork ─────────────────────────────────────────────
+   The rebrand puts a stylised pitch behind every fixture card: a green
+   gradient, mown stripes, and a centre circle. It recurs on the Next Fixture
+   header, the feed rows and the calendar entries, so it lives here rather than
+   as inline styles at each call site. `.pitch-art` is the container; the
+   stripes and circle come from its two pseudo-elements. */
+.pitch-art {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #3e7c4f 0%, #2e5e3c 60%, #275234 100%);
+}
+.pitch-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0 36px,
+    rgba(0, 0, 0, 0.05) 36px 72px
+  );
+}
+.pitch-art::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 99px;
+  transform: translate(-50%, -50%);
+}
+/* Halfway line — only the wide (Next Fixture) variant draws one. */
+.pitch-art-line > .pitch-halfway {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.55);
+}
+/* Thumbnail variant used by the feed rows: tighter stripes, smaller circle. */
+.pitch-art-sm::before {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.06) 0 18px,
+    rgba(0, 0, 0, 0.05) 18px 36px
+  );
+}
+.pitch-art-sm::after {
+  width: 34px;
+  height: 34px;
+  border-width: 1.5px;
 }
 
 /* ── Safe areas ────────────────────────────────────────────────

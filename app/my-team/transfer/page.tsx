@@ -30,7 +30,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   return (
     <button type="button" onClick={onClick}
       className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-        active ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+        active ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"
       }`}>
       {label}
     </button>
@@ -42,7 +42,7 @@ function Avatar({ name, muted }: { name: string; muted?: boolean }) {
     <div className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 border ${
       muted ? "bg-surface border-border" : "bg-accent/10 border-accent/30"
     }`}>
-      <span className={`text-xs font-bold ${muted ? "text-text-secondary" : "text-accent"}`}>{initials(name)}</span>
+      <span className={`text-xs font-bold ${muted ? "text-text-secondary" : "text-accent-ink"}`}>{initials(name)}</span>
     </div>
   );
 }
@@ -72,7 +72,7 @@ function PlayerCard({ player, edges, viewer, onAction }: {
   const meta = [player.position, player.location, player.experience].filter(Boolean).join(" · ");
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-center gap-3 mb-3">
         <Avatar name={player.full_name} />
         <div className="flex-1 min-w-0">
@@ -82,7 +82,7 @@ function PlayerCard({ player, edges, viewer, onAction }: {
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
           player.teamName
             ? "bg-surface text-text-secondary border-border"
-            : "bg-accent/10 text-accent border-accent/30"
+            : "bg-accent/10 text-accent-ink border-accent/30"
         }`}>
           {player.teamName ?? "Free agent"}
         </span>
@@ -95,7 +95,7 @@ function PlayerCard({ player, edges, viewer, onAction }: {
         </a>
 
         {friend === "friends" ? (
-          <span className="flex-1 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent text-sm font-bold text-center">
+          <span className="flex-1 py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-accent-ink text-sm font-bold text-center">
             Friends ✓
           </span>
         ) : friend === "sent" ? (
@@ -105,13 +105,13 @@ function PlayerCard({ player, edges, viewer, onAction }: {
         ) : friend === "incoming" ? (
           <button type="button" disabled={busy}
             onClick={() => run(() => respondToFriendRequest(player.id, viewer!.userId, true))}
-            className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+            className="flex-1 py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
             Accept friend
           </button>
         ) : (
           <button type="button" disabled={busy || !viewer}
             onClick={() => run(() => sendFriendRequest(viewer!.userId, player.id))}
-            className="flex-1 py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold disabled:opacity-40">
+            className="flex-1 py-2.5 rounded-xl border border-accent text-accent-ink text-sm font-bold disabled:opacity-40">
             Add friend
           </button>
         )}
@@ -122,7 +122,7 @@ function PlayerCard({ player, edges, viewer, onAction }: {
           disabled={busy || offer === "pending" || offer === "accepted"}
           onClick={() => run(() => sendOffer(viewer!.captainTeamId!, viewer!.userId, player.id, null))}
           className={`w-full mt-2 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60 ${
-            offer === "none" || offer === "declined" ? "bg-accent text-black" : "bg-surface border border-border text-text-secondary"
+            offer === "none" || offer === "declined" ? "bg-accent text-white" : "bg-surface border border-border text-text-secondary"
           }`}>
           {offer === "pending" ? "Offer sent"
             : offer === "accepted" ? "Offer accepted"
@@ -158,7 +158,7 @@ function TeamCard({ team, edges, viewer, onAction }: {
   };
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-center gap-3 mb-3">
         <Avatar name={team.name} muted />
         <div className="flex-1 min-w-0">
@@ -178,18 +178,18 @@ function TeamCard({ team, edges, viewer, onAction }: {
             Your team
           </span>
         ) : join === "member" ? (
-          <span className="flex-1 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent text-sm font-bold text-center">
+          <span className="flex-1 py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-accent-ink text-sm font-bold text-center">
             You&apos;re in ✓
           </span>
         ) : join === "pending" ? (
-          <span className="flex-1 py-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm font-semibold text-center">
+          <span className="flex-1 py-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 text-sm font-semibold text-center">
             Request pending
           </span>
         ) : (
           <button type="button" disabled={busy || !viewer || alreadyPlacedElsewhere}
             title={alreadyPlacedElsewhere ? "Leave your current team first" : undefined}
             onClick={run}
-            className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-40">
+            className="flex-1 py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-40">
             Ask to join
           </button>
         )}
@@ -210,13 +210,13 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
   const run = async (fn: () => Promise<void>) => { setBusy(true); await fn(); await onAction(); setBusy(false); };
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-scrim" onClick={onClose}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between mb-4">
             <p className="font-bold text-lg">Your inbox</p>
             <button onClick={onClose} aria-label="Close">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
@@ -229,7 +229,7 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
               <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Team offers</p>
               <div className="space-y-2">
                 {offers.map((o) => (
-                  <div key={o.id} className="bg-surface-2 border border-border rounded-xl p-3">
+                  <div key={o.id} className="bg-surface border border-border rounded-btn p-3">
                     <p className="text-sm font-semibold">{o.teamName}</p>
                     <p className="text-xs text-text-secondary mt-0.5">
                       {o.message ?? "wants you to join their squad."}
@@ -240,7 +240,7 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
                         Decline
                       </button>
                       <button type="button" disabled={busy} onClick={() => run(() => acceptOffer(o.id, o.teamId, userId))}
-                        className="flex-1 py-2 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-50">
+                        className="flex-1 py-2 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-50">
                         Accept &amp; join
                       </button>
                     </div>
@@ -255,7 +255,7 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
               <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Friend requests</p>
               <div className="space-y-2">
                 {friends.map((f) => (
-                  <div key={f.fromId} className="bg-surface-2 border border-border rounded-xl p-3 flex items-center gap-3">
+                  <div key={f.fromId} className="bg-surface border border-border rounded-btn p-3 flex items-center gap-3">
                     <Avatar name={f.name} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{f.name}</p>
@@ -271,7 +271,7 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
                       </button>
                       <button type="button" disabled={busy}
                         onClick={() => run(() => respondToFriendRequest(f.fromId, userId, true))}
-                        className="px-2.5 py-1.5 rounded-lg bg-accent text-black text-[11px] font-bold disabled:opacity-50">
+                        className="px-2.5 py-1.5 rounded-lg bg-accent text-white text-[11px] font-bold disabled:opacity-50">
                         Accept
                       </button>
                     </div>
@@ -346,20 +346,20 @@ export default function TransferMarketPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <a href="/my-team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Transfer Market</h1>
+          <h1 className="text-xl font-extrabold">Transfer Market</h1>
           <p className="text-xs text-text-secondary">Find players and teams</p>
         </div>
         {user && (
           <button type="button" onClick={() => setInboxOpen(true)}
             className="relative w-10 h-10 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
               <path d="M4 4h16v12H5.17L4 17.17z"/>
             </svg>
             {pending > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-black text-[10px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">
                 {pending}
               </span>
             )}
@@ -370,7 +370,7 @@ export default function TransferMarketPage() {
       {/* Search — moved off the home screen, where it sat above a dashboard it
           couldn't act on. Discovery is this page's whole job. */}
       <div className="relative mb-4">
-        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <input
@@ -381,7 +381,7 @@ export default function TransferMarketPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tab === "players" ? "Search players by name…" : "Search teams by name…"}
-          className="w-full bg-surface-2 border border-border rounded-xl pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+          className="w-full bg-surface border border-border rounded-btn pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
         />
         {loading && (
           <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
@@ -395,7 +395,7 @@ export default function TransferMarketPage() {
         {(["players", "teams"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`flex-1 py-2.5 rounded-xl text-sm font-bold border capitalize transition-colors ${
-              tab === t ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+              tab === t ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"
             }`}>
             {t}
           </button>
@@ -415,7 +415,7 @@ export default function TransferMarketPage() {
 
       {!user && (
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3 mb-4">
-          <p className="text-xs text-accent font-semibold mb-0.5">Browsing as a guest</p>
+          <p className="text-xs text-accent-ink font-semibold mb-0.5">Browsing as a guest</p>
           <p className="text-xs text-text-secondary">
             <a href="/register" className="underline">Create an account</a> to send requests, offers, and friend invites.
           </p>
@@ -428,7 +428,7 @@ export default function TransferMarketPage() {
 
       <div className="space-y-3">
         {!loading && count === 0 && (
-          <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+          <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
             <p className="text-sm text-text-secondary">
               {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.` : `No ${tab} on Unitr yet.`}
             </p>

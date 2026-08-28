@@ -10,7 +10,7 @@ export default function BookPage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <header className="mb-5">
-        <h1 className="text-2xl font-bold mb-1">Book a Pitch</h1>
+        <h1 className="text-2xl font-extrabold mb-1">Book a Pitch</h1>
         <p className="text-text-secondary text-sm">Book a pitch directly — no opponent needed</p>
       </header>
 

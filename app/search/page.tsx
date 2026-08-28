@@ -25,7 +25,7 @@ type Tab = "all" | "players" | "teams";
 function FollowIcon({ active }: { active: boolean }) {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-      stroke={active ? "#00E676" : "#9E9E9E"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      stroke={active ? "#0E7A3C" : "#5A6478"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
       <circle cx="9" cy="7" r="4"/>
       <line x1="19" y1="8" x2="19" y2="14"/>
@@ -37,7 +37,7 @@ function FollowIcon({ active }: { active: boolean }) {
 function ViewIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-      stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
       <circle cx="12" cy="12" r="3"/>
     </svg>
@@ -47,7 +47,7 @@ function ViewIcon() {
 function MessageIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-      stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   );
@@ -103,9 +103,9 @@ function SearchContent() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-6">
       <header className="mb-5">
-        <h1 className="text-2xl font-bold mb-4">Search</h1>
+        <h1 className="text-2xl font-extrabold mb-4">Search</h1>
         <div className="relative">
-          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input
@@ -116,7 +116,7 @@ function SearchContent() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search players or teams…"
-            className="w-full bg-surface-2 border border-border rounded-xl pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="w-full bg-surface border border-border rounded-btn pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
           {loading && (
             <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
@@ -130,7 +130,7 @@ function SearchContent() {
         <div className="flex gap-2 mb-5">
           {(["all", "players", "teams"] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+              className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
               {t}
             </button>
           ))}
@@ -140,7 +140,7 @@ function SearchContent() {
       {!query.trim() && (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
@@ -170,9 +170,9 @@ function SearchContent() {
                 const subtitle = [p.position, p.location, p.experience].filter(Boolean).join(" · ") || "No info set";
                 const followed = followedPlayers.has(p.id);
                 return (
-                  <div key={p.id} className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
+                  <div key={p.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-accent">{initials}</span>
+                      <span className="text-xs font-bold text-accent-ink">{initials}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{p.full_name}</p>
@@ -182,7 +182,7 @@ function SearchContent() {
                       <button
                         onClick={() => toggleFollowPlayer(p.id)}
                         title={followed ? "Unfollow" : "Follow"}
-                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${followed ? "bg-accent/10 border-accent/40" : "bg-surface border-border"}`}>
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${followed ? "bg-accent/10 border-accent" : "bg-surface border-border"}`}>
                         <FollowIcon active={followed} />
                       </button>
                       <a href={`/profile/${p.id}`} title="View profile"
@@ -213,7 +213,7 @@ function SearchContent() {
                 const subtitle = [t.level, t.format, t.location].filter(Boolean).join(" · ");
                 const followed = followedTeams.has(t.id);
                 return (
-                  <div key={t.id} className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
+                  <div key={t.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-bold text-text-secondary">{initials}</span>
                     </div>
@@ -225,10 +225,10 @@ function SearchContent() {
                       <button
                         onClick={() => toggleFollowTeam(t.id)}
                         title={followed ? "Unbookmark" : "Bookmark"}
-                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${followed ? "bg-accent/10 border-accent/40" : "bg-surface border-border"}`}>
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${followed ? "bg-accent/10 border-accent" : "bg-surface border-border"}`}>
                         <svg width="15" height="15" viewBox="0 0 24 24"
-                          fill={followed ? "#00E676" : "none"}
-                          stroke={followed ? "#00E676" : "#9E9E9E"}
+                          fill={followed ? "#0E7A3C" : "none"}
+                          stroke={followed ? "#0E7A3C" : "#5A6478"}
                           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                         </svg>

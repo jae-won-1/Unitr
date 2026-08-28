@@ -98,7 +98,7 @@ export default function AvailabilityPollForm({
   return (
     <div className="flex flex-col gap-5 pt-2">
       {showIntro && (
-        <div className="bg-surface-2 border border-border rounded-xl p-4">
+        <div className="bg-surface border border-border rounded-btn p-4">
           <p className="text-sm font-semibold mb-1">Send availability request</p>
           <p className="text-xs text-text-secondary">Add 1–5 date options. Your squad will vote on which they can make.</p>
         </div>
@@ -106,7 +106,7 @@ export default function AvailabilityPollForm({
 
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
 
@@ -152,7 +152,7 @@ export default function AvailabilityPollForm({
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                   <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
-                <p className="text-xs text-yellow-400">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
+                <p className="text-xs text-yellow-600">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
               </div>
             )}
           </div>
@@ -165,14 +165,14 @@ export default function AvailabilityPollForm({
 
       {rows.length < 5 && (
         <button onClick={() => setRows((p) => [...p, { date: "", time: "", location: "" }])}
-          className="flex items-center gap-2 text-sm text-accent font-medium py-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          className="flex items-center gap-2 text-sm text-accent-ink font-medium py-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Add date option
         </button>
       )}
 
       <button onClick={handleSubmit} disabled={saving}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {saving
           ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Sending…</>
           : "Send to Squad"}

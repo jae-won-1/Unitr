@@ -348,8 +348,8 @@ export default function ChallengePanel({
 
   if (allPitchesTaken) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
-        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim">
+        <div className="w-full max-w-lg bg-surface rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
@@ -363,8 +363,8 @@ export default function ChallengePanel({
 
   if (alreadyTaken) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
-        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim">
+        <div className="w-full max-w-lg bg-surface rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </div>
@@ -378,10 +378,10 @@ export default function ChallengePanel({
 
   if (confirmed) {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60">
-        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl p-6 text-center">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim">
+        <div className="w-full max-w-lg bg-surface rounded-t-2xl p-6 text-center">
           <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <p className="text-lg font-bold mb-1">Match Confirmed!</p>
           <p className="text-sm text-text-secondary mb-1">
@@ -391,14 +391,14 @@ export default function ChallengePanel({
           <p className="text-xs text-text-secondary mb-4">
             Venue: <span className="text-text-primary font-medium">{confirmedPitch?.name}</span>
           </p>
-          <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left">
+          <div className="bg-surface border border-border rounded-btn p-3 mb-5 text-left">
             <p className="text-xs text-text-secondary">
               Payment of{" "}
               <span className="font-semibold text-text-primary">
                 £{((confirmedPitch?.price ?? 80) / 22).toFixed(2)}/player
               </span>{" "}
               will be taken automatically in{" "}
-              <span className="font-semibold text-accent">3 hours</span>. Non-refundable after payment.
+              <span className="font-semibold text-accent-ink">3 hours</span>. Non-refundable after payment.
             </p>
           </div>
           {matchId && (
@@ -407,15 +407,15 @@ export default function ChallengePanel({
               View Match Details
             </a>
           )}
-          <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+          <button onClick={onClose} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl flex flex-col max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl flex flex-col max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
@@ -427,7 +427,7 @@ export default function ChallengePanel({
               <p className="text-xs text-text-secondary">{post.date}</p>
             </div>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
@@ -438,12 +438,12 @@ export default function ChallengePanel({
 
           {slotTakenError && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5 mb-3">
-              <p className="text-xs text-red-400">{slotTakenError}</p>
+              <p className="text-xs text-red-600">{slotTakenError}</p>
             </div>
           )}
 
           {checkingAvail ? (
-            <div className="flex items-center justify-center gap-2 py-6 mb-4 bg-surface-2 border border-border rounded-xl">
+            <div className="flex items-center justify-center gap-2 py-6 mb-4 bg-surface border border-border rounded-btn">
               <div className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin" />
               <span className="text-xs text-text-secondary">Checking availability…</span>
             </div>
@@ -461,7 +461,7 @@ export default function ChallengePanel({
                     }`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
                       isBooked ? "bg-background text-text-secondary" :
-                      selectedPitch === pitch.id ? "bg-accent text-black" : "bg-background text-text-secondary"
+                      selectedPitch === pitch.id ? "bg-accent text-white" : "bg-background text-text-secondary"
                     }`}>
                       {i + 1}
                     </div>
@@ -470,9 +470,9 @@ export default function ChallengePanel({
                       <p className="text-xs text-text-secondary">KO {pitch.time ?? post.match_time} · {pitch.format} · £{pitch.price}/hr</p>
                     </div>
                     {isBooked
-                      ? <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Taken</span>
+                      ? <span className="text-[10px] font-semibold text-red-600 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full flex-shrink-0">Taken</span>
                       : i === 0
-                      ? <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>
+                      ? <span className="text-[10px] font-semibold text-accent-ink bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Preferred</span>
                       : <span className="text-[10px] text-text-secondary flex-shrink-0">Backup {i}</span>}
                   </button>
                 );
@@ -481,12 +481,12 @@ export default function ChallengePanel({
           )}
 
           {selectedPitch && (
-            <div className="bg-surface-2 border border-border rounded-xl p-3 text-xs text-text-secondary">
+            <div className="bg-surface border border-border rounded-btn p-3 text-xs text-text-secondary">
               <p className="font-semibold text-text-primary mb-1">Payment</p>
               {post.pitchSecured ? (
                 <p>
                   This pitch is already booked & paid by {post.team}. On joining, your team credit is charged{" "}
-                  <span className="text-accent font-semibold">
+                  <span className="text-accent-ink font-semibold">
                     £{(Math.floor((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) * 100 / 2) / 100).toFixed(2)}
                   </span>{" "}
                   — your half of the fee — to reimburse them. Players top up their share post-match.
@@ -500,11 +500,11 @@ export default function ChallengePanel({
           )}
         </div>
 
-        <div className="px-5 pb-6 pt-3 flex-shrink-0 border-t border-border bg-[#141414]">
+        <div className="px-5 pb-6 pt-3 flex-shrink-0 border-t border-border bg-surface">
           <button
             disabled={!selectedPitch || saving || checkingAvail}
             onClick={handleConfirm}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {saving ? (
               <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Confirming…</>

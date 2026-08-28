@@ -99,7 +99,7 @@ function PaySavedCard({
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-2">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-2">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Breakdown</p>
         <div className="flex justify-between text-xs">
           <span className="text-text-secondary">Pitch hire (1hr)</span>
@@ -117,19 +117,19 @@ function PaySavedCard({
         </div>
         <div className="flex justify-between border-t border-border pt-2 mt-1">
           <span className="text-sm font-bold">Your total</span>
-          <span className="text-sm font-bold text-accent">£{total.toFixed(2)}</span>
+          <span className="text-sm font-bold text-accent-ink">£{total.toFixed(2)}</span>
         </div>
       </div>
 
-      <div className="bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
           <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold capitalize">{savedCard.brand ?? "Card"} •••• {savedCard.last4 ?? "????"}</p>
-            <p className="text-[11px] text-accent">Saved card · no need to re-enter details</p>
+            <p className="text-[11px] text-accent-ink">Saved card · no need to re-enter details</p>
           </div>
           <button onClick={onUseDifferentCard} className="text-xs text-text-secondary font-medium flex-shrink-0">Change</button>
         </div>
@@ -137,14 +137,14 @@ function PaySavedCard({
 
       {payError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-          <p className="text-xs text-red-400">{payError}</p>
+          <p className="text-xs text-red-600">{payError}</p>
         </div>
       )}
 
       <button
         onClick={handlePay}
         disabled={paying}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50"
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50"
       >
         {paying ? "Processing…" : `Pay £${total.toFixed(2)}`}
       </button>
@@ -208,7 +208,7 @@ function CheckoutForm({
   return (
     <div className="space-y-4">
       {/* Cost breakdown */}
-      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-2">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-2">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Breakdown</p>
         <div className="flex justify-between text-xs">
           <span className="text-text-secondary">Pitch hire (1hr)</span>
@@ -226,13 +226,13 @@ function CheckoutForm({
         </div>
         <div className="flex justify-between border-t border-border pt-2 mt-1">
           <span className="text-sm font-bold">Your total</span>
-          <span className="text-sm font-bold text-accent">£{total.toFixed(2)}</span>
+          <span className="text-sm font-bold text-accent-ink">£{total.toFixed(2)}</span>
         </div>
       </div>
 
       {isCredit && (
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
-          <p className="text-[11px] text-accent font-semibold mb-0.5">Replenishing team credit</p>
+          <p className="text-[11px] text-accent-ink font-semibold mb-0.5">Replenishing team credit</p>
           <p className="text-[11px] text-text-secondary leading-relaxed">
             Your team secured the pitch using its credit balance. Your share goes back
             into the team pot so it stays topped up for the next match.
@@ -241,7 +241,7 @@ function CheckoutForm({
       )}
 
       {/* Stripe Elements card form */}
-      <div className="bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement
           options={{
@@ -253,7 +253,7 @@ function CheckoutForm({
 
       {!showSavedCardOption && (
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
-          <p className="text-[11px] text-accent leading-relaxed">
+          <p className="text-[11px] text-accent-ink leading-relaxed">
             We&apos;ll ask if you want to save this card after payment, so next time you can skip this step.
           </p>
         </div>
@@ -269,14 +269,14 @@ function CheckoutForm({
 
       {payError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-          <p className="text-xs text-red-400">{payError}</p>
+          <p className="text-xs text-red-600">{payError}</p>
         </div>
       )}
 
       <button
         onClick={handlePay}
         disabled={!stripe || paying}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50"
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50"
       >
         {paying ? "Processing…" : `Pay £${total.toFixed(2)}`}
       </button>
@@ -292,8 +292,8 @@ function CheckoutForm({
 function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip: () => void; saving: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[60dvh] text-center px-6">
-      <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent flex items-center justify-center mb-5">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       </div>
       <p className="text-lg font-bold mb-2">Payment Confirmed!</p>
       <p className="text-sm text-text-secondary mb-6 max-w-xs">
@@ -303,7 +303,7 @@ function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip
         <button onClick={onSkip} disabled={saving} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
           No thanks
         </button>
-        <button onClick={onSave} disabled={saving} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+        <button onClick={onSave} disabled={saving} className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
           {saving ? "Saving…" : "Save Card"}
         </button>
       </div>
@@ -316,21 +316,21 @@ function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
   const total = matchInfo.totalPence / 100;
   return (
     <div className="flex flex-col items-center justify-center min-h-[60dvh] text-center px-6">
-      <div className="w-20 h-20 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
+      <div className="w-20 h-20 rounded-full bg-accent/20 border-2 border-accent flex items-center justify-center mb-5">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
-      <p className="text-xl font-bold mb-2">{matchInfo.mode === "credit" ? "Credit Replenished!" : "Payment Confirmed!"}</p>
+      <p className="text-xl font-extrabold mb-2">{matchInfo.mode === "credit" ? "Credit Replenished!" : "Payment Confirmed!"}</p>
       <p className="text-sm text-text-secondary mb-1">vs {matchInfo.opponent}</p>
       <p className="text-xs text-text-secondary mb-1">{matchInfo.date} · {matchInfo.time}</p>
       <p className="text-xs text-text-secondary mb-5">{matchInfo.pitchName}</p>
-      <div className="bg-surface-2 border border-border rounded-2xl px-6 py-4 mb-6 w-full max-w-xs">
+      <div className="bg-surface border border-border shadow-card rounded-card px-6 py-4 mb-6 w-full max-w-xs">
         <p className="text-xs text-text-secondary mb-1">Amount paid</p>
-        <p className="text-2xl font-bold text-accent">£{total.toFixed(2)}</p>
+        <p className="text-2xl font-extrabold text-accent-ink">£{total.toFixed(2)}</p>
         <p className="text-[10px] text-text-secondary mt-1">inc. 5% Unitr fee</p>
       </div>
-      <a href="/my-team" className="px-8 py-3 rounded-xl bg-accent text-black font-bold text-sm">
+      <a href="/my-team" className="px-8 py-3 rounded-btn bg-accent text-white font-bold text-sm">
         Back to My Team
       </a>
     </div>
@@ -548,7 +548,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-4">
         <p className="text-text-secondary">Match not found.</p>
-        <a href="/my-team" className="text-sm text-accent">Back to My Team</a>
+        <a href="/my-team" className="text-sm text-accent-ink">Back to My Team</a>
       </div>
     );
   }
@@ -559,20 +559,20 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
         <div className="flex items-center gap-3 mb-6">
           <a href={`/my-team/match/${params.matchId}`}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
           </a>
-          <h1 className="text-xl font-bold">Payment</h1>
+          <h1 className="text-xl font-extrabold">Payment</h1>
         </div>
         <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 text-center">
-          <p className="text-sm font-semibold text-red-400 mb-2">Payment setup failed</p>
+          <p className="text-sm font-semibold text-red-600 mb-2">Payment setup failed</p>
           <p className="text-xs text-text-secondary leading-relaxed">{loadError}</p>
           <p className="text-xs text-text-secondary mt-3 leading-relaxed">
-            Add your Stripe test keys to <span className="font-mono text-accent">.env.local</span> and restart the dev server.
+            Add your Stripe test keys to <span className="font-mono text-accent-ink">.env.local</span> and restart the dev server.
           </p>
           <a href="https://dashboard.stripe.com/test/apikeys" target="_blank" rel="noopener noreferrer"
-            className="inline-block mt-4 px-4 py-2 rounded-xl bg-accent text-black font-bold text-xs">
+            className="inline-block mt-4 px-4 py-2 rounded-btn bg-accent text-white font-bold text-xs">
             Get Test Keys →
           </a>
         </div>
@@ -603,21 +603,21 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <a href={`/my-team/match/${params.matchId}`}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
             <path d="M19 12H5M12 5l-7 7 7 7"/>
           </svg>
         </a>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">{matchInfo.mode === "credit" ? "Replenish Team Credit" : "Pay Your Share"}</h1>
+          <h1 className="text-xl font-extrabold">{matchInfo.mode === "credit" ? "Replenish Team Credit" : "Pay Your Share"}</h1>
           <p className="text-xs text-text-secondary">vs {matchInfo.opponent} · {matchInfo.date}</p>
         </div>
-        <span className="text-[10px] font-semibold bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 px-2 py-1 rounded-full">
+        <span className="text-[10px] font-semibold bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 px-2 py-1 rounded-full">
           Pending
         </span>
       </div>
 
       {/* Match info banner */}
-      <div className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3 mb-5">
+      <div className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3 mb-5">
         <div className="w-10 h-10 rounded-xl bg-green-800 flex items-center justify-center flex-shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M2 12h20M12 2v20"/>
@@ -649,7 +649,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
             appearance: {
               theme: "night",
               variables: {
-                colorPrimary: "#00E676",
+                colorPrimary: "#0E7A3C",
                 colorBackground: "#1a1a1a",
                 colorText: "#ffffff",
                 colorDanger: "#f87171",

@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import AvailabilityPollForm, { DateOption } from "@/components/AvailabilityPollForm";
 import AvailabilityModal from "@/components/AvailabilityModal";
 import MatchAvailabilityList, { useMatchAvailability } from "@/components/MatchAvailabilityList";
+import BottomSheet from "@/components/BottomSheet";
 
 // The captain's whole availability loop, run from home without a redirect:
 // post the poll, watch the votes land, and cast their own. The captain is a
@@ -79,32 +80,9 @@ export function usePollStatus(teamId: string | null, userId: string | undefined)
 // Overlay wrapper. The scroll lives on the backdrop, not the panel, so the
 // date/time pickers inside the create form can overflow the panel freely —
 // an `overflow-y-auto` panel would clip their dropdowns.
-function Sheet({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/60" onClick={onClose}>
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6"
-          onClick={(e) => e.stopPropagation()}>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function SheetHeader({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
-  return (
-    <>
-      <div className="flex items-center justify-between mb-1">
-        <p className="font-bold text-lg">{title}</p>
-        <button onClick={onClose} aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-      {subtitle && <p className="text-xs text-text-secondary mb-4">{subtitle}</p>}
-    </>
-  );
-}
+
+
 
 type PollStatusTileProps = {
   teamId: string | null;
@@ -125,11 +103,15 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
 
   // The captain's own missing vote outranks the squad count in the badge: it's
   // the one number on this tile they can fix themselves, right now.
+  // Tones are light-theme: a tinted fill needs a *darker* label than the old
+  // dark-background pairing used, or it drops below readable contrast on white.
+  const WAITING = "bg-orange-50 text-orange-700 border-orange-200";
+  const DONE = "bg-success-bg text-accent-ink border-success-border";
   const badge = !request
-    ? (myMatchesAwaiting > 0 ? { label: "Your reply", tone: "bg-orange-500/10 text-orange-400 border-orange-500/30" } : null)
-    : !iVoted ? { label: "Your vote", tone: "bg-accent/10 text-accent border-accent/30" }
-    : waiting > 0 ? { label: `${waiting} left`, tone: "bg-orange-500/10 text-orange-400 border-orange-500/30" }
-    : { label: "Complete", tone: "bg-accent/10 text-accent border-accent/30" };
+    ? (myMatchesAwaiting > 0 ? { label: "Your reply", tone: WAITING } : null)
+    : !iVoted ? { label: "Your vote", tone: DONE }
+    : waiting > 0 ? { label: `${waiting} left`, tone: WAITING }
+    : { label: "Complete", tone: DONE };
 
   const subtitle = loading ? "Checking…"
     : !request
@@ -145,23 +127,24 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
         type="button"
         onClick={() => setView(request || matches.length > 0 ? "status" : "create")}
         disabled={loading || !teamId}
-        className="w-full rounded-2xl p-4 text-left border bg-surface-2 border-border disabled:opacity-60"
+        className="w-full rounded-card px-4 py-3.5 text-left border bg-surface border-border shadow-card disabled:opacity-60"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+          <div className="w-10 h-10 rounded-full bg-accent-2 text-white flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold">Availability Poll</p>
-            <p className="text-[11px] text-text-secondary mt-0.5">{subtitle}</p>
+            <p className="text-sm font-bold text-text-primary">Availability Poll</p>
+            <p className="text-xs text-text-secondary mt-0.5">{subtitle}</p>
           </div>
           {badge && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${badge.tone}`}>
               {badge.label}
             </span>
           )}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
         </div>
       </button>
 
@@ -182,14 +165,13 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
       )}
 
       {view === "create" && teamId && userId && (
-        <Sheet onClose={() => setView(null)}>
-          <SheetHeader
-            title={request ? "New poll" : "Start a poll"}
-            subtitle={request
-              ? "Posting new dates replaces the current poll and clears its votes."
-              : "Add the dates you're considering. Your squad votes on which they can make."}
-            onClose={() => setView(null)}
-          />
+        <BottomSheet
+          onClose={() => setView(null)}
+          title={request ? "New poll" : "Start a poll"}
+          subtitle={request
+            ? "Posting new dates replaces the current poll and clears its votes."
+            : "Add the dates you're considering. Your squad votes on which they can make."}
+        >
           <AvailabilityPollForm
             teamId={teamId}
             captainId={userId}
@@ -198,18 +180,17 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
             // total, so a poll they haven't answered can never read "all in".
             onCreated={async () => { await reload(); setView("vote"); }}
           />
-        </Sheet>
+        </BottomSheet>
       )}
 
       {view === "status" && (request || matches.length > 0) && (
-        <Sheet onClose={() => setView(null)}>
-          <SheetHeader
-            title="Availability"
-            subtitle={request
-              ? `${replied} of ${squadSize} replied${waiting > 0 ? ` · still waiting on ${waiting}` : ""}`
-              : "No poll running — these games are already confirmed."}
-            onClose={() => setView(null)}
-          />
+        <BottomSheet
+          onClose={() => setView(null)}
+          title="Availability"
+          subtitle={request
+            ? `${replied} of ${squadSize} replied${waiting > 0 ? ` · still waiting on ${waiting}` : ""}`
+            : "No poll running — these games are already confirmed."}
+        >
 
           {/* Confirmed fixtures first: they're happening either way, whereas a
               poll option is still only a proposal. */}
@@ -232,15 +213,15 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
               const pct = replied > 0 ? Math.round((votes / replied) * 100) : 0;
               const mine = myAnswer?.includes(opt.id);
               return (
-                <div key={opt.id} className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                <div key={opt.id} className="bg-panel border border-border rounded-btn px-3.5 py-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-sm font-semibold">
                       {opt.dayName} · {opt.time}
-                      {mine && <span className="text-[10px] font-bold text-accent ml-1.5">you</span>}
+                      {mine && <span className="text-[10px] font-bold text-accent-ink ml-1.5">you</span>}
                     </p>
-                    <span className="text-xs font-bold text-accent">{votes} vote{votes !== 1 ? "s" : ""}</span>
+                    <span className="text-xs font-bold text-accent-ink">{votes} vote{votes !== 1 ? "s" : ""}</span>
                   </div>
-                  <div className="w-full h-1.5 bg-background rounded-full">
+                  <div className="w-full h-1.5 bg-surface-2 rounded-full">
                     <div className="h-1.5 bg-accent rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
                   <p className="text-[10px] text-text-secondary mt-1">
@@ -254,12 +235,12 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
               const none = responses.filter((r) => r.available_date_ids.length === 0).length;
               const pct = replied > 0 ? Math.round((none / replied) * 100) : 0;
               return (
-                <div className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                <div className="bg-panel border border-border rounded-btn px-3.5 py-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-sm font-semibold text-text-secondary">Unavailable for any of these dates</p>
-                    <span className="text-xs font-bold text-red-400">{none} vote{none !== 1 ? "s" : ""}</span>
+                    <span className="text-xs font-bold text-red-600">{none} vote{none !== 1 ? "s" : ""}</span>
                   </div>
-                  <div className="w-full h-1.5 bg-background rounded-full">
+                  <div className="w-full h-1.5 bg-surface-2 rounded-full">
                     <div className="h-1.5 bg-red-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
@@ -276,8 +257,8 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
                 type="button"
                 onClick={() => setView("vote")}
                 disabled={!userId}
-                className={`w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 ${
-                  iVoted ? "border border-border text-text-secondary" : "bg-accent text-black"
+                className={`w-full py-3.5 rounded-btn text-sm font-bold disabled:opacity-40 ${
+                  iVoted ? "border border-border text-text-secondary" : "bg-accent text-white"
                 }`}
               >
                 {iVoted ? "Change your vote" : "Add your availability"}
@@ -286,8 +267,8 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
             <button
               type="button"
               onClick={() => setView("create")}
-              className={`w-full py-3 rounded-xl text-sm font-bold ${
-                request ? "border border-accent/40 text-accent" : "bg-accent text-black"
+              className={`w-full py-3.5 rounded-btn text-sm font-bold ${
+                request ? "border border-accent text-accent-ink" : "bg-accent text-white"
               }`}
             >
               {request ? "Post new dates" : "Start a poll"}
@@ -297,7 +278,7 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
               Open full poll manager
             </a>
           </div>
-        </Sheet>
+        </BottomSheet>
       )}
     </>
   );

@@ -40,10 +40,10 @@ export default function TacticsPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <div className="flex items-center gap-3 mb-6">
         <a href="/my-team?tab=tactics" aria-label="Back to My Team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Tactics</h1>
+          <h1 className="text-xl font-extrabold">Tactics</h1>
           <p className="text-xs text-text-secondary">Your team&apos;s saved setups</p>
         </div>
       </div>
@@ -51,10 +51,10 @@ export default function TacticsPage() {
       {loading ? (
         <div className="py-12 flex justify-center"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
       ) : !user || !teamId ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
           <p className="text-sm font-semibold mb-1">No team yet</p>
           <p className="text-xs text-text-secondary mb-4">Join or register a team to build tactical setups.</p>
-          <a href="/my-team" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-black font-bold text-xs">Go to My Team</a>
+          <a href="/my-team" className="inline-block px-5 py-2.5 rounded-btn bg-accent text-white font-bold text-xs">Go to My Team</a>
         </div>
       ) : (
         <TacticsTab teamId={teamId} userId={user.id} isCaptain={role === "captain"} />

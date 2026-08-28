@@ -65,7 +65,7 @@ function CaptainResponsesView({
   return (
     <div className="flex flex-col gap-4 pt-2">
       <div className="flex items-center justify-between">
-        <div className="bg-surface-2 border border-border rounded-xl p-4 flex-1">
+        <div className="bg-surface border border-border rounded-btn p-4 flex-1">
           <p className="text-xs text-text-secondary mb-1">{responses.length}/{totalMembers} players responded</p>
           <p className="text-sm font-semibold">Select up to 3 dates to post matches</p>
         </div>
@@ -83,8 +83,8 @@ function CaptainResponsesView({
 
       {chosenDates.length > 0 && (
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3 flex items-center gap-2">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-          <p className="text-xs text-accent font-medium">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <p className="text-xs text-accent-ink font-medium">
             {chosenDates.length} date{chosenDates.length > 1 ? "s" : ""} selected
           </p>
         </div>
@@ -92,12 +92,12 @@ function CaptainResponsesView({
 
       {best && (
         <div className="bg-surface-2 border border-accent/20 rounded-2xl p-4 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-accent text-black flex flex-col items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 rounded-btn bg-accent text-white flex flex-col items-center justify-center flex-shrink-0">
             <span className="text-[9px] font-bold uppercase">{best.month}</span>
-            <span className="text-xl font-bold leading-none">{best.day}</span>
+            <span className="text-xl font-extrabold leading-none">{best.day}</span>
           </div>
           <div>
-            <p className="text-xs text-accent font-semibold uppercase tracking-wider mb-0.5">Best availability</p>
+            <p className="text-xs text-accent-ink font-semibold uppercase tracking-wider mb-0.5">Best availability</p>
             <p className="text-sm font-bold">{best.dayName} · {best.time}</p>
             <p className="text-xs text-text-secondary">{countAvailable(best.id)}/{totalMembers} available</p>
           </div>
@@ -118,25 +118,25 @@ function CaptainResponsesView({
             <button key={opt.id} onClick={() => toggleDate(opt.id)}
               className={`rounded-2xl border p-4 text-left transition-all ${isChosen ? "bg-accent/10 border-accent/60" : isBest ? "bg-surface-2 border-accent/30" : "bg-surface-2 border-border"}`}>
               <div className="flex items-center gap-3 mb-3">
-                <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 relative ${isChosen ? "bg-accent text-black" : "bg-background"}`}>
+                <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center flex-shrink-0 relative ${isChosen ? "bg-accent text-white" : "bg-background"}`}>
                   <span className="text-[9px] font-bold uppercase">{opt.month}</span>
-                  <span className="text-xl font-bold leading-none">{opt.day}</span>
+                  <span className="text-xl font-extrabold leading-none">{opt.day}</span>
                   {isChosen && (
                     <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black border border-accent flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-accent">{idx + 1}</span>
+                      <span className="text-[10px] font-bold text-accent-ink">{idx + 1}</span>
                     </div>
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold">{opt.dayName}</p>
-                    {isBest && <span className="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded-md">Best</span>}
+                    {isBest && <span className="text-[10px] font-bold text-accent-ink bg-accent/10 px-1.5 py-0.5 rounded-md">Best</span>}
                   </div>
                   <p className="text-xs text-text-secondary">
                     KO {opt.time}{opt.location ? ` · ${opt.location}` : ""}
                   </p>
                 </div>
-                <span className="text-sm font-bold text-accent">{count}/{totalMembers}</span>
+                <span className="text-sm font-bold text-accent-ink">{count}/{totalMembers}</span>
               </div>
               <div className="w-full h-1.5 bg-background rounded-full mb-2">
                 <div className={`h-1.5 rounded-full transition-all ${isBest || isChosen ? "bg-accent" : "bg-border"}`} style={{ width: `${pct}%` }} />
@@ -144,7 +144,7 @@ function CaptainResponsesView({
               <div className="flex items-center gap-1.5 flex-wrap">
                 {available.map((p) => {
                   const name = p.profiles?.full_name ?? "Player";
-                  return <div key={p.player_id} title={name} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border bg-accent/20 border-accent/40 text-accent">{getInitials(name)}</div>;
+                  return <div key={p.player_id} title={name} className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border bg-accent/20 border-accent text-accent-ink">{getInitials(name)}</div>;
                 })}
                 {unavailable.map((p) => {
                   const name = p.profiles?.full_name ?? "Player";
@@ -157,7 +157,7 @@ function CaptainResponsesView({
       </div>
 
       <button disabled={chosenDates.length === 0} onClick={handleConfirm}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
         {chosenDates.length === 0 ? "Select dates to post" : `Post ${chosenDates.length} Match${chosenDates.length > 1 ? "es" : ""} →`}
       </button>
     </div>
@@ -217,7 +217,7 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
   if (submitted) return (
     <div className="flex flex-col items-center justify-center py-16 gap-4">
       <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <p className="text-lg font-bold">Availability submitted!</p>
       <p className="text-sm text-text-secondary text-center max-w-[240px]">Your captain will see your response.</p>
@@ -227,7 +227,7 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
   return (
     <div className="flex flex-col gap-4 pt-2">
       <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
-        <p className="text-sm font-semibold text-accent mb-1">Action needed</p>
+        <p className="text-sm font-semibold text-accent-ink mb-1">Action needed</p>
         <p className="text-xs text-text-secondary">Tap all the dates you can play.</p>
       </div>
       <div className="flex flex-col gap-3">
@@ -236,9 +236,9 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
           return (
             <button key={opt.id} onClick={() => toggle(opt.id)}
               className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${isSel ? "bg-accent/10 border-accent/60" : "bg-surface-2 border-border"}`}>
-              <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${isSel ? "bg-accent text-black" : "bg-background"}`}>
+              <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center flex-shrink-0 ${isSel ? "bg-accent text-white" : "bg-background"}`}>
                 <span className="text-[10px] font-bold uppercase">{opt.month}</span>
-                <span className="text-2xl font-bold leading-none">{opt.day}</span>
+                <span className="text-2xl font-extrabold leading-none">{opt.day}</span>
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold">{opt.dayName}</p>
@@ -254,7 +254,7 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
         })}
       </div>
       <button onClick={handleSubmit} disabled={selected.length === 0 || saving}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+        className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
         {saving ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Saving…</> : `Submit (${selected.length} selected)`}
       </button>
     </div>
@@ -309,7 +309,7 @@ function CaptainAvailabilityTab({ userId }: { userId: string }) {
   if (!teamId) return (
     <div className="py-12 text-center">
       <p className="text-sm text-text-secondary">Register a team first.</p>
-      <a href="/my-team/create" className="mt-3 inline-block px-5 py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Register Team</a>
+      <a href="/my-team/create" className="mt-3 inline-block px-5 py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Register Team</a>
     </div>
   );
   if (!request) return (
@@ -341,12 +341,12 @@ export default function CollectAvailabilityPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <a href="/my-team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">
+          <h1 className="text-xl font-extrabold">
             {role === "captain" ? "Collect Availability" : "My Availability"}
           </h1>
           <p className="text-xs text-text-secondary">

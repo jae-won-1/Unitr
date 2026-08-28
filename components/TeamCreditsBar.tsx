@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import SettlePaymentsModal from "@/components/SettlePaymentsModal";
+import BottomSheet from "@/components/BottomSheet";
 
 // The team's money bar: credit balance and transaction log, the player's own
 // top-up / settle-up popup, and — for captains — the payment status of every
@@ -495,31 +496,35 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
 
   return (
     <>
-      <div className="flex items-center gap-2 mt-2">
+      {/* The rebrand makes this a wrapping row of equal-weight pills rather than
+          three buttons plus a right-aligned text link. Counts sit *inside* the
+          pill as a red chip — as absolute corner badges they were clipped once
+          the row was allowed to wrap. */}
+      <div className="flex flex-wrap items-center gap-2 mt-2">
         <button onClick={() => openLog("deposits")}
-          className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-1.5 hover:border-accent/40 transition-colors">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+          className="flex items-center gap-1.5 bg-surface border border-border rounded-full px-3.5 py-2.5 hover:border-accent transition-colors whitespace-nowrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
           </svg>
-          <span className="text-sm font-bold">£{credits.toFixed(2)}</span>
-          <span className="text-xs text-text-secondary">team credits</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          <span className="text-[13px] font-bold text-text-primary">£{credits.toFixed(2)}</span>
+          <span className="text-xs font-medium text-text-secondary">team credits</span>
+          <span className="text-text-secondary text-xs">›</span>
         </button>
         <button onClick={() => setShowTopUp(true)}
-          className={`relative text-xs font-semibold px-3 py-1.5 rounded-xl border ${myOwedPence > 0 ? "text-red-400 border-red-500/30 bg-red-500/10" : "text-accent border-accent/30 bg-accent/10"}`}>
+          className={`flex items-center gap-1.5 text-[13px] font-bold px-3.5 py-2.5 rounded-full border whitespace-nowrap ${myOwedPence > 0 ? "text-white bg-danger border-danger" : "text-white bg-accent border-accent"}`}>
           + Top Up
           {myDues.length > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white text-danger text-[10px] font-bold flex items-center justify-center">
               {myDues.length}
             </span>
           )}
         </button>
         {role === "captain" && (
           <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
-            className="relative text-xs font-semibold text-text-primary border border-border bg-surface-2 px-3 py-1.5 rounded-xl">
+            className="flex items-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
             Payment Status
             {collectMatches.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
                 {collectMatches.length}
               </span>
             )}
@@ -529,11 +534,10 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
             all popups, and sending the captain to a full page for the same kind
             of quick check lost them their position on Home. */}
         <button onClick={() => setShowSettle(true)}
-          className="relative ml-auto text-xs font-semibold text-text-secondary flex items-center gap-1 flex-shrink-0">
+          className="flex items-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
           Settle Payments
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           {historyAlertCount > 0 && (
-            <span className="absolute -top-2 -left-4 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
               {historyAlertCount}
             </span>
           )}
@@ -547,7 +551,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
       {myOwedPence > 0 && (
         <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <p className="text-[11px] text-yellow-400">
+          <p className="text-[11px] text-yellow-600">
             Your previous matches haven&apos;t been paid off. Top up your required amount above.
           </p>
         </div>
@@ -555,23 +559,13 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
 
       {/* Transaction log modal — captain only */}
       {showLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowLog(false)}>
-          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <div>
-                <p className="font-bold text-base">Team Credits</p>
-                <p className="text-xs text-text-secondary">Balance: <span className="text-accent font-semibold">£{credits.toFixed(2)}</span></p>
-              </div>
-              <button onClick={() => setShowLog(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
-
+        <BottomSheet title="Team Credits" subtitle={`Balance: £${credits.toFixed(2)}`} onClose={() => setShowLog(false)}>
+          <>
             {/* Tabs */}
-            <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1 mb-4 flex-shrink-0">
+            <div className="flex bg-surface border border-border rounded-btn p-[3px] gap-[3px] flex-shrink-0">
               {(["deposits", "bookings", "reimbursed"] as const).map((t) => (
                 <button key={t} onClick={() => setLogTab(t)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold capitalize transition-colors ${logTab === t ? "bg-accent text-black" : "text-text-secondary"}`}>
+                  className={`flex-1 py-2 rounded-[9px] text-xs capitalize transition-colors ${logTab === t ? "bg-accent text-white font-bold" : "text-text-secondary font-semibold"}`}>
                   {t}
                 </button>
               ))}
@@ -594,14 +588,14 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                       const owed = owedByPlayer[p.player_id] ?? 0;
                       const initials = p.player_name.split(" ").filter(Boolean).map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
                       return (
-                        <div key={p.player_id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                        <div key={p.player_id} className="flex items-center gap-2.5 bg-panel border border-border rounded-btn px-3 py-2.5">
                           <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[9px] font-bold text-accent">{initials}</span>
+                            <span className="text-[9px] font-bold text-accent-ink">{initials}</span>
                           </div>
                           <p className="flex-1 min-w-0 text-xs font-medium truncate">{p.player_id === userId ? "You" : p.player_name}</p>
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            <span className="text-xs font-bold text-green-400">+£{(p.totalDeposited / 100).toFixed(2)}</span>
-                            {owed > 0 && <span className="text-xs font-semibold text-red-400">(£{(owed / 100).toFixed(2)})</span>}
+                            <span className="text-xs font-bold text-green-600">+£{(p.totalDeposited / 100).toFixed(2)}</span>
+                            {owed > 0 && <span className="text-xs font-semibold text-red-600">(£{(owed / 100).toFixed(2)})</span>}
                           </div>
                         </div>
                       );
@@ -628,7 +622,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                       const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
                       const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
                       return (
-                        <div key={p.id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                        <div key={p.id} className="flex items-center gap-2.5 bg-panel border border-border rounded-btn px-3 py-2.5">
                           <div className="w-7 h-7 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
                             <span className="text-[9px] font-bold text-text-secondary">{initials}</span>
                           </div>
@@ -636,7 +630,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                             <p className="text-xs font-medium truncate">{p.label}</p>
                             <p className="text-[10px] text-text-secondary truncate">{p.detail ? `${p.detail} · ` : ""}{timeAgo}</p>
                           </div>
-                          <span className="text-xs font-bold text-red-400 flex-shrink-0">-£{(p.amount_pence / 100).toFixed(2)}</span>
+                          <span className="text-xs font-bold text-red-600 flex-shrink-0">-£{(p.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
                     })}
@@ -661,15 +655,15 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                       const diffMins = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
                       const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
                       return (
-                        <div key={p.id} className="flex items-center gap-2.5 bg-surface-2 border border-border rounded-xl px-3 py-2">
+                        <div key={p.id} className="flex items-center gap-2.5 bg-panel border border-border rounded-btn px-3 py-2.5">
                           <div className="w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">Reimbursed by {p.opponent}</p>
                             <p className="text-[10px] text-text-secondary">{timeAgo}</p>
                           </div>
-                          <span className="text-xs font-bold text-green-400">+£{(p.amount_pence / 100).toFixed(2)}</span>
+                          <span className="text-xs font-bold text-green-600">+£{(p.amount_pence / 100).toFixed(2)}</span>
                         </div>
                       );
                     })}
@@ -685,8 +679,8 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                 );
               })()}
             </div>
-          </div>
-        </div>
+          </>
+        </BottomSheet>
       )}
 
       {/* Collect Payment modal — captain only. Drill-down: recent matches with
@@ -694,28 +688,23 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
       {showCollect && (() => {
         const selected = selectedCollectMatch ? collectMatches.find((m) => m.matchId === selectedCollectMatch) ?? null : null;
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowCollect(false)}>
-          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                {selected && (
-                  <button onClick={() => setSelectedCollectMatch(null)} className="flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-                  </button>
-                )}
-                <div className="min-w-0">
-                  <p className="font-bold text-base truncate">{selected ? (selected.kind === "tournament" ? selected.opponent : `vs ${selected.opponent}`) : "Collect Payment"}</p>
-                  <p className="text-xs text-text-secondary truncate">
-                    {selected ? `${selected.date} · tap Remind to notify a player` : "Recent matches with payments due"}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setShowCollect(false)} className="flex-shrink-0 ml-3">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <BottomSheet
+          title={selected ? (selected.kind === "tournament" ? selected.opponent : `vs ${selected.opponent}`) : "Collect Payment"}
+          subtitle={selected ? `${selected.date} · tap Remind to notify a player` : "Recent matches with payments due"}
+          onClose={() => setShowCollect(false)}
+        >
+          <>
+            {/* Drill-down back link. The sheet header owns the title, so going
+                up a level is its own control rather than a chevron beside it. */}
+            {selected && (
+              <button onClick={() => setSelectedCollectMatch(null)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary self-start">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                All matches
               </button>
-            </div>
+            )}
 
-            <div className="overflow-y-auto flex-1 space-y-2">
+            <div className="space-y-2">
               {collectLoading ? (
                 <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
               ) : selected ? (
@@ -726,22 +715,22 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                   const removing = removingPlayer === key;
                   const reminded = remindedPlayers.has(key);
                   return (
-                    <div key={p.player_id} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                    <div key={p.player_id} className="flex items-center gap-2 bg-panel border border-border rounded-btn px-3.5 py-3">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">{p.player_id === userId ? "You" : p.name}</p>
                         <p className="text-[10px] text-text-secondary">£{(p.sharePence / 100).toFixed(2)} share</p>
                       </div>
                       {p.received ? (
-                        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2.5 py-1 rounded-full flex-shrink-0">Paid ✓</span>
+                        <span className="text-[11px] font-bold bg-success-bg text-accent-ink px-3 py-1 rounded-full flex-shrink-0">Paid</span>
                       ) : (
                         <>
                           <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded || removing}
-                            className="text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
+                            className="text-[11px] font-bold bg-[#FDECEC] text-danger px-3 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
                             {busy ? "Sending…" : reminded ? "Reminded ✓" : "Remind"}
                           </button>
                           <button onClick={() => removePlayerFromCollection(selected, p)} disabled={removing || busy}
                             title="Remove from payment request — added by mistake"
-                            className="text-text-secondary hover:text-red-400 flex-shrink-0 disabled:opacity-50">
+                            className="text-text-secondary hover:text-red-600 flex-shrink-0 disabled:opacity-50">
                             {removing
                               ? <div className="w-3.5 h-3.5 rounded-full border-2 border-text-secondary border-t-transparent animate-spin" />
                               : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>}
@@ -759,11 +748,11 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                   const unpaid = g.players.length - g.paidCount;
                   return (
                     <button key={g.matchId} onClick={() => { setSelectedCollectMatch(g.matchId); }}
-                      className="w-full bg-surface-2 border border-border rounded-xl p-3 text-left">
+                      className="w-full bg-panel border border-border rounded-[14px] p-3.5 text-left">
                       <div className="flex items-center gap-2">
                         <p className="flex-1 min-w-0 text-sm font-semibold truncate">{g.kind === "tournament" ? g.opponent : `vs ${g.opponent}`}</p>
-                        <span className="text-sm font-bold text-red-400 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
+                        <span className="text-sm font-bold text-red-600 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                       </div>
                       <p className="text-[10px] text-text-secondary mt-1">
                         {g.date} · {unpaid} player{unpaid !== 1 ? "s" : ""} still to pay · {g.paidCount}/{g.players.length} paid
@@ -773,8 +762,8 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                 })
               )}
             </div>
-          </div>
-        </div>
+          </>
+        </BottomSheet>
         );
       })()}
 

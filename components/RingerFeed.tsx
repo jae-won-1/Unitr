@@ -150,7 +150,7 @@ function RingerCheckoutForm({ post, onPaid, onCancel }: {
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface-2 border border-border rounded-xl p-4">
+      <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
@@ -158,14 +158,14 @@ function RingerCheckoutForm({ post, onPaid, onCancel }: {
         <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
         <p className="text-[11px] text-blue-300/80">Use card 4242 4242 4242 4242, any future expiry and CVC.</p>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onCancel} disabled={paying}
           className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
           Back
         </button>
         <button type="button" onClick={handlePay} disabled={paying || !stripe}
-          className="flex-[2] py-3 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+          className="flex-[2] py-3 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
           {paying ? "Paying…" : `Pay £${(post.pricePence / 100).toFixed(2)} & Join`}
         </button>
       </div>
@@ -176,10 +176,10 @@ function RingerCheckoutForm({ post, onPaid, onCancel }: {
 // ── Card ──────────────────────────────────────────────────────
 function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerPost) => void }) {
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-start gap-3 mb-3">
         <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-accent">
+          <span className="text-xs font-bold text-accent-ink">
             {post.teamName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
           </span>
         </div>
@@ -187,7 +187,7 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
           <p className="text-sm font-semibold truncate">{post.teamName}</p>
           <p className="text-xs text-text-secondary truncate">vs {post.opponentName}</p>
         </div>
-        <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
+        <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
           {post.spotsLeft} spot{post.spotsLeft === 1 ? "" : "s"} left
         </span>
       </div>
@@ -216,14 +216,14 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
 
       <div className="flex items-center justify-between">
         <div>
-          <span className="text-lg font-bold text-accent">£{(post.pricePence / 100).toFixed(2)}</span>
+          <span className="text-lg font-bold text-accent-ink">£{(post.pricePence / 100).toFixed(2)}</span>
           <span className="text-[11px] text-text-secondary ml-1.5">one-off, all in</span>
         </div>
         {post.joined ? (
-          <span className="px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-sm font-bold">You&apos;re in ✓</span>
+          <span className="px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-600 text-sm font-bold">You&apos;re in ✓</span>
         ) : (
           <button type="button" onClick={() => onJoin(post)}
-            className="px-5 py-2 rounded-xl bg-accent text-black text-sm font-bold">
+            className="px-5 py-2 rounded-btn bg-accent text-white text-sm font-bold">
             Join for £{(post.pricePence / 100).toFixed(2)}
           </button>
         )}
@@ -315,7 +315,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
     <div className="space-y-4">
       {showIntro && (
         <div className="bg-accent/10 border border-accent/30 rounded-xl p-4">
-          <p className="text-sm font-semibold text-accent mb-1">Fill in for a Match</p>
+          <p className="text-sm font-semibold text-accent-ink mb-1">Fill in for a Match</p>
           <p className="text-xs text-text-secondary leading-relaxed">
             No team, or no game this week? Join someone else&apos;s match as a one-off guest.
             Flat £5, pay by card, and you&apos;re straight into the squad.
@@ -328,7 +328,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
       {loading ? (
         <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
       ) : visible.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
           <p className="text-sm text-text-secondary">
             {posts.length > 0
               ? "No spots open on this day."
@@ -349,16 +349,16 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
       <SignUpGate target={gate} onClose={() => setGate(null)} />
 
       {target && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={closeModal}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={closeModal}>
           <div className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="font-bold text-base">{done ? "You're in" : "Join as Ringer"}</p>
               <button type="button" onClick={closeModal}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
-            <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4">
+            <div className="bg-surface border border-border rounded-btn p-4 mb-4">
               <p className="text-sm font-semibold mb-1">{target.teamName} vs {target.opponentName}</p>
               <p className="text-xs text-text-secondary">{fmtDate(target.date)} · {target.time}</p>
               <p className="text-xs text-text-secondary">{target.pitch}</p>
@@ -367,7 +367,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
               </p>
               <div className="border-t border-border mt-3 pt-3 flex items-center justify-between">
                 <span className="text-xs text-text-secondary">Ringer fee</span>
-                <span className="text-base font-bold text-accent">£{(target.pricePence / 100).toFixed(2)}</span>
+                <span className="text-base font-bold text-accent-ink">£{(target.pricePence / 100).toFixed(2)}</span>
               </div>
             </div>
 
@@ -377,19 +377,19 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
                   You&apos;re in the matchday squad for {done.teamName}. The captain can now see you in their lineup.
                   Nothing else to pay — the team&apos;s pitch fee isn&apos;t split with you.
                 </p>
-                {error && <p className="text-xs text-yellow-400">{error}</p>}
+                {error && <p className="text-xs text-yellow-600">{error}</p>}
                 <button type="button" onClick={closeModal}
-                  className="w-full py-3 rounded-xl bg-accent text-black text-sm font-bold">Done</button>
+                  className="w-full py-3 rounded-btn bg-accent text-white text-sm font-bold">Done</button>
               </div>
             ) : starting ? (
               <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
             ) : clientSecret ? (
-              <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#00E676", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
+              <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
                 <RingerCheckoutForm post={target} onPaid={confirmJoin} onCancel={closeModal} />
               </Elements>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-red-400">{error ?? "Couldn't start the payment."}</p>
+                <p className="text-sm text-red-600">{error ?? "Couldn't start the payment."}</p>
                 <button type="button" onClick={closeModal}
                   className="w-full py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Close</button>
               </div>

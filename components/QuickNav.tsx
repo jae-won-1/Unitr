@@ -60,14 +60,14 @@ export default function QuickNav() {
             <>
               <span
                 className={`w-14 h-14 rounded-full flex items-center justify-center ${
-                  item.disabled ? "bg-surface-2 border border-border text-text-secondary" : "bg-accent text-black"
+                  item.disabled ? "bg-surface-2 border border-border text-text-secondary" : "bg-accent text-white"
                 }`}
               >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {item.icon}
                 </svg>
               </span>
-              <p className={`text-[11px] font-semibold text-center leading-tight ${item.disabled ? "text-text-secondary" : ""}`}>
+              <p className={`text-[11px] font-bold text-center leading-tight ${item.disabled ? "text-text-secondary" : ""}`}>
                 {item.label}
               </p>
             </>

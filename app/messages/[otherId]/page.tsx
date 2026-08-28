@@ -67,7 +67,7 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
     <div className="flex flex-col min-h-screen pt-16 pb-4">
       <div className="flex items-center gap-3 px-4 mb-4 flex-shrink-0">
         <a href="/messages">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <p className="font-bold text-lg">{name}</p>
       </div>
@@ -82,9 +82,9 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
             const mine = m.sender_id === user?.id;
             return (
               <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${mine ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-primary"}`}>
+                <div className={`max-w-[75%] rounded-card px-4 py-2.5 ${mine ? "bg-accent text-white" : "bg-surface border border-border text-text-primary"}`}>
                   <p className="text-sm whitespace-pre-wrap">{m.body}</p>
-                  <p className={`text-[10px] mt-1 ${mine ? "text-black/60" : "text-text-secondary"}`}>{fmtTime(m.created_at)}</p>
+                  <p className={`text-[10px] mt-1 ${mine ? "text-white/70" : "text-text-secondary"}`}>{fmtTime(m.created_at)}</p>
                 </div>
               </div>
             );
@@ -99,10 +99,10 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !sending) handleSend(); }}
           placeholder="Type a message..."
-          className="flex-1 bg-surface-2 border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50"
+          className="flex-1 bg-surface border border-border rounded-btn px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50"
         />
         <button onClick={handleSend} disabled={sending || !draft.trim()}
-          className="w-10 h-10 rounded-xl bg-accent text-black flex items-center justify-center disabled:opacity-40">
+          className="w-10 h-10 rounded-btn bg-accent text-white flex items-center justify-center disabled:opacity-40">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         </button>
       </div>

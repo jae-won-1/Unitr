@@ -12,8 +12,9 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#0A0A0A",
-    theme_color: "#0A0A0A",
+    // Splash background is the page colour; theme colour matches the TopBar band.
+    background_color: "#F4F6FB",
+    theme_color: "#008000",
     icons: [
       // One 512 source (scripts/generate-icons.mjs), declared at both sizes
       // Chrome looks for; it downscales for the smaller one. The mark sits well

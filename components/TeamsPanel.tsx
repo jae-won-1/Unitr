@@ -81,7 +81,7 @@ function Crest({ team }: { team: Team }) {
   }
   return (
     <div className="w-11 h-11 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-      <span className="text-xs font-bold text-accent">{initials}</span>
+      <span className="text-xs font-bold text-accent-ink">{initials}</span>
     </div>
   );
 }
@@ -123,7 +123,7 @@ function Chip({ label, active, onClick, disabled, caret }: {
       onClick={onClick}
       disabled={disabled}
       className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-        active ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+        active ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"
       } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
     >
       {label}
@@ -213,7 +213,7 @@ export default function TeamsPanel() {
           <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
           <p className="text-sm text-text-secondary">
             {teams.length === 0 ? "No teams registered yet." : "No teams match these filters."}
           </p>
@@ -221,14 +221,14 @@ export default function TeamsPanel() {
             <button
               type="button"
               onClick={() => { setArea(null); setFormat(null); setLevel(null); }}
-              className="mt-2 text-xs text-accent font-medium"
+              className="mt-2 text-xs text-accent-ink font-medium"
             >
               Clear filters
             </button>
           )}
         </div>
       ) : (
-        <div className="bg-surface-2 border border-border rounded-2xl px-4 divide-y divide-border">
+        <div className="bg-surface border border-border shadow-card rounded-card px-4 divide-y divide-border">
           {shown.map((t) => (
             <TeamRow
               key={t.id}
@@ -263,7 +263,7 @@ export default function TeamsPanel() {
 
       {/* ── Filter sheet ── */}
       {sheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setSheetOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={() => setSheetOpen(false)}>
           <div
             className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl max-h-[85dvh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -271,7 +271,7 @@ export default function TeamsPanel() {
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <p className="font-bold text-lg">Filter</p>
               <button type="button" onClick={() => setSheetOpen(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
@@ -328,7 +328,7 @@ export default function TeamsPanel() {
               <button
                 type="button"
                 onClick={() => setSheetOpen(false)}
-                className="flex-1 py-3 rounded-xl bg-accent text-black text-sm font-bold"
+                className="flex-1 py-3 rounded-btn bg-accent text-white text-sm font-bold"
               >
                 Apply
               </button>

@@ -11,7 +11,7 @@ import { loadPlayerStats, type PlayerStats } from "@/lib/stats";
 const stripeAppearance = {
   theme: "night" as const,
   variables: {
-    colorPrimary: "#00E676",
+    colorPrimary: "#0E7A3C",
     colorBackground: "#1a1a1a",
     colorText: "#ffffff",
     colorDanger: "#f87171",
@@ -67,7 +67,7 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
 
   return (
     <div className="space-y-3">
-      <div className="bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
@@ -76,11 +76,11 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
           Use card <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any 3-digit CVC
         </p>
       </div>
-      {err && <p className="text-xs text-red-400">{err}</p>}
+      {err && <p className="text-xs text-red-600">{err}</p>}
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
         <button onClick={handleSave} disabled={!stripe || saving}
-          className="flex-1 py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+          className="flex-1 py-2.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
           {saving ? "Saving…" : "Save Card"}
         </button>
       </div>
@@ -136,7 +136,7 @@ function PaymentMethodSection() {
   return (
     <section>
       <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Payment Method</h3>
-      <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+      <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-3">
         <p className="text-xs text-text-secondary leading-relaxed">
           Save a card so your share of match fees is charged automatically when your squad
           is confirmed — no need to pay manually after every game.
@@ -145,13 +145,13 @@ function PaymentMethodSection() {
         {card && !setupSecret && (
           <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
             <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold capitalize">{card.brand ?? "Card"} •••• {card.last4 ?? "????"}</p>
-              <p className="text-[11px] text-accent">Saved · ready for auto-settlement</p>
+              <p className="text-[11px] text-accent-ink">Saved · ready for auto-settlement</p>
             </div>
-            <button onClick={removeCard} className="text-xs text-red-400 font-medium flex-shrink-0">Remove</button>
+            <button onClick={removeCard} className="text-xs text-red-600 font-medium flex-shrink-0">Remove</button>
           </div>
         )}
 
@@ -165,12 +165,12 @@ function PaymentMethodSection() {
           </Elements>
         ) : (
           <button onClick={startSetup} disabled={starting}
-            className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm text-accent font-semibold disabled:opacity-50">
+            className="w-full py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-sm text-accent-ink font-semibold disabled:opacity-50">
             {starting ? "Starting…" : card ? "Update card" : "Add a card"}
           </button>
         )}
 
-        {err && <p className="text-xs text-red-400">{err}</p>}
+        {err && <p className="text-xs text-red-600">{err}</p>}
       </div>
     </section>
   );
@@ -230,17 +230,17 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       {/* Avatar */}
       <section className="flex flex-col items-center">
         <div className="w-20 h-20 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center mb-3">
-          <span className="text-2xl font-bold text-accent">{initials}</span>
+          <span className="text-2xl font-extrabold text-accent-ink">{initials}</span>
         </div>
-        <h2 className="text-xl font-bold">{name}</h2>
+        <h2 className="text-xl font-extrabold">{name}</h2>
         <p className="text-text-secondary text-sm mt-0.5">{subtitle}</p>
         {isCaptain && teamName && (
-          <span className="mt-2 text-xs font-semibold bg-accent/10 text-accent border border-accent/30 px-3 py-1 rounded-full">
+          <span className="mt-2 text-xs font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full">
             Captain — {teamName}
           </span>
         )}
         <div className="flex gap-2 mt-3 flex-wrap justify-center">
-          <span className="text-xs bg-accent/10 text-accent border border-accent/30 px-3 py-1 rounded-full font-medium">CAM</span>
+          <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full font-medium">CAM</span>
           <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">Right Foot</span>
           <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">6 years exp.</span>
         </div>
@@ -259,7 +259,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       </section>
 
-      <button className="w-full py-3 rounded-xl border border-accent text-accent font-semibold text-sm">
+      <button className="w-full py-3 rounded-xl border border-accent text-accent-ink font-semibold text-sm">
         Edit Profile
       </button>
 
@@ -267,26 +267,26 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
 
       {/* Friends modal */}
       {modal === "friends" && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={() => setModal(null)}>
           <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="font-bold text-base">Friends ({FRIENDS.length})</p>
               <button onClick={() => setModal(null)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <div className="space-y-2">
               {FRIENDS.map((f) => (
-                <div key={f.name} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                <div key={f.name} className="flex items-center gap-3 bg-surface border border-border rounded-btn px-4 py-3">
                   <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-bold text-accent">{f.avatar}</span>
+                    <span className="text-xs font-bold text-accent-ink">{f.avatar}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{f.name}</p>
                     <p className="text-xs text-text-secondary">{f.position}</p>
                   </div>
                   <a href="/messages" className="w-7 h-7 rounded-full border border-border bg-surface flex items-center justify-center flex-shrink-0">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
                   </a>
@@ -302,19 +302,19 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
 
       {/* Bookmarked Teams modal */}
       {modal === "teams" && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={() => setModal(null)}>
           <div className="w-full max-w-lg bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <p className="font-bold text-base">Bookmarked Teams ({BOOKMARKED_TEAMS.length})</p>
               <button onClick={() => setModal(null)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <div className="space-y-2">
               {BOOKMARKED_TEAMS.map((t) => {
                 const ti = t.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                 return (
-                  <div key={t.name} className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-4 py-3">
+                  <div key={t.name} className="flex items-center gap-3 bg-surface border border-border rounded-btn px-4 py-3">
                     <div className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-bold text-text-secondary">{ti}</span>
                     </div>
@@ -322,7 +322,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
                       <p className="text-sm font-medium truncate">{t.name}</p>
                       <p className="text-xs text-text-secondary">{t.level} · {t.location}</p>
                     </div>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#00E676" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#0E7A3C" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
                       <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
                     </svg>
                   </div>
@@ -349,22 +349,22 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
               { label: "Goals", value: myStats.goals },
               { label: "Assists", value: myStats.assists },
             ].map((s) => (
-              <div key={s.label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-accent">{s.value}</p>
+              <div key={s.label} className="bg-surface border border-border rounded-btn p-3 text-center">
+                <p className="text-lg font-bold text-accent-ink">{s.value}</p>
                 <p className="text-[10px] text-text-secondary mt-0.5">{s.label}</p>
               </div>
             ))}
           </div>
         ) : (
-          <div className="bg-surface-2 border border-border rounded-2xl p-5 text-center">
+          <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
             <p className="text-sm font-semibold mb-1">No stats yet</p>
             <p className="text-xs text-text-secondary">Your record starts once you&apos;re named in a submitted match result.</p>
           </div>
         )}
         {eventRating && (
-          <div className="mt-2 bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center justify-between">
+          <div className="mt-2 bg-surface border border-border rounded-btn px-4 py-3 flex items-center justify-between">
             <p className="text-xs text-text-secondary">Event rating <span className="text-text-secondary/70">· from organisers of hosted events</span></p>
-            <p className="text-sm font-bold text-accent">
+            <p className="text-sm font-bold text-accent-ink">
               {eventRating.avg.toFixed(1)}/10
               <span className="text-xs text-text-secondary font-normal"> · {eventRating.count} event{eventRating.count === 1 ? "" : "s"}</span>
             </p>
@@ -377,7 +377,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Badges</h3>
         <div className="grid grid-cols-2 gap-2">
           {badges.map((b) => (
-            <div key={b.label} className="bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+            <div key={b.label} className="bg-surface border border-border rounded-btn px-4 py-3 flex items-center gap-3">
               <span className="text-xl">{b.icon}</span>
               <p className="text-sm font-medium">{b.label}</p>
             </div>
@@ -391,7 +391,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       {myStats && myStats.matchesWithResults > 0 && (
       <section>
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">My Stats</h3>
-        <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-3">
+        <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-3">
           {[
             {
               label: "Start Rate",
@@ -432,16 +432,16 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
             { id: "h2", title: "Through-ball assist vs Dalston Athletic", match: "Jan 22, 2026 · League", duration: "0:24", tag: "Assist" },
             { id: "h3", title: "Man of the Match — vs East End FC", match: "Jan 8, 2026 · Friendly", duration: "1:02", tag: "MOTM" },
           ].map((clip) => (
-            <div key={clip.id} className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+            <div key={clip.id} className="bg-surface border border-border shadow-card rounded-card overflow-hidden">
               <div className="relative w-full" style={{ paddingBottom: "48%", background: "linear-gradient(135deg, #1a0a2e 0%, #2a1040 50%, #150820 100%)" }}>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-black/40 border border-white/20 flex items-center justify-center">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   </div>
                 </div>
-                <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{clip.duration}</div>
+                <div className="absolute bottom-2 right-2 bg-scrim text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{clip.duration}</div>
                 <div className="absolute top-2 left-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${clip.tag === "Goal" ? "bg-red-500/80 text-white" : clip.tag === "Assist" ? "bg-blue-500/80 text-white" : "bg-accent/80 text-black"}`}>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${clip.tag === "Goal" ? "bg-red-500/80 text-white" : clip.tag === "Assist" ? "bg-blue-500/80 text-white" : "bg-accent/80 text-white"}`}>
                     {clip.tag}
                   </span>
                 </div>
@@ -451,7 +451,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
                   <p className="text-sm font-semibold">{clip.title}</p>
                   <p className="text-xs text-text-secondary mt-0.5">{clip.match}</p>
                 </div>
-                <button className="text-xs text-accent font-medium flex items-center gap-1">
+                <button className="text-xs text-accent-ink font-medium flex items-center gap-1">
                   Share
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 </button>
@@ -462,7 +462,7 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
       </section>
 
       {isCaptain && (
-        <a href="/my-team" className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm text-center block">
+        <a href="/my-team" className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center block">
           Manage My Team
         </a>
       )}
@@ -502,17 +502,17 @@ export default function ProfilePage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16">
       <header className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Profile</h1>
+        <h1 className="text-2xl font-extrabold">Profile</h1>
       </header>
       {role === "new_user" && !user && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
           <p className="text-sm font-semibold">No profile yet</p>
           <p className="text-xs text-text-secondary text-center max-w-[220px]">Create an account to build your player profile and track your stats.</p>
           <div className="flex gap-3">
-            <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
+            <a href="/register" className="px-6 py-3 rounded-btn bg-accent text-white font-bold text-sm">Create Account</a>
             <a href="/login" className="px-6 py-3 rounded-xl border border-border text-text-primary font-bold text-sm">Sign In</a>
           </div>
         </div>

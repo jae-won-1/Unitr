@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
+import BottomSheet from "@/components/BottomSheet";
 
 // Settle Payments — per-fixture payment collection for the captain.
 //
@@ -312,18 +313,18 @@ function PaymentCollectionPanel({
     <div className="mt-3 bg-background border border-border rounded-xl p-3">
       <button type="button" onClick={() => setExpanded((e) => !e)} className="w-full flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
             className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
             <path d="M9 18l6-6-6-6"/>
           </svg>
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Collect Payment</p>
         </div>
         {!requestSent ? (
-          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">Collect Payment</span>
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">Collect Payment</span>
         ) : settled ? (
-          <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
+          <span className="text-[10px] font-semibold bg-green-500/10 text-green-600 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
         ) : (
-          <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-600 border border-yellow-500/30 px-2 py-0.5 rounded-full">
             {rows.filter((r) => r.received).length}/{rows.length} paid
           </span>
         )}
@@ -357,7 +358,7 @@ function PaymentCollectionPanel({
               return (
                 <>
                   <div className="flex items-center gap-1.5 mb-1.5">
-                    <p className="text-[10px] font-bold text-accent uppercase tracking-wider">Played</p>
+                    <p className="text-[10px] font-bold text-accent-ink uppercase tracking-wider">Played</p>
                     <span className="text-[10px] text-text-secondary">submitted availability</span>
                   </div>
                   <div className="space-y-1.5 mb-3">
@@ -375,7 +376,7 @@ function PaymentCollectionPanel({
               );
             })()}
             <button onClick={handleSend} disabled={checked.size === 0 || sending}
-              className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+              className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
               {sending ? "Sending…" : `Send Payment Request (${checked.size})`}
             </button>
           </div>
@@ -392,13 +393,13 @@ function PaymentCollectionPanel({
                     <>
                       <span className="text-xs font-semibold text-text-secondary flex-shrink-0">£{(row.share_pence / 100).toFixed(2)}</span>
                       <button onClick={() => toggleReceived(p.player_id)} disabled={busyPlayer === p.player_id}
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50 ${row.received ? "bg-accent/10 text-accent border border-accent/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50 ${row.received ? "bg-accent/10 text-accent-ink border border-accent/20" : "bg-red-500/10 text-red-600 border border-red-500/20"}`}>
                         {row.received ? "Paid ✓" : "Unpaid"}
                       </button>
                       {!row.received && (
                         <button onClick={() => handleRemove(p.player_id)} disabled={busyPlayer === p.player_id}
                           title="Remove from payment request"
-                          className="text-text-secondary hover:text-red-400 flex-shrink-0 disabled:opacity-50">
+                          className="text-text-secondary hover:text-red-600 flex-shrink-0 disabled:opacity-50">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                         </button>
                       )}
@@ -556,7 +557,7 @@ export function SettlePaymentsList() {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
         <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
         </div>
         <p className="font-semibold">No match history yet</p>
         <p className="text-sm text-text-secondary max-w-[240px]">Confirmed fixtures — upcoming and played — will show up here.</p>
@@ -569,7 +570,7 @@ export function SettlePaymentsList() {
       {fixtures.map((f) => {
         const m = f.matchRowId ? matchRows[f.matchRowId] : undefined;
         return (
-          <div key={f.key} className="bg-surface-2 border border-border rounded-2xl p-4">
+          <div key={f.key} className="bg-surface border border-border shadow-card rounded-card p-4">
             <div className="flex items-start justify-between mb-2 gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -588,11 +589,11 @@ export function SettlePaymentsList() {
                 </div>
               </div>
               {f.isUpcoming ? (
-                <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Upcoming</span>
+                <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Upcoming</span>
               ) : f.matchRowId && m?.result_verified && matchResults[f.matchRowId] && (() => {
                 const r = matchResults[f.matchRowId];
                 const outcome = r.teamScore > r.opponentScore ? "won" : r.teamScore < r.opponentScore ? "lost" : "drew";
-                const colorClass = outcome === "won" ? "text-accent" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
+                const colorClass = outcome === "won" ? "text-accent-ink" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
                 return (
                   <p className={`text-3xl font-extrabold flex-shrink-0 ${colorClass}`}>{r.teamScore} – {r.opponentScore}</p>
                 );
@@ -639,21 +640,8 @@ export function SettlePaymentsList() {
 // Same shell as the Team Credits / Collect Payment popups it sits beside.
 export default function SettlePaymentsModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={onClose}>
-      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4 flex-shrink-0">
-          <div className="min-w-0">
-            <p className="font-bold text-base">Settle Payments</p>
-            <p className="text-xs text-text-secondary">Upcoming and past fixtures for your team</p>
-          </div>
-          <button onClick={onClose} className="flex-shrink-0 ml-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div className="overflow-y-auto flex-1">
-          <SettlePaymentsList />
-        </div>
-      </div>
-    </div>
+    <BottomSheet title="Settle Payments" subtitle="Upcoming and past fixtures for your team" onClose={onClose}>
+      <SettlePaymentsList />
+    </BottomSheet>
   );
 }

@@ -109,12 +109,12 @@ export default function AvailabilityModal({
   const canSubmit = (selected.length > 0 || noneWork) && !submitting;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-scrim px-4" onClick={onClose}>
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {done ? (
           <div className="text-center">
             <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <p className="text-lg font-bold mb-1">Availability sent</p>
             <p className="text-sm text-text-secondary mb-5">
@@ -122,7 +122,7 @@ export default function AvailabilityModal({
                 ? "Your captain knows none of these dates work for you."
                 : `You're down as available for ${selected.length} date${selected.length === 1 ? "" : "s"}.`}
             </p>
-            <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+            <button onClick={onClose} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>
           </div>
         ) : (
           <>
@@ -170,7 +170,7 @@ export default function AvailabilityModal({
                       ${picked ? "bg-accent/10 border-accent" : disabled ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}
                   >
                     <div>
-                      <p className={`text-sm font-semibold ${picked ? "text-accent" : ""}`}>{opt.dayName} · {opt.time}</p>
+                      <p className={`text-sm font-semibold ${picked ? "text-accent-ink" : ""}`}>{opt.dayName} · {opt.time}</p>
                       <p className="text-[10px] text-text-secondary mt-0.5">
                         {opt.date}{opt.location ? ` · ${opt.location}` : ""}
                       </p>
@@ -189,7 +189,7 @@ export default function AvailabilityModal({
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-colors
                   ${noneWork ? "bg-red-500/10 border-red-400" : selected.length > 0 ? "bg-surface-2 border-border opacity-40 cursor-not-allowed" : "bg-surface-2 border-border"}`}
               >
-                <p className={`text-sm font-semibold ${noneWork ? "text-red-400" : "text-text-secondary"}`}>
+                <p className={`text-sm font-semibold ${noneWork ? "text-red-600" : "text-text-secondary"}`}>
                   Unavailable for any of these dates
                 </p>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${noneWork ? "border-red-400 bg-red-400" : "border-border"}`}>
@@ -200,20 +200,20 @@ export default function AvailabilityModal({
             </>
             )}
 
-            {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
-            {saved && !done && <p className="text-xs text-accent mb-3">Poll answer saved.</p>}
+            {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+            {saved && !done && <p className="text-xs text-accent-ink mb-3">Poll answer saved.</p>}
 
             {request ? (
               <div className="flex gap-3">
                 <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
                 <button onClick={submit} disabled={!canSubmit}
-                  className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                  className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40">
                   {submitting ? "Submitting…" : myAnswer !== null ? "Update" : "Submit"}
                 </button>
               </div>
             ) : (
               // Fixture answers save on tap, so there's nothing left to submit.
-              <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+              <button onClick={onClose} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>
             )}
           </>
         )}

@@ -20,7 +20,7 @@ export default function SignUpGate({ target, onClose }: {
   if (!target) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={onClose}>
       <div
         className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -28,13 +28,13 @@ export default function SignUpGate({ target, onClose }: {
         <div className="flex items-center justify-between mb-4">
           <p className="font-bold text-base">Join Unitr</p>
           <button type="button" onClick={onClose} aria-label="Close">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4">
+        <div className="bg-surface border border-border rounded-btn p-4 mb-4">
           <p className="text-sm font-semibold truncate">{target.title}</p>
           {target.subtitle && (
             <p className="text-xs text-text-secondary truncate mt-0.5">{target.subtitle}</p>
@@ -54,7 +54,7 @@ export default function SignUpGate({ target, onClose }: {
           </a>
           <a
             href="/register"
-            className="flex-[2] py-3 rounded-xl bg-accent text-black font-bold text-sm text-center"
+            className="flex-[2] py-3 rounded-btn bg-accent text-white font-bold text-sm text-center"
           >
             Create Account
           </a>

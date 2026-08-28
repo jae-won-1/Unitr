@@ -204,7 +204,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center gap-3">
         <p className="font-semibold">Match not found</p>
-        <a href="/my-team/history" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm mt-2">Back to History</a>
+        <a href="/my-team/history" className="px-6 py-3 rounded-btn bg-accent text-white font-bold text-sm mt-2">Back to History</a>
       </div>
     );
   }
@@ -215,10 +215,10 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
         </button>
         <div>
-          <h1 className="text-xl font-bold">Submit Result</h1>
+          <h1 className="text-xl font-extrabold">Submit Result</h1>
           <p className="text-xs text-text-secondary mt-0.5">{myTeamName} vs {opponentName}</p>
         </div>
       </div>
@@ -226,42 +226,42 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       <div className="flex flex-col gap-5">
         {alreadySubmitted && (
           <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
-            <p className="text-xs text-accent">A result has already been submitted — saving again will update it.</p>
+            <p className="text-xs text-accent-ink">A result has already been submitted — saving again will update it.</p>
           </div>
         )}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
         {/* Score */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <p className="text-sm font-semibold mb-3">Final Score</p>
           <div className="flex items-end gap-3">
             <div className="flex-1 flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-text-primary">Your Team</label>
               <input type="number" min={0} inputMode="numeric" value={teamScore}
                 onChange={(e) => setTeamScore(e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-bold outline-none focus:border-accent/50" />
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-extrabold outline-none focus:border-accent/50" />
             </div>
             <span className="text-text-secondary font-bold pb-3">–</span>
             <div className="flex-1 flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-text-primary">Opponent</label>
               <input type="number" min={0} inputMode="numeric" value={opponentScore}
                 onChange={(e) => setOpponentScore(e.target.value)}
-                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-bold outline-none focus:border-accent/50" />
+                className="bg-background border border-border rounded-xl px-3 py-2.5 text-center text-2xl font-extrabold outline-none focus:border-accent/50" />
             </div>
           </div>
         </section>
 
         {/* Goals */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-sm font-semibold">Goalscorers</p>
             {!isNaN(ts) && ts > 0 && (
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${goalsLeft === 0 ? "bg-accent/10 text-accent" : "bg-yellow-500/10 text-yellow-400"}`}>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${goalsLeft === 0 ? "bg-accent/10 text-accent-ink" : "bg-yellow-500/10 text-yellow-600"}`}>
                 {goalsLeft === 0 ? "✓ All accounted for" : `${goalsLeft} goal${goalsLeft !== 1 ? "s" : ""} left`}
               </span>
             )}
@@ -290,7 +290,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
         </section>
 
         {/* Assists */}
-        <section className="bg-surface-2 border border-border rounded-2xl p-4">
+        <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-sm font-semibold">Assists</p>
             <span className="text-xs text-text-secondary">{totalAssists} total</span>
@@ -319,7 +319,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
         </section>
 
         <button onClick={handleSubmit} disabled={saving}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
           {saving ? (
             <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Submitting…</>
           ) : "Submit Result"}

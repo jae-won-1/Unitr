@@ -85,7 +85,7 @@ function SquadList({ teamId }: { teamId: string }) {
 
   if (members.length === 0) {
     return (
-      <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+      <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
         <p className="text-sm font-semibold mb-1">No squad members yet</p>
         <p className="text-xs text-text-secondary">Approved players show up here.</p>
       </div>
@@ -94,24 +94,24 @@ function SquadList({ teamId }: { teamId: string }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-text-secondary">{members.length} player{members.length === 1 ? "" : "s"}</p>
+      <p className="text-xs font-medium text-text-secondary">{members.length} player{members.length === 1 ? "" : "s"}</p>
       {members.map((m) => (
-        <div key={m.id} className="bg-surface-2 border border-border rounded-xl p-3 flex items-center gap-3">
+        <div key={m.id} className="bg-surface border border-border shadow-card rounded-[14px] px-3.5 py-3 flex items-center gap-3">
           <Avatar name={m.name} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold truncate">{m.name}</p>
+            <div className="flex items-center gap-[7px]">
+              <p className="text-sm font-bold truncate">{m.name}</p>
               {m.isCaptain && (
-                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20 flex-shrink-0">C</span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-[5px] bg-[#E7F8EC] text-accent-ink border border-[#B7E8C6] flex-shrink-0">C</span>
               )}
             </div>
-            <p className="text-[11px] text-text-secondary">
+            <p className="text-[11px] font-medium text-text-secondary mt-0.5">
               {[m.position, m.experience].filter(Boolean).join(" · ") || "—"}
             </p>
           </div>
-          <div className="flex gap-3 text-center flex-shrink-0">
-            <div><p className="text-sm font-bold">{m.stats.goals}</p><p className="text-[9px] text-text-secondary">G</p></div>
-            <div><p className="text-sm font-bold">{m.stats.assists}</p><p className="text-[9px] text-text-secondary">A</p></div>
+          <div className="flex gap-3.5 text-center flex-shrink-0">
+            <div><p className="text-sm font-bold">{m.stats.goals}</p><p className="text-[9px] font-semibold text-text-secondary">G</p></div>
+            <div><p className="text-sm font-bold">{m.stats.assists}</p><p className="text-[9px] font-semibold text-text-secondary">A</p></div>
           </div>
         </div>
       ))}
@@ -173,7 +173,7 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
 
   if (!isCaptain) {
     return (
-      <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+      <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
         <p className="text-sm font-semibold mb-1">Captain only</p>
         <p className="text-xs text-text-secondary">Scouting notes stay with whoever picks the squad.</p>
       </div>
@@ -182,7 +182,7 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
 
   if (unavailable) {
     return (
-      <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+      <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
         <p className="text-sm font-semibold mb-1">Not set up yet</p>
         <p className="text-xs text-text-secondary">{MISSING_TABLE_MSG}</p>
       </div>
@@ -191,10 +191,10 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
 
   if (rows.length === 0) {
     return (
-      <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+      <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
         <p className="text-sm font-semibold mb-1">Nobody on the watchlist</p>
         <p className="text-xs text-text-secondary mb-4">Save players from the Transfer Market and decide later. They&apos;re never notified.</p>
-        <a href="/my-team/transfer" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-black font-bold text-xs">Go Scouting</a>
+        <a href="/my-team/transfer" className="inline-block px-5 py-2.5 rounded-btn bg-accent text-white font-bold text-xs">Go Scouting</a>
       </div>
     );
   }
@@ -202,7 +202,7 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
   return (
     <div className="space-y-2">
       {rows.map((r) => (
-        <div key={r.id} className="bg-surface-2 border border-border rounded-xl p-3">
+        <div key={r.id} className="bg-surface border border-border rounded-btn p-3">
           <div className="flex items-center gap-3">
             <Avatar name={r.name} />
             <div className="min-w-0 flex-1">
@@ -213,7 +213,7 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
           {r.note && <p className="text-[11px] text-text-secondary mt-2 italic">{r.note}</p>}
           <div className="flex gap-2 mt-3">
             <button type="button" disabled={busyId === r.playerId || sent.has(r.playerId)} onClick={() => offer(r.playerId)}
-              className="flex-1 py-2 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-50">
+              className="flex-1 py-2 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-50">
               {sent.has(r.playerId) ? "Offer sent" : busyId === r.playerId ? "Sending…" : "Send offer"}
             </button>
             <button type="button" onClick={() => remove(r.id)}
@@ -238,11 +238,11 @@ export default function MembersTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex bg-surface-2 border border-border rounded-lg p-0.5 gap-0.5">
+      <div className="flex bg-surface border border-border rounded-btn p-[3px] gap-[3px]">
         {([["squad", "Squad"], ["scout", "Scout"], ["watchlist", "Watchlist"]] as const).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setSub(k)}
-            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              sub === k ? "bg-accent text-black" : "text-text-secondary"}`}>
+            className={`flex-1 px-3 py-2 rounded-[9px] text-xs transition-colors ${
+              sub === k ? "bg-accent text-white font-bold" : "text-text-secondary font-semibold"}`}>
             {label}
           </button>
         ))}
@@ -253,11 +253,11 @@ export default function MembersTab({
       {sub === "scout" && (
         isCaptain ? (
           <div className="space-y-3">
-            <a href="/my-team/transfer" className="block bg-surface-2 border border-border rounded-2xl p-4">
+            <a href="/my-team/transfer" className="block bg-surface border border-border shadow-card rounded-card p-4">
               <p className="text-sm font-bold mb-0.5">Transfer Market</p>
               <p className="text-xs text-text-secondary">Search free agents and other teams, send offers, review join requests.</p>
             </a>
-            <a href="/search" className="block bg-surface-2 border border-border rounded-2xl p-4">
+            <a href="/search" className="block bg-surface border border-border shadow-card rounded-card p-4">
               <p className="text-sm font-bold mb-0.5">Search</p>
               <p className="text-xs text-text-secondary">Find a specific player or team by name.</p>
             </a>
@@ -266,7 +266,7 @@ export default function MembersTab({
           // Greyed, not hidden — the tab keeps its shape so the layout doesn't
           // shift for players, and they can see recruitment is a thing.
           <div className="space-y-3">
-            <div className="bg-surface-2 border border-border rounded-2xl p-4 opacity-40">
+            <div className="bg-surface border border-border shadow-card rounded-card p-4 opacity-40">
               <p className="text-sm font-bold mb-0.5">Transfer Market</p>
               <p className="text-xs text-text-secondary">Search free agents and other teams, send offers.</p>
             </div>

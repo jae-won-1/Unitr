@@ -79,22 +79,22 @@ export default function EnterTournamentPanel({
 
   if (confirmed) {
     return (
-      <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onJoined}>
-        <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl p-6 text-center" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onJoined}>
+        <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl p-6 text-center" onClick={(e) => e.stopPropagation()}>
           <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
           <p className="text-lg font-bold mb-1">You&apos;re in!</p>
           <p className="text-sm text-text-secondary mb-5">
             {myTeamName} has entered <span className="font-semibold text-text-primary">{t.title}</span>. £{(buyIn / 100).toFixed(2)} was taken from your team credit and paid to {t.organiserName}. Your squad can settle their share afterwards from Team Credits.
           </p>
           {transferFailed && (
-            <p className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2 mb-5 text-left">
+            <p className="text-xs text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2 mb-5 text-left">
               Your entry is confirmed and your credit was charged, but the payout to the venue didn&apos;t go through (likely a test-mode balance issue). It&apos;ll show as failed in the venue&apos;s reports.
             </p>
           )}
           <div className="flex flex-col gap-2">
-            <a href={`/play/tournament/${t.id}`} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">View schedule &amp; referees</a>
+            <a href={`/play/tournament/${t.id}`} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">View schedule &amp; referees</a>
             <button onClick={onJoined} className="w-full py-2.5 rounded-xl bg-surface border border-border text-sm font-semibold">Done</button>
           </div>
         </div>
@@ -103,16 +103,16 @@ export default function EnterTournamentPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <p className="font-bold">Enter Tournament</p>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
-        <div className="bg-surface-2 border border-border rounded-xl p-4 mb-4">
+        <div className="bg-surface border border-border rounded-btn p-4 mb-4">
           <p className="text-sm font-bold">{t.title}</p>
           <p className="text-xs text-text-secondary mt-0.5">{t.pitchName} · {fmtKickoff(t.matchDate, t.startTime)}</p>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
@@ -124,8 +124,8 @@ export default function EnterTournamentPanel({
           </div>
           {t.inviteDiscountPence > 0 && (
             <div className="flex items-center justify-between mt-1.5">
-              <span className="text-xs text-accent">Invitation discount</span>
-              <span className="text-xs font-semibold text-accent">−£{(t.inviteDiscountPence / 100).toFixed(2)}</span>
+              <span className="text-xs text-accent-ink">Invitation discount</span>
+              <span className="text-xs font-semibold text-accent-ink">−£{(t.inviteDiscountPence / 100).toFixed(2)}</span>
             </div>
           )}
           <div className="flex items-center justify-between mt-1.5">
@@ -139,10 +139,10 @@ export default function EnterTournamentPanel({
           each refill their share from the tournament page afterwards.
         </p>
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
         <button onClick={handleJoin} disabled={saving || !myTeamId}
-          className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+          className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
           {saving ? "Entering…" : `Pay £${(buyIn / 100).toFixed(2)} & Enter`}
         </button>
         {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}

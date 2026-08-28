@@ -36,7 +36,7 @@ function highlightMentions(text: string) {
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, m.index)}</span>);
-    parts.push(<span key={key++} className="text-blue-400 font-semibold">{m[0]}</span>);
+    parts.push(<span key={key++} className="text-blue-600 font-semibold">{m[0]}</span>);
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
@@ -117,11 +117,11 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
     <div className="space-y-4">
       <div className="relative">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="search" placeholder="Search teams or locations..." className="w-full bg-surface-2 border border-border rounded-xl pl-9 pr-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50" />
+        <input type="search" placeholder="Search teams or locations..." className="w-full bg-surface border border-border rounded-btn pl-9 pr-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50" />
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {["All", "Casual", "Competitive", "Semi-Pro"].map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filter === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{f}</button>
+          <button key={f} onClick={() => setFilter(f)} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filter === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{f}</button>
         ))}
       </div>
 
@@ -133,18 +133,18 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
       )}
 
       {filtered.map((team) => (
-        <div key={team.id} className="bg-surface-2 border border-border rounded-2xl p-4">
+        <div key={team.id} className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-bold text-accent">{team.name.split(" ").map((w: string) => w[0]).join("").slice(0,2)}</span>
+                <span className="text-sm font-bold text-accent-ink">{team.name.split(" ").map((w: string) => w[0]).join("").slice(0,2)}</span>
               </div>
               <div>
                 <p className="font-semibold">{team.name}</p>
                 <p className="text-xs text-text-secondary mt-0.5">{team.location}</p>
               </div>
             </div>
-            <span className={`text-xs font-medium px-2 py-1 rounded-lg flex-shrink-0 ${team.level === "Casual" ? "bg-blue-500/10 text-blue-400" : team.level === "Competitive" ? "bg-orange-500/10 text-orange-400" : "bg-purple-500/10 text-purple-400"}`}>{team.level}</span>
+            <span className={`text-xs font-medium px-2 py-1 rounded-lg flex-shrink-0 ${team.level === "Casual" ? "bg-blue-500/10 text-blue-600" : team.level === "Competitive" ? "bg-orange-500/10 text-orange-600" : "bg-purple-500/10 text-purple-600"}`}>{team.level}</span>
           </div>
           {team.description && <p className="text-xs text-text-secondary mb-3">{team.description}</p>}
           <div className="flex items-center gap-2 mb-4 text-xs text-text-secondary">
@@ -155,7 +155,7 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
             <button
               disabled={requested.has(team.id)}
               onClick={() => handleRequest(team.id)}
-              className="flex-1 py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-60"
             >
               {requested.has(team.id) ? "Request Sent" : "Request to Join"}
             </button>
@@ -172,13 +172,13 @@ function NewUserMyTeam() {
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3">
         <a href="/my-team/create"
-          className="bg-accent text-black rounded-2xl p-4 flex flex-col gap-2">
+          className="bg-accent text-white rounded-2xl p-4 flex flex-col gap-2">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <p className="text-sm font-bold">Register Your Team</p>
           <p className="text-xs font-normal opacity-70">Set up your team as captain</p>
         </a>
-        <div className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <div className="bg-surface border border-border shadow-card rounded-card p-4 flex flex-col gap-2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <p className="text-sm font-bold">Find a Team</p>
           <p className="text-xs text-text-secondary">Request to join below</p>
         </div>
@@ -218,13 +218,13 @@ function JoinRequests({ teamId }: { teamId: string }) {
     <section className="mb-5">
       <div className="flex items-center gap-2 mb-3">
         <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Join Requests</h3>
-        <span className="text-xs font-bold bg-accent text-black px-2 py-0.5 rounded-full">{requests.length}</span>
+        <span className="text-xs font-bold bg-accent text-white px-2 py-0.5 rounded-full">{requests.length}</span>
       </div>
       <div className="space-y-2">
         {requests.map((req) => (
-          <div key={req.id} className="bg-surface-2 border border-border rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div key={req.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-accent">
+              <span className="text-xs font-bold text-accent-ink">
                 {req.profiles?.full_name?.split(" ").map((w) => w[0]).join("").slice(0,2) ?? "?"}
               </span>
             </div>
@@ -236,7 +236,7 @@ function JoinRequests({ teamId }: { teamId: string }) {
               <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "rejected")}
                 className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">Decline</button>
               <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "approved")}
-                className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold disabled:opacity-40">Approve</button>
+                className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-40">Approve</button>
             </div>
           </div>
         ))}
@@ -249,24 +249,24 @@ function JoinRequests({ teamId }: { teamId: string }) {
 function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean }) {
   const initials = team.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4 mb-5">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-5">
       <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-bold text-accent">{initials}</span>
+        <div className="w-12 h-12 rounded-full bg-[#E7F8EC] border border-[#B7E8C6] flex items-center justify-center flex-shrink-0">
+          <span className="text-[15px] font-extrabold text-accent-ink">{initials}</span>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-bold truncate">{team.name}</p>
-          <p className="text-xs text-text-secondary truncate">
+          <p className="text-base font-extrabold truncate">{team.name}</p>
+          <p className="text-xs font-medium text-text-secondary truncate mt-0.5">
             {[team.location, team.level, team.format].filter(Boolean).join(" · ")}
           </p>
         </div>
       </div>
       {isCaptain && (
         <div className="flex gap-2 mt-3">
-          <a href="/my-team/team-profile" className="flex-1 py-2 rounded-lg border border-border text-xs font-semibold text-text-secondary text-center">
+          <a href="/my-team/team-profile" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
             Team Profile
           </a>
-          <a href="/my-team/announcement/create" className="flex-1 py-2 rounded-lg border border-border text-xs font-semibold text-text-secondary text-center">
+          <a href="/my-team/announcement/create" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
             Post Announcement
           </a>
         </div>
@@ -322,11 +322,11 @@ function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean })
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
         <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <p className="font-semibold">No team registered yet</p>
         <p className="text-sm text-text-secondary max-w-[240px]">Register your team on Unitr to start finding opponents and managing your squad.</p>
-        <a href="/my-team/create" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Register Your Team</a>
+        <a href="/my-team/create" className="px-6 py-3 rounded-btn bg-accent text-white font-bold text-sm">Register Your Team</a>
       </div>
     );
   }
@@ -342,12 +342,12 @@ function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean })
             aria-current={tab === t ? "page" : undefined}
             className="flex flex-col items-center gap-2 flex-1 min-w-[64px]">
             <span className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-              tab === t ? "bg-accent text-black" : "bg-surface-2 border border-border text-text-secondary"}`}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              tab === t ? "bg-accent text-white" : "bg-surface border border-border text-text-secondary"}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 {TAB_ICONS[t]}
               </svg>
             </span>
-            <p className={`text-[11px] font-semibold text-center leading-tight ${tab === t ? "" : "text-text-secondary"}`}>
+            <p className={`text-[11px] text-center leading-tight ${tab === t ? "font-bold text-text-primary" : "font-semibold text-text-secondary"}`}>
               {TAB_LABEL[t]}
             </p>
           </button>
@@ -399,11 +399,14 @@ function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "capta
   const timeAgo = diffMins < 1 ? "just now" : diffMins < 60 ? `${diffMins}m ago` : diffMins < 1440 ? `${Math.floor(diffMins / 60)}h ago` : `${Math.floor(diffMins / 1440)}d ago`;
 
   return (
-    <div className="bg-white rounded-2xl p-4 mb-4">
-      {announcement.title && <p className="text-sm font-bold text-black mb-1">{announcement.title}</p>}
-      <p className="text-sm text-black whitespace-pre-wrap mb-1">{highlightMentions(announcement.body)}</p>
-      <p className="text-[11px] text-black/60 mb-3">— {announcement.authorName} · {timeAgo}</p>
-      <a href="/my-team/announcements" className="flex items-center gap-1 text-xs text-black font-medium underline">
+    // Was a white callout standing out against the old near-black page. On the
+    // light background white alone no longer separates it, so it takes the
+    // rebrand's standard card treatment — border and shadow do the work.
+    <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-4">
+      {announcement.title && <p className="text-sm font-bold text-text-primary mb-1">{announcement.title}</p>}
+      <p className="text-sm text-text-primary whitespace-pre-wrap mb-1">{highlightMentions(announcement.body)}</p>
+      <p className="text-[11px] text-text-secondary mb-3">— {announcement.authorName} · {timeAgo}</p>
+      <a href="/my-team/announcements" className="flex items-center gap-1 text-xs text-accent-ink font-semibold underline">
         View previous announcements
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
@@ -422,7 +425,7 @@ export default function MyTeamPage() {
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
       <header className="mb-4">
-        <h1 className="text-2xl font-bold mb-0.5">
+        <h1 className="text-2xl font-extrabold mb-0.5">
           {role === "new_user" ? "Browse Teams" : "My Team"}
         </h1>
         <p className="text-text-secondary text-sm">
@@ -437,12 +440,12 @@ export default function MyTeamPage() {
       {role === "new_user" && !user && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </div>
           <p className="text-sm font-semibold">No profile yet</p>
           <p className="text-xs text-text-secondary text-center max-w-[220px]">Create an account to build your player profile and track your stats.</p>
           <div className="flex gap-3">
-            <a href="/register" className="px-6 py-3 rounded-xl bg-accent text-black font-bold text-sm">Create Account</a>
+            <a href="/register" className="px-6 py-3 rounded-btn bg-accent text-white font-bold text-sm">Create Account</a>
             <a href="/login" className="px-6 py-3 rounded-xl border border-border text-text-primary font-bold text-sm">Sign In</a>
           </div>
         </div>

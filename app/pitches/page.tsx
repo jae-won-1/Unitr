@@ -78,7 +78,7 @@ function generateSlots(openTime: string, closeTime: string): string[] {
 function Stars({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="text-xs font-bold text-yellow-400">{Number(rating).toFixed(1)}</span>
+      <span className="text-xs font-bold text-yellow-600">{Number(rating).toFixed(1)}</span>
       {[1,2,3,4,5].map((i) => (
         <svg key={i} width="10" height="10" viewBox="0 0 24 24" fill={i <= Math.round(rating) ? "#FACC15" : "none"} stroke="#FACC15" strokeWidth="2">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -150,8 +150,8 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
   }, [selectedDate, pitch.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl overflow-y-auto max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
         <div className="px-5 pb-6">
           <div className="flex items-start justify-between mb-4">
@@ -160,7 +160,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-lg font-bold text-accent">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
+              <p className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-1">✕ close</button>
             </div>
           </div>
@@ -170,9 +170,9 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
             {days.map((d) => (
               <button key={d.key} onClick={() => setSelectedDate(d.key)}
                 className={`flex-shrink-0 w-16 h-20 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-colors ${selectedDate === d.key ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
-                <span className={`text-xs font-medium ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.day}</span>
-                <span className={`text-2xl font-bold leading-none ${selectedDate === d.key ? "text-accent" : "text-text-primary"}`}>{d.date}</span>
-                <span className={`text-xs font-medium ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.month}</span>
+                <span className={`text-xs font-medium ${selectedDate === d.key ? "text-accent-ink" : "text-text-secondary"}`}>{d.day}</span>
+                <span className={`text-2xl font-extrabold leading-none ${selectedDate === d.key ? "text-accent-ink" : "text-text-primary"}`}>{d.date}</span>
+                <span className={`text-xs font-medium ${selectedDate === d.key ? "text-accent-ink" : "text-text-secondary"}`}>{d.month}</span>
               </button>
             ))}
           </div>
@@ -184,33 +184,33 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
             </div>
           ) : availableSlots.length === 0 ? (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5 text-center">
-              <p className="text-xs text-red-400">No available slots on this date</p>
+              <p className="text-xs text-red-600">No available slots on this date</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2 mb-5">
               {availableSlots.map((t) => (
                 <button key={t} onClick={() => setSelectedTime(t)}
-                  className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${selectedTime === t ? "border-accent bg-accent/10 text-accent" : "border-border text-text-secondary"}`}>
+                  className={`py-2.5 rounded-xl border text-sm font-medium transition-colors ${selectedTime === t ? "border-accent bg-accent/10 text-accent-ink" : "border-border text-text-secondary"}`}>
                   {t}
                 </button>
               ))}
             </div>
           )}
 
-          <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5">
+          <div className="bg-surface border border-border rounded-btn p-3 mb-5">
             <p className="text-xs font-semibold mb-1">Payment breakdown</p>
             <div className="space-y-1 text-xs text-text-secondary">
               <div className="flex justify-between"><span>Pitch hire (1hr)</span><span className="font-semibold text-text-primary">£{pitch.price_per_hour}</span></div>
               <div className="flex justify-between"><span>Split across 22 players (both teams)</span><span className="font-semibold text-text-primary">£{perPlayer}/player</span></div>
               <div className="flex justify-between"><span>Unitr fee (5%)</span><span className="font-semibold text-text-primary">£{(Number(perPlayer) * 0.05).toFixed(2)}/player</span></div>
-              <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold text-text-primary">Total per player</span><span className="font-bold text-accent">£{(Number(perPlayer) * 1.05).toFixed(2)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold text-text-primary">Total per player</span><span className="font-bold text-accent-ink">£{(Number(perPlayer) * 1.05).toFixed(2)}</span></div>
             </div>
           </div>
 
           <button
             disabled={!selectedDate || !selectedTime}
             onClick={() => selectedDate && selectedTime && onBook(selectedDate, selectedTime)}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Confirm Booking
           </button>
@@ -224,20 +224,20 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
 function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: string; time: string; onDone: () => void }) {
   const perPlayer = (pitch.price_per_hour / 22 * 1.05).toFixed(2);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim px-4">
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
         <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <p className="text-lg font-bold mb-1">Pitch Booked!</p>
         <p className="text-sm font-semibold mb-0.5">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-1">{pitch.address}</p>
-        <p className="text-xs text-accent font-medium mb-4">{date} · {time}</p>
-        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-text-secondary">Per player (inc. 5% fee)</span><span className="font-bold text-accent">£{perPlayer}</span></div>
+        <p className="text-xs text-accent-ink font-medium mb-4">{date} · {time}</p>
+        <div className="bg-surface border border-border rounded-btn p-3 mb-5 text-left space-y-1">
+          <div className="flex justify-between text-xs"><span className="text-text-secondary">Per player (inc. 5% fee)</span><span className="font-bold text-accent-ink">£{perPlayer}</span></div>
           <p className="text-[10px] text-text-secondary">Charged automatically 3 hours after match confirmation via Stripe.</p>
         </div>
-        <button onClick={onDone} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+        <button onClick={onDone} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>
       </div>
     </div>
   );
@@ -344,8 +344,8 @@ function PitchAvailabilityPanel({
   const confirmedCount = postingSlots.filter(s => slotOverrides[normalizeSlotDate(s.matchDate)] !== undefined).length;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-scrim px-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
         <div className="overflow-y-auto flex-1 px-5 pt-5 pb-3">
 
           {/* Header */}
@@ -355,7 +355,7 @@ function PitchAvailabilityPanel({
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-base font-bold text-accent">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
+              <p className="text-base font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-0.5">✕ close</button>
             </div>
           </div>
@@ -377,9 +377,9 @@ function PitchAvailabilityPanel({
                       className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                         selectedDate === isoDate ? "ring-1 ring-white/20" : ""
                       } ${
-                        confirmed ? "bg-accent/20 text-accent border-accent/40" :
-                        st === "available" ? "bg-accent/10 text-accent border-accent/20" :
-                        st === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                        confirmed ? "bg-accent/20 text-accent-ink border-accent" :
+                        st === "available" ? "bg-accent/10 text-accent-ink border-accent/20" :
+                        st === "booked" ? "bg-red-500/10 text-red-600 border-red-500/20" :
                         "bg-surface text-text-secondary border-border"
                       }`}>
                       {confirmed && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
@@ -392,7 +392,7 @@ function PitchAvailabilityPanel({
                 })}
               </div>
               {allPostingSlotsUnavailable && (
-                <p className="text-[11px] text-yellow-400 mt-1.5 font-medium">None of your posting times are free — browse below for an alternative slot.</p>
+                <p className="text-[11px] text-yellow-600 mt-1.5 font-medium">None of your posting times are free — browse below for an alternative slot.</p>
               )}
             </div>
           )}
@@ -405,9 +405,9 @@ function PitchAvailabilityPanel({
                 className={`flex-shrink-0 w-14 rounded-xl border flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
                   selectedDate === d.key ? "border-accent bg-accent/10" : "border-border bg-surface-2"
                 }`}>
-                <span className={`text-[10px] font-medium ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.day}</span>
-                <span className={`text-xl font-bold leading-none ${selectedDate === d.key ? "text-accent" : "text-text-primary"}`}>{d.date}</span>
-                <span className={`text-[10px] ${selectedDate === d.key ? "text-accent" : "text-text-secondary"}`}>{d.month}</span>
+                <span className={`text-[10px] font-medium ${selectedDate === d.key ? "text-accent-ink" : "text-text-secondary"}`}>{d.day}</span>
+                <span className={`text-xl font-extrabold leading-none ${selectedDate === d.key ? "text-accent-ink" : "text-text-primary"}`}>{d.date}</span>
+                <span className={`text-[10px] ${selectedDate === d.key ? "text-accent-ink" : "text-text-secondary"}`}>{d.month}</span>
                 {d.isPostingDate && (
                   <div className={`w-1.5 h-1.5 rounded-full ${selectedDate === d.key ? "bg-accent" : "bg-accent/50"}`} />
                 )}
@@ -432,16 +432,16 @@ function PitchAvailabilityPanel({
                       onClick={() => setSelectedTime(isSelected ? null : time)}
                       className={`py-2.5 rounded-lg text-[13px] font-medium transition-colors relative ${
                         isSelected
-                          ? "bg-accent text-black"
+                          ? "bg-accent text-white"
                           : status === "available"
                             ? isPosting
-                              ? "border border-accent/70 bg-accent/5 text-accent"
+                              ? "border border-accent/70 bg-accent/5 text-accent-ink"
                               : "border border-white/20 text-text-primary"
                             : "line-through text-text-secondary/30 cursor-not-allowed"
                       }`}>
                       {time}
                       {isPosting && !isSelected && status === "available" && (
-                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent border border-[#141414]" />
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent border border-[#FFFFFF]" />
                       )}
                     </button>
                   );
@@ -467,17 +467,17 @@ function PitchAvailabilityPanel({
           {/* Changed-time note */}
           {selectedTime && selectedTime !== postingTime && postingSlotForDate && (
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-3">
-              <p className="text-xs text-yellow-400 font-semibold mb-0.5">Different time for this pitch?</p>
+              <p className="text-xs text-yellow-600 font-semibold mb-0.5">Different time for this pitch?</p>
               <p className="text-[11px] text-text-secondary">
-                Booking at <span className="line-through text-red-400 font-medium">{postingSlotForDate.time}</span>{" → "}
-                <span className="text-accent font-semibold">{selectedTime}</span> on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.
+                Booking at <span className="line-through text-red-600 font-medium">{postingSlotForDate.time}</span>{" → "}
+                <span className="text-accent-ink font-semibold">{selectedTime}</span> on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}.
               </p>
             </div>
           )}
 
           {/* No posting slot for this date — info */}
           {selectedTime && !postingSlotForDate && (
-            <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 mb-3">
+            <div className="bg-surface border border-border rounded-btn px-4 py-3 mb-3">
               <p className="text-[11px] text-text-secondary">
                 <span className="text-text-primary font-medium">{selectedTime}</span> isn&apos;t one of your posting dates — update your schedule to include it.
               </p>
@@ -504,7 +504,7 @@ function PitchAvailabilityPanel({
                 onReplaceSlot(selectedDate, selectedTime!);
                 onClose();
               }}
-              className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">
+              className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm mb-2">
               {slotOverrides[selectedDate] !== undefined
                 ? `Update ${new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" })} to ${selectedTime} ✓`
                 : `Confirm ${new Date(selectedDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short" })} at ${selectedTime}`}
@@ -516,7 +516,7 @@ function PitchAvailabilityPanel({
             {isPicked && (
               <button
                 onClick={onClose}
-                className="flex-1 py-3 rounded-xl bg-accent/20 text-accent border border-accent/40 font-bold text-sm">
+                className="flex-1 py-3 rounded-btn bg-accent/20 text-accent-ink border border-accent font-bold text-sm">
                 ✓ {rankLabels[pickIndex]} · Done
               </button>
             )}
@@ -525,7 +525,7 @@ function PitchAvailabilityPanel({
             {isPicked && (
               <button
                 onClick={onToggle}
-                className="flex-1 py-3 rounded-xl font-bold text-sm transition-colors bg-red-500/10 text-red-400 border border-red-500/20">
+                className="flex-1 py-3 rounded-xl font-bold text-sm transition-colors bg-red-500/10 text-red-600 border border-red-500/20">
                 Remove
               </button>
             )}
@@ -744,18 +744,18 @@ function PitchesContent() {
       {/* Header */}
       <div className="flex items-center gap-3 px-4 mb-4">
         <a href={selectMode ? "/play/create" : "/"}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Find a Pitch</h1>
+          <h1 className="text-xl font-extrabold">Find a Pitch</h1>
           <p className="text-xs text-text-secondary">
             {selectMode ? "Rank up to 3 pitches — tap to select" : "Browse and book a venue"}
           </p>
         </div>
-        <div className="flex bg-surface-2 border border-border rounded-xl p-1">
+        <div className="flex bg-surface border border-border rounded-btn p-1">
           {(["map", "list"] as const).map((v) => (
             <button key={v} onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${view === v ? "bg-accent text-black" : "text-text-secondary"}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${view === v ? "bg-accent text-white" : "text-text-secondary"}`}>
               {v}
             </button>
           ))}
@@ -764,7 +764,7 @@ function PitchesContent() {
 
       {selectMode && (
         <div className="mx-4 mb-3 bg-accent/10 border border-accent/30 rounded-xl px-4 py-2.5">
-          <p className="text-xs text-accent font-medium">Tap to rank up to 3 pitches. First tap = preferred, next = backup.</p>
+          <p className="text-xs text-accent-ink font-medium">Tap to rank up to 3 pitches. First tap = preferred, next = backup.</p>
         </div>
       )}
 
@@ -792,7 +792,7 @@ function PitchesContent() {
             <div className="flex gap-2 overflow-x-auto pb-1 px-4 mb-3">
               {formats.map((f) => (
                 <button key={f} onClick={() => setFilterFormat(f)}
-                  className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filterFormat === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                  className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filterFormat === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {f}
                 </button>
               ))}
@@ -809,7 +809,7 @@ function PitchesContent() {
                 return (
                   <div key={pitch.id} className={`bg-surface-2 border rounded-2xl overflow-hidden relative transition-all ${isPicked ? "border-accent/60" : "border-border"}`}>
                     {isPicked && (
-                      <div className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full bg-accent text-black flex items-center justify-center font-bold text-sm shadow">
+                      <div className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center font-bold text-sm shadow">
                         {pickIndex + 1}
                       </div>
                     )}
@@ -818,7 +818,7 @@ function PitchesContent() {
                       <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,.1) 20px,rgba(255,255,255,.1) 21px),repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(255,255,255,.1) 40px,rgba(255,255,255,.1) 41px)" }} />
                       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M2 12h20M12 2v20"/></svg>
                       {pitch.is_verified && (
-                        <div className="absolute top-2 left-2 bg-accent/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <div className="absolute top-2 left-2 bg-accent/80 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polyline points="20 6 9 17 4 12"/></svg>
                           Verified
                         </div>
@@ -828,7 +828,7 @@ function PitchesContent() {
                       <div className="flex items-start justify-between mb-1">
                         <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                         <div className="text-right flex-shrink-0">
-                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-400" : "text-accent"}`}>£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}</span>
+                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-600" : "text-accent-ink"}`}>£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}</span>
                           <p className="text-[10px] text-text-secondary">per hour</p>
                         </div>
                       </div>
@@ -844,13 +844,13 @@ function PitchesContent() {
                       <div className="flex flex-wrap gap-2 mb-3">
                         {pitch.amenities.map((a) => (
                           <span key={a} className="text-[10px] text-text-secondary flex items-center gap-0.5">
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                             {a}
                           </span>
                         ))}
                       </div>
                       <p className="text-xs text-text-secondary mb-3">
-                        ≈ <span className="font-semibold text-accent">£{(pitch.price_per_hour / 22 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
+                        ≈ <span className="font-semibold text-accent-ink">£{(pitch.price_per_hour / 22 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
                       </p>
 
                       {/* Slot availability for captain's posting dates */}
@@ -869,8 +869,8 @@ function PitchesContent() {
                                 const overridden = pitchOverrides[pitch.id]?.[slot.matchDate] !== undefined;
                                 return (
                                   <span key={i} className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium border ${
-                                    status === "available" ? "bg-accent/10 text-accent border-accent/20" :
-                                    status === "booked" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                                    status === "available" ? "bg-accent/10 text-accent-ink border-accent/20" :
+                                    status === "booked" ? "bg-red-500/10 text-red-600 border-red-500/20" :
                                     "bg-surface text-text-secondary border-border opacity-60"
                                   }`}>
                                     {status === "available" && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
@@ -883,7 +883,7 @@ function PitchesContent() {
                             </div>
                           )}
                           {!checkingSlots && isAllSlotsTaken(pitch) && (
-                            <p className="text-[10px] text-red-400 mt-1.5">All your slots are taken at this pitch.</p>
+                            <p className="text-[10px] text-red-600 mt-1.5">All your slots are taken at this pitch.</p>
                           )}
                         </div>
                       )}
@@ -893,25 +893,25 @@ function PitchesContent() {
                           {!isAffordable(pitch) && (
                             <div className="flex items-center gap-1.5 mb-2">
                               <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
-                                <span className="text-[9px] font-bold text-red-400">i</span>
+                                <span className="text-[9px] font-bold text-red-600">i</span>
                               </div>
-                              <span className="text-[11px] text-red-400">Insufficient team credits to book this pitch</span>
+                              <span className="text-[11px] text-red-600">Insufficient team credits to book this pitch</span>
                             </div>
                           )}
                           {!isEnoughPlayers(pitch) && (
                             <div className="flex items-center gap-1.5 mb-2">
                               <div className="w-4 h-4 rounded-full border border-red-400 flex items-center justify-center flex-shrink-0">
-                                <span className="text-[9px] font-bold text-red-400">i</span>
+                                <span className="text-[9px] font-bold text-red-600">i</span>
                               </div>
-                              <span className="text-[11px] text-red-400">Not enough available players for this pitch size</span>
+                              <span className="text-[11px] text-red-600">Not enough available players for this pitch size</span>
                             </div>
                           )}
                           <button
                             onClick={() => setDetailPitch(pitch)}
                             className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors ${
-                              isPicked ? "bg-accent/20 text-accent border border-accent/40" :
-                              isAllSlotsTaken(pitch) || !isAffordable(pitch) || !isEnoughPlayers(pitch) ? "bg-red-500/10 text-red-400 border border-red-500/20" :
-                              "bg-accent text-black"
+                              isPicked ? "bg-accent/20 text-accent-ink border border-accent" :
+                              isAllSlotsTaken(pitch) || !isAffordable(pitch) || !isEnoughPlayers(pitch) ? "bg-red-500/10 text-red-600 border border-red-500/20" :
+                              "bg-accent text-white"
                             }`}>
                             {isPicked
                               ? `✓ ${rankLabels[pickIndex]} · View →`
@@ -924,7 +924,7 @@ function PitchesContent() {
                         </>
                       ) : (
                         <button onClick={() => { setSelectedPitch(pitch); setShowBooking(true); }}
-                          className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">Book This Pitch</button>
+                          className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Book This Pitch</button>
                       )}
                     </div>
                   </div>
@@ -935,7 +935,7 @@ function PitchesContent() {
               <a href="/pitches/register" className="block border border-dashed border-border rounded-2xl p-5 text-center">
                 <p className="text-sm font-semibold mb-1">Own a pitch?</p>
                 <p className="text-xs text-text-secondary mb-2">Register your venue on Unitr and get bookings from local teams.</p>
-                <span className="text-xs text-accent font-medium">Register your pitch →</span>
+                <span className="text-xs text-accent-ink font-medium">Register your pitch →</span>
               </a>
             </div>
           )}
@@ -951,7 +951,7 @@ function PitchesContent() {
             <div className="flex items-center gap-2 mb-2 overflow-x-auto">
               {pickedPitches.map((p, i) => (
                 <div key={p.id} className="flex items-center gap-1.5 bg-accent/10 border border-accent/30 rounded-full pl-1.5 pr-3 py-1 flex-shrink-0">
-                  <div className="w-5 h-5 rounded-full bg-accent text-black flex items-center justify-center text-[10px] font-bold">{i + 1}</div>
+                  <div className="w-5 h-5 rounded-full bg-accent text-white flex items-center justify-center text-[10px] font-bold">{i + 1}</div>
                   <span className="text-xs font-medium truncate max-w-[100px]">{p.name.split(" ")[0]}</span>
                   <button onClick={() => togglePitch(p)} className="text-text-secondary ml-0.5 text-xs">✕</button>
                 </div>
@@ -961,7 +961,7 @@ function PitchesContent() {
           <button
             disabled={pickedPitches.length === 0}
             onClick={confirmSelection}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {pickedPitches.length === 0 ? "Select at least 1 pitch" : `Confirm ${pickedPitches.length} Pitch${pickedPitches.length > 1 ? "es" : ""} →`}
           </button>

@@ -202,28 +202,28 @@ export default function CreateTournamentPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-5">
         <button onClick={() => router.back()}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
         </button>
         <div className="flex-1">
-          <h1 className="text-xl font-bold">Host a Tournament</h1>
+          <h1 className="text-xl font-extrabold">Host a Tournament</h1>
           <p className="text-xs text-text-secondary mt-0.5">Book a pitch block and invite teams to buy in</p>
         </div>
       </div>
 
       {/* Game type: normal match vs tournament — Match goes back to the ranked-pitch flow */}
-      <div className="flex bg-surface-2 border border-border rounded-xl p-1 mb-5">
+      <div className="flex bg-surface border border-border rounded-btn p-1 mb-5">
         <button type="button" onClick={() => router.push("/play/create")}
           className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors text-text-secondary">
           Match
         </button>
         <button type="button"
-          className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-black">
+          className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors bg-accent text-white">
           Tournament
         </button>
       </div>
 
       {team === null ? (
-        <div className="bg-surface-2 border border-border rounded-2xl px-4 py-10 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card px-4 py-10 text-center">
           <p className="text-sm font-semibold mb-1">Captains only</p>
           <p className="text-xs text-text-secondary">You need to be a team captain to host a tournament.</p>
         </div>
@@ -232,15 +232,15 @@ export default function CreateTournamentPage() {
           {/* Credit strip */}
           <div className="bg-accent/5 border border-accent/20 rounded-xl px-4 py-3 flex items-center justify-between">
             <span className="text-xs text-text-secondary">Team credit available</span>
-            <span className="text-sm font-bold text-accent">{creditPence === null ? "…" : `£${(creditPence / 100).toFixed(2)}`}</span>
+            <span className="text-sm font-bold text-accent-ink">{creditPence === null ? "…" : `£${(creditPence / 100).toFixed(2)}`}</span>
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-400">{error}</p></div>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-600">{error}</p></div>
           )}
 
           {/* Details */}
-          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-4">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium">Tournament title</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Sunday 5s Cup"
@@ -282,18 +282,18 @@ export default function CreateTournamentPage() {
           </section>
 
           {/* Pitch + slot */}
-          <section className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-4">
+          <section className="bg-surface border border-border shadow-card rounded-card p-4 flex flex-col gap-4">
             <p className="text-sm font-semibold">Pitch & slot</p>
             {pitch && date && startTime ? (
               <div className="flex items-center gap-3 bg-background border border-border rounded-xl px-3 py-2.5">
                 <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{pitch.name}</p>
                   <p className="text-[11px] text-text-secondary">{fmtDate(date)} · {startTime}–{endTime} · £{pitch.price_per_hour}/hr</p>
                 </div>
-                <button type="button" onClick={() => setShowPicker(true)} className="text-xs text-accent font-semibold flex-shrink-0">Change</button>
+                <button type="button" onClick={() => setShowPicker(true)} className="text-xs text-accent-ink font-semibold flex-shrink-0">Change</button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowPicker(true)}
@@ -307,7 +307,7 @@ export default function CreateTournamentPage() {
               <div className="flex gap-2 flex-wrap">
                 {[2, 3, 4, 5, 6].map((h) => (
                   <button key={h} type="button" onClick={() => setHours(h)}
-                    className={`flex-1 min-w-[56px] py-2 rounded-xl border text-sm font-bold transition-colors ${hours === h ? "bg-accent text-black border-accent" : "bg-background border-border text-text-primary"}`}>
+                    className={`flex-1 min-w-[56px] py-2 rounded-xl border text-sm font-bold transition-colors ${hours === h ? "bg-accent text-white border-accent" : "bg-background border-border text-text-primary"}`}>
                     {h}h
                   </button>
                 ))}
@@ -318,10 +318,10 @@ export default function CreateTournamentPage() {
 
           {/* Cost summary */}
           {pitch && (
-            <section className="bg-surface-2 border border-border rounded-2xl p-4 text-sm space-y-1.5">
+            <section className="bg-surface border border-border shadow-card rounded-card p-4 text-sm space-y-1.5">
               <div className="flex justify-between text-text-secondary"><span>Pitch hire ({hours}h × £{pitch.price_per_hour})</span><span className="font-semibold text-text-primary">£{(pitchFeePence / 100).toFixed(2)}</span></div>
               <div className="flex justify-between text-text-secondary"><span>Unitr fee (5%)</span><span className="font-semibold text-text-primary">£{(unitrFeePence / 100).toFixed(2)}</span></div>
-              <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Paid now from team credit</span><span className="font-bold text-accent">£{(totalPence / 100).toFixed(2)}</span></div>
+              <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Paid now from team credit</span><span className="font-bold text-accent-ink">£{(totalPence / 100).toFixed(2)}</span></div>
               <p className="text-[11px] text-text-secondary pt-1">Each of the other {Math.max(0, Number(maxTeams) - 1)} teams pays £{Number(buyIn || 0).toFixed(2)} to join — reimbursed straight to your team credit.</p>
             </section>
           )}
@@ -329,7 +329,7 @@ export default function CreateTournamentPage() {
           <div className="flex gap-3 pt-1">
             <button onClick={() => router.back()} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
             <button onClick={handleCreate} disabled={saving}
-              className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {saving ? (
                 <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
               ) : totalPence > 0 ? `Book & Host — £${(totalPence / 100).toFixed(2)}` : "Book & Host Tournament"}
@@ -340,9 +340,9 @@ export default function CreateTournamentPage() {
 
       {/* Pick a pitch & start time using the same Book tab discovery UI */}
       {showPicker && (
-        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60"
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-scrim"
           onClick={() => setShowPicker(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 pt-4 pb-1">
               <div>
@@ -350,7 +350,7 @@ export default function CreateTournamentPage() {
                 <p className="text-[11px] text-text-secondary">Pick a start slot — you&apos;ll book {hours} consecutive hours</p>
               </div>
               <button onClick={() => setShowPicker(false)} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <BookPitchPanel

@@ -24,7 +24,7 @@ function highlightMentions(text: string) {
   let key = 0;
   while ((m = re.exec(text)) !== null) {
     if (m.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, m.index)}</span>);
-    parts.push(<span key={key++} className="text-blue-400 font-semibold">{m[0]}</span>);
+    parts.push(<span key={key++} className="text-blue-600 font-semibold">{m[0]}</span>);
     lastIndex = m.index + m[0].length;
   }
   if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
@@ -73,10 +73,10 @@ export default function TeamAnnouncementsPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <div className="flex items-center gap-3 mb-6">
         <a href="/my-team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Team Announcements</h1>
+          <h1 className="text-xl font-extrabold">Team Announcements</h1>
           <p className="text-xs text-text-secondary">All past posts from your captain</p>
         </div>
       </div>
@@ -86,7 +86,7 @@ export default function TeamAnnouncementsPage() {
       ) : announcements.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
           <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
           <p className="font-semibold">No announcements yet</p>
           <p className="text-sm text-text-secondary max-w-[240px]">Team posts from your captain will show up here.</p>
@@ -94,9 +94,9 @@ export default function TeamAnnouncementsPage() {
       ) : (
         <div className="space-y-3">
           {announcements.map((a) => (
-            <div key={a.id} className="bg-surface-2 border border-border rounded-2xl p-4">
+            <div key={a.id} className="bg-surface border border-border shadow-card rounded-card p-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-accent">{a.authorName}</p>
+                <p className="text-xs font-semibold text-accent-ink">{a.authorName}</p>
                 <span className="text-[10px] text-text-secondary flex-shrink-0">{timeAgo(a.created_at)}</span>
               </div>
               {a.title && <p className="text-sm font-bold mb-1">{a.title}</p>}

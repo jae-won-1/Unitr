@@ -45,7 +45,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
         >
           {needsAnswer && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-orange-400" />}
           <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${needsAnswer ? "bg-orange-500/20" : "bg-accent/10 border border-accent/30"}`}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={needsAnswer ? "#FB923C" : "#00E676"} strokeWidth="2" strokeLinecap="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={needsAnswer ? "#FB923C" : "#0E7A3C"} strokeWidth="2" strokeLinecap="round">
               <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
             </svg>
           </div>
@@ -73,12 +73,12 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
         >
           {owedPence > 0 && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-red-400" />}
           <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${owedPence > 0 ? "bg-red-500/20" : "bg-accent/10 border border-accent/30"}`}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={owedPence > 0 ? "#F87171" : "#00E676"} strokeWidth="2" strokeLinecap="round">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={owedPence > 0 ? "#F87171" : "#0E7A3C"} strokeWidth="2" strokeLinecap="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
             </svg>
           </div>
           <p className="text-sm font-bold leading-tight">Top Up Team Credit</p>
-          <p className={`text-[11px] mt-1 leading-tight ${owedPence > 0 ? "text-red-400 font-semibold" : "text-text-secondary"}`}>
+          <p className={`text-[11px] mt-1 leading-tight ${owedPence > 0 ? "text-red-600 font-semibold" : "text-text-secondary"}`}>
             {owedPence > 0
               ? `You owe £${(owedPence / 100).toFixed(2)}`
               : balancePence === null ? "Loading…" : `Team balance £${(balancePence / 100).toFixed(2)}`}

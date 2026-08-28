@@ -20,8 +20,8 @@ const navItems: NavItem[] = [
         width="24"
         height="24"
         viewBox="0 0 24 24"
-        fill={active ? "#00E676" : "none"}
-        stroke={active ? "#00E676" : "#9E9E9E"}
+        fill={active ? "#0E7A3C" : "none"}
+        stroke={active ? "#0E7A3C" : "#5A6478"}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -40,7 +40,7 @@ const navItems: NavItem[] = [
         height="24"
         viewBox="0 0 24 24"
         fill="none"
-        stroke={active ? "#00E676" : "#9E9E9E"}
+        stroke={active ? "#0E7A3C" : "#5A6478"}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -59,7 +59,7 @@ const navItems: NavItem[] = [
         height="24"
         viewBox="0 0 24 24"
         fill="none"
-        stroke={active ? "#00E676" : "#9E9E9E"}
+        stroke={active ? "#0E7A3C" : "#5A6478"}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -109,8 +109,8 @@ export default function BottomNav() {
               >
                 {item.icon(isActive)}
                 <span
-                  className="text-[10px] font-medium"
-                  style={{ color: isActive ? "#00E676" : "#9E9E9E" }}
+                  className={`text-[10px] ${isActive ? "font-bold" : "font-semibold"}`}
+                  style={{ color: isActive ? "#0E7A3C" : "#5A6478" }}
                 >
                   {item.label}
                 </span>

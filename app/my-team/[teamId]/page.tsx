@@ -100,20 +100,20 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
             // eslint-disable-next-line @next/next/no-img-element
             <img src={team.photo_url} alt={team.name} className="w-full h-full object-cover" />
           ) : (
-            <span className="text-xl font-bold text-accent">{initials}</span>
+            <span className="text-xl font-extrabold text-accent-ink">{initials}</span>
           )}
         </div>
-        <h1 className="text-xl font-bold">{team.name}</h1>
+        <h1 className="text-xl font-extrabold">{team.name}</h1>
         <p className="text-text-secondary text-sm mt-0.5">{team.location}</p>
         <div className="flex items-center gap-2 mt-2">
           <span className={`text-xs font-medium px-2 py-0.5 rounded-lg ${
-            team.level === "Casual" ? "bg-blue-500/10 text-blue-400"
-            : team.level === "Competitive" ? "bg-orange-500/10 text-orange-400"
-            : "bg-purple-500/10 text-purple-400"
+            team.level === "Casual" ? "bg-blue-500/10 text-blue-600"
+            : team.level === "Competitive" ? "bg-orange-500/10 text-orange-600"
+            : "bg-purple-500/10 text-purple-600"
           }`}>{team.level}</span>
           <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">{team.format}</span>
           {team.play_style && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-accent/10 text-accent">{team.play_style}</span>
+            <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-accent/10 text-accent-ink">{team.play_style}</span>
           )}
         </div>
       </section>
@@ -142,7 +142,7 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         ) : (
           <div className="space-y-2">
             {members.map((p) => (
-              <div key={p.player_id} className="bg-surface-2 border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+              <div key={p.player_id} className="bg-surface border border-border rounded-btn px-4 py-3 flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
                   <span className="text-xs font-semibold text-text-secondary">{p.full_name.split(" ").map((w) => w[0]).join("").slice(0, 2)}</span>
                 </div>
@@ -150,7 +150,7 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-medium">{p.full_name}</p>
                     {p.isCaptain && (
-                      <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-1.5 py-0.5 rounded-full">Captain</span>
+                      <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-1.5 py-0.5 rounded-full">Captain</span>
                     )}
                   </div>
                   {p.position && <p className="text-xs text-text-secondary">{p.position}</p>}
@@ -166,7 +166,7 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         <button
           onClick={handleRequest}
           disabled={requested || !user}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-60"
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-60"
         >
           {requested ? "Request Sent" : `Request to Join ${team.name}`}
         </button>

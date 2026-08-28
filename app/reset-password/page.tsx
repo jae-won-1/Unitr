@@ -52,7 +52,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex flex-col min-h-screen px-4 pt-12 items-center justify-center gap-5 text-center">
         <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
@@ -69,18 +69,18 @@ export default function ResetPasswordPage() {
       <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
         <header className="flex items-center gap-3 mb-8">
           <a href="/login" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>
           </a>
-          <h1 className="text-xl font-bold">Set New Password</h1>
+          <h1 className="text-xl font-extrabold">Set New Password</h1>
         </header>
         <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
           <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
           <p className="text-sm text-text-secondary">Verifying reset link…</p>
           <p className="text-xs text-text-secondary max-w-[240px]">
             If this takes too long, the link may have expired.{" "}
-            <a href="/forgot-password" className="text-accent font-medium">Request a new one</a>.
+            <a href="/forgot-password" className="text-accent-ink font-medium">Request a new one</a>.
           </p>
         </div>
       </div>
@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
     <div className="flex flex-col min-h-screen px-4 pt-12 pb-8">
       <header className="flex items-center gap-3 mb-8">
         <div className="w-9 h-9" />
-        <h1 className="text-xl font-bold">Set New Password</h1>
+        <h1 className="text-xl font-extrabold">Set New Password</h1>
       </header>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -99,7 +99,7 @@ export default function ResetPasswordPage() {
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 6 characters"
             required
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
@@ -123,14 +123,14 @@ export default function ResetPasswordPage() {
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Repeat your new password"
             required
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading || !password || !confirm}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>

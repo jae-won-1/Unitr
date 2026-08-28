@@ -61,9 +61,9 @@ type ResultPlayer = { player_id: string; name: string; started: boolean; subbed_
 const formations = FORMATIONS;
 
 function ConfirmBadge({ status }: { status: string }) {
-  if (status === "confirmed") return <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">In</span>;
-  if (status === "declined") return <span className="text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">Out</span>;
-  return <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>;
+  if (status === "confirmed") return <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/20 px-2 py-0.5 rounded-full">In</span>;
+  if (status === "declined") return <span className="text-[10px] font-semibold bg-red-500/10 text-red-600 border border-red-500/20 px-2 py-0.5 rounded-full">Out</span>;
+  return <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>;
 }
 
 // One team's replies, headed by whose they are. The two squads used to be one
@@ -94,7 +94,7 @@ function AttendanceGroup({ title, subtitle, rows, highlight = false }: {
               </div>
               <p className="flex-1 text-sm truncate">{c.full_name}</p>
               {c.is_ringer && (
-                <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+                <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
               )}
               <ConfirmBadge status={c.status} />
             </div>
@@ -191,11 +191,11 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
   const spotsLeft = request ? Math.max(0, request.spots - signups.length) : 0;
 
   return (
-    <div className="mt-4 bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="mt-4 bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-center justify-between mb-1">
         <p className="text-sm font-semibold">Need a ringer?</p>
         {isLive && (
-          <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">
             {spotsLeft} spot{spotsLeft === 1 ? "" : "s"} left
           </span>
         )}
@@ -211,7 +211,7 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
           {signups.map((s) => (
             <div key={s.player_id} className="flex items-center gap-2">
               <p className="flex-1 text-sm truncate">{s.name}</p>
-              <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Paid</span>
+              <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 rounded-full">Paid</span>
             </div>
           ))}
         </div>
@@ -226,7 +226,7 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
             <div className="flex flex-wrap gap-1.5">
               {RINGER_POSITIONS.map((p) => (
                 <button key={p} type="button" onClick={() => togglePosition(p)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${positions.includes(p) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${positions.includes(p) ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
                   {p}
                 </button>
               ))}
@@ -249,7 +249,7 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
             placeholder="Anything they should know? (e.g. bring dark shirt)"
             className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm placeholder:text-text-secondary" />
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
           <div className="flex gap-2">
             {request?.status === "open" && (
@@ -259,7 +259,7 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
               </button>
             )}
             <button type="button" onClick={handleSave} disabled={busy || !!error}
-              className="flex-[2] py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              className="flex-[2] py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
               {busy ? "Posting…" : request ? "Update Request" : "Post Ringer Request"}
             </button>
           </div>
@@ -273,7 +273,7 @@ function RingerRequestPanel({ matchId, teamId, userId }: { matchId: string; team
             <button type="button" onClick={() => setExpanded(true)}
               className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">Edit</button>
             <button type="button" onClick={handleClose} disabled={busy}
-              className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-sm font-semibold text-red-400 disabled:opacity-50">
+              className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-sm font-semibold text-red-600 disabled:opacity-50">
               {busy ? "…" : "Close Request"}
             </button>
           </div>
@@ -380,7 +380,7 @@ function MatchTasks({
   const nameOf = (id: string) => squad.find((s) => s.player_id === id)?.full_name ?? "Player";
 
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Tasks</p>
         <button
@@ -388,7 +388,7 @@ function MatchTasks({
           disabled={!isCaptain || unavailable}
           onClick={() => setAdding(!adding)}
           title={!isCaptain ? "Only the captain can set tasks" : unavailable ? TASKS_MISSING_MSG : undefined}
-          className="text-xs font-bold text-accent disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-xs font-bold text-accent-ink disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {adding ? "Cancel" : "+ Add"}
         </button>
@@ -410,7 +410,7 @@ function MatchTasks({
                 {squad.map((s) => <option key={s.player_id} value={s.player_id}>{s.full_name}</option>)}
               </select>
               <button type="button" onClick={addTask} disabled={busy || !title.trim()}
-                className="w-full py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+                className="w-full py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
                 {busy ? "Adding…" : "Add task"}
               </button>
             </div>
@@ -644,7 +644,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-4 gap-4 text-center">
         <p className="text-text-secondary">Match not found.</p>
-        <a href="/my-team" className="text-sm text-accent font-medium">Back to My Team</a>
+        <a href="/my-team" className="text-sm text-accent-ink font-medium">Back to My Team</a>
       </div>
     );
   }
@@ -710,10 +710,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <a href="/my-team">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
         </a>
         <div className="flex-1">
-          <h1 className="text-base font-bold">{myTeamName} vs {opponentName}</h1>
+          <h1 className="text-[17px] font-extrabold">{myTeamName} vs {opponentName}</h1>
         </div>
       </div>
 
@@ -740,8 +740,8 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map((t) => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}
-            className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            className={`flex-shrink-0 px-4 py-2.5 rounded-[11px] text-xs border transition-colors ${
+              tab === t.key ? "bg-accent text-white border-accent font-bold" : "bg-surface text-text-secondary border-border font-semibold"}`}>
             {t.label}
           </button>
         ))}
@@ -751,13 +751,13 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       {tab === "info" && (
       <div className="space-y-4">
       {/* ── Score block ── */}
-      <div className="bg-surface-2 border border-border rounded-2xl pt-5 pb-4 px-4 space-y-3">
+      <div className="bg-surface border border-border shadow-card rounded-card pt-5 pb-4 px-4 space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex flex-col items-center gap-2 flex-1">
-            <div className="w-12 h-12 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center">
-              <span className="text-sm font-bold text-accent">{myInitials}</span>
+            <div className="w-12 h-12 rounded-full bg-[#E7F8EC] border border-[#B7E8C6] flex items-center justify-center">
+              <span className="text-sm font-extrabold text-accent-ink">{myInitials}</span>
             </div>
-            <p className="text-xs font-semibold text-center leading-tight">{myTeamName}</p>
+            <p className="text-xs font-bold text-center leading-tight">{myTeamName}</p>
           </div>
           <div className="flex flex-col items-center px-3">
             {hasResult ? (
@@ -766,20 +766,20 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                 <p className="text-[11px] text-text-secondary">{resultVerified ? "Full time" : "Pending"}</p>
               </>
             ) : (
-              <p className="text-sm text-text-secondary font-medium">No result yet</p>
+              <p className="text-[13px] text-text-secondary font-medium">No result yet</p>
             )}
           </div>
           <div className="flex flex-col items-center gap-2 flex-1">
-            <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center">
-              <span className="text-sm font-bold text-text-secondary">{oppInitials}</span>
+            <div className="w-12 h-12 rounded-full bg-surface-2 border border-border flex items-center justify-center">
+              <span className="text-sm font-extrabold text-text-secondary">{oppInitials}</span>
             </div>
-            <p className="text-xs font-semibold text-center leading-tight">{opponentName}</p>
+            <p className="text-xs font-bold text-center leading-tight">{opponentName}</p>
           </div>
         </div>
 
         <div className="border-t border-border pt-3 flex flex-col items-center gap-0.5">
-          <p className="text-[11px] text-text-secondary">{fmtMatchDate} · {match.match_time}</p>
-          <p className="text-[11px] text-text-secondary">{match.confirmedPitch.name}</p>
+          <p className="text-xs font-medium text-text-secondary">{fmtMatchDate} · {match.match_time}</p>
+          <p className="text-xs font-medium text-text-secondary">{match.confirmedPitch.name}</p>
         </div>
 
         {(myScorers.length > 0 || oppScorers.length > 0) && (
@@ -799,12 +799,12 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
         {!myResult && isCaptain && (
           <a href={`/my-team/match/${params.matchId}/result`}
-            className="block w-full py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold text-center">
+            className="block w-full py-3.5 rounded-btn bg-danger text-white text-sm font-bold text-center">
             Submit Result
           </a>
         )}
         {myResult && !resultVerified && !oppResult && (
-          <p className="text-[11px] text-yellow-400 text-center">Waiting for {opponentName} to submit their result</p>
+          <p className="text-[11px] text-yellow-600 text-center">Waiting for {opponentName} to submit their result</p>
         )}
       </div>
 
@@ -825,8 +825,8 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           </p>
           <div className="grid grid-cols-3 gap-2">
             {([["Attendees", attIn.length], ["Awaiting reply", attPending.length], ["Unavailable", attOut.length]] as const).map(([label, n]) => (
-              <div key={label} className="bg-surface-2 border border-border rounded-xl p-3 text-center">
-                <p className="text-2xl font-bold">{n}</p>
+              <div key={label} className="bg-surface border border-border rounded-btn p-3 text-center">
+                <p className="text-2xl font-extrabold">{n}</p>
                 <p className="text-[10px] text-text-secondary mt-0.5 leading-tight">{label}</p>
               </div>
             ))}
@@ -834,7 +834,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {timeChanged && (
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5">
-              <p className="text-xs text-yellow-400">
+              <p className="text-xs text-yellow-600">
                 Kickoff moved since this match was posted — replies below may predate the change.
                 Worth asking your squad to confirm again.
               </p>
@@ -842,7 +842,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           )}
 
           {myTeamConfs.length === 0 && oppTeamConfs.length === 0 ? (
-            <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+            <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
               <p className="text-sm font-semibold mb-1">No squad yet</p>
               <p className="text-xs text-text-secondary">Attendance appears once the match is confirmed and your squad is attached.</p>
             </div>
@@ -877,7 +877,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             <div className="flex gap-2 overflow-x-auto pb-2 mb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {FORMATION_KEYS.map((f) => (
                 <button key={f} type="button" onClick={() => setFormation(f)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${formation === f ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${formation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {f}
                 </button>
               ))}
@@ -903,7 +903,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                   className="absolute flex flex-col items-center gap-0.5"
                   style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%,-50%)" }}>
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg border-2 ${pid ? "bg-white border-white/80" : "bg-black/30 border-dashed border-white/50"}`}>
-                    <span className={`text-[10px] font-bold leading-none ${pid ? "text-black" : "text-white/80"}`}>{pid ? initials : pos.position}</span>
+                    <span className={`text-[10px] font-bold leading-none ${pid ? "text-text-primary" : "text-white/80"}`}>{pid ? initials : pos.position}</span>
                   </div>
                   <span className="text-[9px] font-semibold text-white drop-shadow-md bg-black/40 rounded px-1 truncate max-w-[48px] text-center">{pid ? firstName : pos.position}</span>
                 </button>
@@ -912,7 +912,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           </div>
 
           {/* Players in the matchday squad + who's starting */}
-          <div className="mt-3 bg-surface-2 border border-border rounded-xl p-3">
+          <div className="mt-3 bg-surface border border-border rounded-btn p-3">
             <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
               Available players ({myParticipants.filter((p) => p.status === "confirmed").length} of {myParticipants.length} confirmed)
             </p>
@@ -930,13 +930,13 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                       </div>
                       <p className="flex-1 text-sm truncate">{p.full_name}</p>
                       {p.is_ringer && (
-                        <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
+                        <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20 px-2 py-0.5 rounded-full">Ringer</span>
                       )}
                       {p.status !== "confirmed" && (
-                        <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>
+                        <span className="text-[10px] font-semibold bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-2 py-0.5 rounded-full">Pending</span>
                       )}
                       {inLineup
-                        ? <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/20 px-2 py-0.5 rounded-full">Starting</span>
+                        ? <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/20 px-2 py-0.5 rounded-full">Starting</span>
                         : <span className="text-[10px] font-semibold text-text-secondary">Bench</span>}
                     </div>
                   );
@@ -947,7 +947,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {isCaptain ? (
             <button type="button" onClick={handleSaveMatchTactics} disabled={savingTactics}
-              className="w-full mt-3 py-2.5 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              className="w-full mt-3 py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
               {savingTactics ? "Saving…" : "Save Lineup"}
             </button>
           ) : Object.keys(lineup).length === 0 ? (
@@ -978,7 +978,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                 <div key={i} className="absolute flex flex-col items-center gap-0.5"
                   style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%,-50%)" }}>
                   <div className="w-9 h-9 rounded-full bg-white border-2 border-white/80 flex items-center justify-center shadow-lg">
-                    <span className="text-[10px] font-bold text-black leading-none">{sp.initials}</span>
+                    <span className="text-[10px] font-bold text-text-primary leading-none">{sp.initials}</span>
                   </div>
                   <span className="text-[9px] font-semibold text-white drop-shadow-md bg-black/40 rounded px-1 truncate max-w-[48px] text-center">{sp.firstName}</span>
                 </div>
@@ -987,7 +987,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
           </div>
 
           {myBench.length > 0 && (
-            <div className="mt-3 bg-surface-2 border border-border rounded-xl p-3">
+            <div className="mt-3 bg-surface border border-border rounded-btn p-3">
               <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Bench</p>
               <div className="space-y-2">
                 {myBench.map((p) => {
@@ -1012,7 +1012,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       )}
 
       {oppResultPlayers.length > 0 && (
-        <div className="bg-surface-2 border border-border rounded-2xl p-4">
+        <div className="bg-surface border border-border shadow-card rounded-card p-4">
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">{opponentName}</p>
           {oppResultPlayers.filter((p) => p.started).map((p) => {
             const init = p.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -1082,14 +1082,14 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             </button>
           </div>
 
-          <div className="bg-surface-2 border border-border rounded-2xl p-4 space-y-4">
+          <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-4">
             <div>
               <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Formation</p>
               <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {FORMATION_KEYS.map((f) => (
                   <button key={f} type="button" disabled={!isCaptain} onClick={() => setFormation(f)}
                     className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border disabled:opacity-60 ${
-                      formation === f ? "bg-accent text-black border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                      formation === f ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
                     {f}
                   </button>
                 ))}
@@ -1102,7 +1102,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
                 {PLAY_STYLES.map((s) => (
                   <button key={s} type="button" disabled={!isCaptain} onClick={() => setStyle(style === s ? null : s)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-60 ${
-                      style === s ? "bg-accent text-black border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                      style === s ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
                     {s}
                   </button>
                 ))}
@@ -1125,20 +1125,20 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {isCaptain && (
             <button type="button" onClick={handleSaveMatchTactics} disabled={savingTactics}
-              className="w-full py-3 rounded-xl bg-accent text-black text-sm font-bold disabled:opacity-50">
+              className="w-full py-3 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-50">
               {savingTactics ? "Saving…" : "Save Tactics"}
             </button>
           )}
 
           {presetPickerOpen && presets && (
-            <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={() => setPresetPickerOpen(false)}>
-              <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[70dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={() => setPresetPickerOpen(false)}>
+              <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[70dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
                 <div className="p-4 space-y-2">
                   <p className="font-bold text-base mb-2">Load a saved setup</p>
                   {presets.map((p) => (
                     <button key={p.id} type="button" onClick={() => applyPreset(p)}
-                      className="w-full text-left bg-surface-2 border border-border rounded-xl p-3">
+                      className="w-full text-left bg-surface border border-border rounded-btn p-3">
                       <p className="text-sm font-semibold">{p.title}</p>
                       <p className="text-[11px] text-text-secondary mt-0.5">
                         {[p.situation, p.formation, p.style].filter(Boolean).join(" · ")}
@@ -1154,19 +1154,19 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
       {/* Lineup player picker (captain) */}
       {pickerSlot !== null && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setPickerSlot(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-scrim" onClick={() => setPickerSlot(null)}>
           <div className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 max-h-[70dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <p className="font-bold text-base">Assign {players[pickerSlot]?.position}</p>
               <button type="button" onClick={() => setPickerSlot(null)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <div className="space-y-2 overflow-y-auto">
               {lineup[pickerSlot] && (
                 <button type="button"
                   onClick={() => { setLineup((prev) => { const n = { ...prev }; delete n[pickerSlot]; return n; }); setPickerSlot(null); }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl border border-red-500/30 text-red-400 text-sm font-semibold">
+                  className="w-full text-left px-3 py-2.5 rounded-xl border border-red-500/30 text-red-600 text-sm font-semibold">
                   Clear this position
                 </button>
               )}

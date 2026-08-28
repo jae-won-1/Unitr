@@ -1,12 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import TopBar from "@/components/TopBar";
 import { RoleProvider } from "@/contexts/RoleContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
-const inter = Inter({ subsets: ["latin"] });
+// Poppins carries the rebrand: 700/800 for display (wordmark, section headers,
+// team names), 400–600 for UI. Poppins has no variable build on Google Fonts, so
+// the weights the design actually uses are listed explicitly.
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Unitr",
@@ -32,7 +39,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0A0A0A",
+  // Matches the TopBar's green, so on Android the system status bar continues
+  // the bar rather than sitting as a dark strip above it.
+  themeColor: "#008000",
 };
 
 export default function RootLayout({
@@ -42,7 +51,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-background text-text-primary`}>
+      <body className={`${poppins.className} bg-background text-text-primary`}>
         <AuthProvider>
           <RoleProvider>
             <TopBar />

@@ -79,16 +79,25 @@ function useSuggestions(teamId: string | null, userId: string) {
   return { suggested, unavailable, suggest };
 }
 
-function SuggestButton({ postId, kind, suggested, unavailable, onSuggest }: {
+// `compact` is the match-feed shape — a pill sharing the card's bottom line with
+// the price. Tournament cards still take the full-width form, since their action
+// block stacks a second link underneath it.
+function SuggestButton({ postId, kind, suggested, unavailable, onSuggest, compact = false }: {
   postId: string;
   kind: "match" | "tournament";
   suggested: boolean;
   unavailable: boolean;
   onSuggest: (id: string, kind: "match" | "tournament") => void;
+  compact?: boolean;
 }) {
   if (suggested) {
-    return (
-      <span className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-accent text-sm font-bold flex items-center justify-center gap-1.5">
+    return compact ? (
+      <span className="px-4 py-2 rounded-full bg-success-bg border border-success-border text-accent-ink text-[13px] font-bold flex items-center gap-1.5 whitespace-nowrap flex-none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Suggested
+      </span>
+    ) : (
+      <span className="w-full py-2.5 rounded-btn bg-success-bg border border-success-border text-accent-ink text-sm font-bold flex items-center justify-center gap-1.5">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         Suggested to your captain
       </span>
@@ -100,7 +109,9 @@ function SuggestButton({ postId, kind, suggested, unavailable, onSuggest }: {
       onClick={() => onSuggest(postId, kind)}
       disabled={unavailable}
       title={unavailable ? "Suggestions aren't set up yet — run supabase_match_suggestions.sql." : undefined}
-      className="w-full py-2.5 rounded-xl border border-accent/40 text-accent text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+      className={compact
+        ? "px-4 py-2 rounded-full bg-accent text-white text-[13px] font-bold whitespace-nowrap flex-none disabled:bg-surface-2 disabled:text-text-secondary disabled:opacity-70 disabled:cursor-not-allowed"
+        : "w-full py-2.5 rounded-btn border border-accent text-accent-ink text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"}
     >
       Suggest to team
     </button>
@@ -227,40 +238,44 @@ function useOpenTournaments(teamId: string | null) {
 }
 
 // ── Cards ─────────────────────────────────────────────────────
+// The rebrand turns the feed row on its side: a pitch thumbnail on the left,
+// and everything else in one column that ends with the price and the action on
+// a single baseline. The badge slot carries whichever signal the post actually
+// has — a secured pitch, or a date the squad already said it can make.
 function MatchPostCard({ post, children }: { post: MatchPost; children: React.ReactNode }) {
-  const initials = post.team.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  // Format and fee come off the pitch options; a post can carry several, so the
+  // cheapest is quoted as a "from". This is the *pitch* fee, not a per-player
+  // share — splitting it needs a confirmed squad, which an open post has not got.
+  const cheapest = post.pitchOptions.length
+    ? post.pitchOptions.reduce((a, b) => (b.price < a.price ? b : a))
+    : null;
+  const meta = [post.location || "Location TBC", cheapest?.format, post.date]
+    .filter(Boolean).join(" · ");
+
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <span className="text-xs font-bold text-accent">{initials}</span>
+    <div className="bg-surface border border-border rounded-card shadow-card p-3 flex gap-3">
+      <div className="pitch-art pitch-art-sm w-[92px] h-28 rounded-btn flex-none" />
+      <div className="flex-1 min-w-0 flex flex-col gap-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[15px] font-extrabold text-accent-ink">{post.match_time}</span>
+          {post.pitchSecured ? (
+            <span className="text-[10px] font-extrabold bg-surface-2 text-text-primary px-2 py-0.5 rounded-full">PITCH SECURED</span>
+          ) : post.availabilityMatch ? (
+            <span className="text-[10px] font-extrabold bg-accent-2 text-white px-2 py-0.5 rounded-full">MATCHES AVAILABILITY</span>
+          ) : null}
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold truncate">{post.team}</p>
-          <p className="text-xs text-text-secondary truncate mt-0.5">{post.location || "Location TBC"}</p>
+        <p className="text-base font-bold tracking-[-0.01em] uppercase truncate">{post.team}</p>
+        <p className="text-xs font-medium text-text-secondary truncate">{meta}</p>
+        <div className="flex items-center justify-between gap-2 mt-auto pt-1">
+          {cheapest ? (
+            <span className="text-[15px] font-extrabold whitespace-nowrap">
+              {post.pitchOptions.length > 1 ? "from " : ""}£{cheapest.price.toFixed(2)}
+              <span className="text-[11px] font-medium text-text-secondary"> pitch</span>
+            </span>
+          ) : <span />}
+          {children}
         </div>
-        {post.pitchSecured && (
-          <span className="text-[10px] font-semibold bg-green-500/10 text-green-400 border border-green-500/30 px-2 py-0.5 rounded-full flex-shrink-0">
-            Pitch Secured
-          </span>
-        )}
       </div>
-
-      <div className="space-y-1 mb-3">
-        <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          {post.date}
-        </div>
-        {post.pitchOptions.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            {post.pitchOptions.length} pitch option{post.pitchOptions.length === 1 ? "" : "s"}
-          </div>
-        )}
-      </div>
-
-      {post.description && <p className="text-xs text-text-secondary mb-3 line-clamp-2">{post.description}</p>}
-      {children}
     </div>
   );
 }
@@ -271,9 +286,11 @@ function ChallengeButton({ post, onMatched }: { post: MatchPost; onMatched: (id:
   const [open, setOpen] = useState(false);
   return (
     <>
+      {/* Compact pill: it now shares the card's bottom line with the price
+          rather than spanning the card on its own row. */}
       <button type="button" onClick={() => setOpen(true)}
-        className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
-        {post.pitchSecured ? "Join — Pitch Secured" : "Challenge Team"}
+        className="px-4 py-2 rounded-full bg-accent text-white font-bold text-[13px] whitespace-nowrap flex-none">
+        {post.pitchSecured ? "Join now" : "Challenge"}
       </button>
       {open && (
         <ChallengePanel
@@ -291,10 +308,10 @@ const EVENT_TYPE_LABEL: Record<string, string> = { tournament: "Tournament", lea
 function TournamentPostCard({ t, children }: { t: Tournament; children: React.ReactNode }) {
   const spotsLeft = Math.max(0, t.maxTeams - t.joinedCount);
   return (
-    <div className="bg-surface-2 border border-border rounded-2xl p-4">
+    <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+        <div className="w-10 h-10 rounded-btn bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
             <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2z"/>
           </svg>
         </div>
@@ -309,7 +326,7 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
             spotsLeft === 0
               ? "bg-surface text-text-secondary border-border"
-              : "bg-accent/10 text-accent border-accent/30"
+              : "bg-accent/10 text-accent-ink border-accent/30"
           }`}>
             {spotsLeft === 0 ? "Full" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
           </span>
@@ -328,7 +345,7 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
       </div>
 
       <div className="flex items-center justify-between mb-3">
-        <span className="text-lg font-bold text-accent">£{(t.pricePerTeamPence / 100).toFixed(2)}</span>
+        <span className="text-lg font-bold text-accent-ink">£{(t.pricePerTeamPence / 100).toFixed(2)}</span>
         <span className="text-[11px] text-text-secondary">per team</span>
       </div>
 
@@ -356,12 +373,12 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
   return (
     <div className="space-y-2">
       {alreadyIn ? (
-        <div className="w-full py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent">Your team is entered ✓</div>
+        <div className="w-full py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent-ink">Your team is entered ✓</div>
       ) : isFull ? (
         <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">{EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"} full</div>
       ) : (
         <button onClick={() => setOpen(true)}
-          className="w-full py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+          className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm">
           {t.inviteDiscountPence > 0
             ? `Accept invitation — £${(discounted / 100).toFixed(2)}`
             : `Enter ${EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}`}
@@ -436,8 +453,8 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              tab === t.key ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
+              tab === t.key ? "bg-accent text-white border-accent" : "bg-surface text-text-primary border-border"
             }`}
           >
             {t.label}
@@ -455,7 +472,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
             {matchesHeader}
             <DateDial value={dateKey} onChange={setDateKey} counts={countByDate(posts, (p) => p.match_date)} />
             {visiblePosts.length === 0 ? (
-              <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+              <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
                 <p className="text-sm text-text-secondary">
                   {posts.length > 0 ? "No matches posted for this day." : "No open matches right now."}
                 </p>
@@ -470,7 +487,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
                 <MatchPostCard key={p.id} post={p}>
                   {canAct
                     ? <ChallengeButton post={p} onMatched={removePost} />
-                    : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} />}
+                    : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} compact />}
                 </MatchPostCard>
               ))
             )}
@@ -485,7 +502,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
           <div className="space-y-4">
             <DateDial value={dateKey} onChange={setDateKey} counts={countByDate(tournaments, (t) => t.matchDate)} />
             {visibleTournaments.length === 0 ? (
-              <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+              <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
                 <p className="text-sm text-text-secondary">
                   {tournaments.length > 0 ? "No events on this day." : "No events right now."}
                 </p>

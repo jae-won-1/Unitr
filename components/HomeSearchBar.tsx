@@ -77,7 +77,7 @@ export default function HomeSearchBar() {
   return (
     <div ref={containerRef} className="relative mb-6">
       <div className="relative">
-        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round">
+        <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <input
@@ -90,7 +90,7 @@ export default function HomeSearchBar() {
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder="Search players or teams…"
-          className="w-full bg-surface-2 border border-border rounded-xl pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+          className="w-full bg-surface border border-border rounded-btn pl-10 pr-10 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
         />
         {loading && (
           <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
@@ -100,13 +100,13 @@ export default function HomeSearchBar() {
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 mt-2 bg-[#141414] border border-border rounded-2xl p-3 z-40 shadow-xl">
+        <div className="absolute left-0 right-0 mt-2 bg-surface border border-border rounded-2xl p-3 z-40 shadow-xl">
           <div className="flex gap-2 mb-3">
             {(["all", "players", "teams"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}
               >
                 {t}
               </button>
@@ -129,7 +129,7 @@ export default function HomeSearchBar() {
                     className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface-2"
                   >
                     <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-                      <span className="text-[10px] font-bold text-accent">{initials}</span>
+                      <span className="text-[10px] font-bold text-accent-ink">{initials}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{p.full_name}</p>

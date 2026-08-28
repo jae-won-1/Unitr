@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KIND_STYLE, type CalendarEntry } from "@/lib/calendar-entries";
+import { KIND_LABEL, KIND_STYLE, type CalendarEntry, type EntryKind } from "@/lib/calendar-entries";
 import { todayKey } from "@/lib/match-dates";
 
 // The month-grid date picker behind the Calendar page's 📅 pill.
@@ -59,8 +59,8 @@ export default function CalendarSheet({ entries, selected, onSelect, onClose }: 
   return (
     // z-[60] — above the z-40 nav chrome, which otherwise paints over the
     // bottom of any sheet a page opens (see components/BottomNav.tsx).
-    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
 
@@ -69,7 +69,7 @@ export default function CalendarSheet({ entries, selected, onSelect, onClose }: 
             <p className="font-bold">Pick a date</p>
             <button onClick={onClose} aria-label="Close"
               className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
 
@@ -77,12 +77,12 @@ export default function CalendarSheet({ entries, selected, onSelect, onClose }: 
           <div className="flex items-center justify-between mb-4">
             <button onClick={prevMonth} aria-label="Previous month"
               className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-2 border border-border">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
             <h2 className="text-base font-bold">{MONTH_NAMES[month]} {year}</h2>
             <button onClick={nextMonth} aria-label="Next month"
               className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-2 border border-border">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           </div>
 
@@ -101,28 +101,45 @@ export default function CalendarSheet({ entries, selected, onSelect, onClose }: 
               const kinds = kindsByDate.get(dateStr) ?? [];
 
               return (
+                // The whole cell is the target in the rebrand — a filled rounded
+                // square rather than a circle around the numeral. A day with
+                // something on takes a pale green wash; the selected day takes
+                // the solid accent, and its dots invert to stay visible on it.
                 <button key={i} onClick={() => { onSelect(isSelected ? null : dateStr); onClose(); }}
-                  className="flex flex-col items-center py-1 rounded-xl transition-colors active:bg-surface-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                    isSelected ? "bg-accent text-black"
-                      : isToday ? "border-2 border-accent text-accent"
-                      : kinds.length > 0 ? "text-text-primary" : "text-text-secondary"
+                  className={`h-10 rounded-[10px] flex flex-col items-center justify-center gap-[3px] transition-colors ${
+                    isSelected ? "bg-accent"
+                      : isToday ? "border border-accent"
+                      : kinds.length > 0 ? "bg-[#E7F8EC]" : ""
+                  }`}>
+                  <span className={`text-[13px] leading-none ${
+                    isSelected ? "font-extrabold text-white" : "font-semibold text-text-primary"
                   }`}>
                     {day}
-                  </div>
-                  <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
+                  </span>
+                  <span className="flex gap-[3px] h-[5px] items-center">
                     {kinds.map((k) => (
-                      <div key={k} className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-black/60" : KIND_STYLE[k].dot}`} />
+                      <span key={k} className={`w-[5px] h-[5px] rounded-full ${isSelected ? "bg-white/70" : KIND_STYLE[k].dot}`} />
                     ))}
-                  </div>
+                  </span>
                 </button>
               );
             })}
           </div>
 
+          {/* Legend — the dots are the only thing distinguishing one busy day
+              from another, so the grid needs a key to be readable at all. */}
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 mt-3 pt-2.5 border-t border-border">
+            {(Object.keys(KIND_LABEL) as EntryKind[]).map((k) => (
+              <span key={k} className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary">
+                <span className={`w-1.5 h-1.5 rounded-full ${KIND_STYLE[k].dot}`} />
+                {KIND_LABEL[k]}
+              </span>
+            ))}
+          </div>
+
           {selected && (
             <button onClick={() => { onSelect(null); onClose(); }}
-              className="w-full mt-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">
+              className="w-full mt-4 py-2.5 rounded-btn border border-border text-sm font-semibold text-text-secondary">
               Show all dates
             </button>
           )}

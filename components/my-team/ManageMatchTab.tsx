@@ -191,8 +191,8 @@ function CardBody({ fixture, title }: { fixture: TeamFixture; title: string }) {
           {/* Matching the Calendar's colour language: indigo is "your post". */}
           <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border mb-1.5 ${
             fixture.kind === "open_post"
-              ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/40"
-              : "bg-accent/10 text-accent border-accent/20"
+              ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/40"
+              : "bg-accent/10 text-accent-ink border-accent/20"
           }`}>
             {fixture.kind === "tournament" ? "Tournament" : fixture.kind === "open_post" ? "Your post" : "Match"}
           </span>
@@ -210,7 +210,7 @@ function CardBody({ fixture, title }: { fixture: TeamFixture; title: string }) {
         </div>
       )}
       {fixture.badge && (
-        <p className="text-[11px] text-indigo-400 font-semibold mt-1.5">{fixture.badge}</p>
+        <p className="text-[11px] text-indigo-600 font-semibold mt-1.5">{fixture.badge}</p>
       )}
     </>
   );
@@ -258,7 +258,7 @@ export default function ManageMatchTab({
       </div>
 
       {fixtures.length === 0 ? (
-        <div className="bg-surface-2 border border-border rounded-2xl p-6 text-center">
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
           <p className="text-sm font-semibold mb-1">No confirmed fixtures yet</p>
           <p className="text-xs text-text-secondary mb-4">
             {!isCaptain
@@ -270,7 +270,7 @@ export default function ManageMatchTab({
                 : "Post a match or challenge another team to get one in the diary."}
           </p>
           {isCaptain && openPosts.length === 0 && (
-            <a href="/play/create" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-black font-bold text-xs">
+            <a href="/play/create" className="inline-block px-5 py-2.5 rounded-btn bg-accent text-white font-bold text-xs">
               Post a Match
             </a>
           )}

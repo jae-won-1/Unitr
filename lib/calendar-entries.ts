@@ -56,12 +56,20 @@ export const KIND_LABEL: Record<EntryKind, string> = {
 
 // Tailwind can't see interpolated class names, so each kind names its classes in
 // full. Text/border/dot are picked apart by the card, the sheet and the grid.
-export const KIND_STYLE: Record<EntryKind, { text: string; border: string; bg: string; dot: string }> = {
-  friendly:   { text: "text-accent",       border: "border-accent/30",       bg: "bg-accent/10",       dot: "bg-accent" },
-  tournament: { text: "text-yellow-400",   border: "border-yellow-500/30",   bg: "bg-yellow-500/10",   dot: "bg-yellow-400" },
-  my_post:    { text: "text-indigo-400",   border: "border-indigo-500/40",   bg: "bg-indigo-500/10",   dot: "bg-indigo-400" },
-  ringer:     { text: "text-orange-400",   border: "border-orange-500/30",   bg: "bg-orange-500/10",   dot: "bg-orange-400" },
-  booking:    { text: "text-blue-400",     border: "border-blue-400/30",     bg: "bg-blue-400/10",     dot: "bg-blue-400" },
+// Rebrand tints. Each kind is a solid hue for the card's left rule and the
+// month-grid dot, plus a pale fill/border pair for its badge — the design gives
+// these as literal values rather than palette steps, so they're arbitrary
+// classes. `dot` doubles as the left rule, hence border-l-* uses the same hue.
+// Rebrand tints. `rule` is the solid hue for the card's 4px left edge; `border`
+// is the pale badge outline that pairs with `bg` — in the old dark palette both
+// were the same translucent colour, but the design separates them, so a card now
+// carries a saturated edge above a soft badge. `dot` is the month-grid marker.
+export const KIND_STYLE: Record<EntryKind, { text: string; border: string; bg: string; dot: string; rule: string }> = {
+  friendly:   { text: "text-accent-ink",  border: "border-[#B7E8C6]",  bg: "bg-[#E7F8EC]",  dot: "bg-accent",     rule: "border-l-accent" },
+  tournament: { text: "text-[#B07400]",   border: "border-[#F5DCA6]",  bg: "bg-[#FFF6E3]",  dot: "bg-[#F0A500]",  rule: "border-l-[#F0A500]" },
+  my_post:    { text: "text-indigo-700",  border: "border-indigo-200", bg: "bg-indigo-50",  dot: "bg-indigo-500", rule: "border-l-indigo-500" },
+  ringer:     { text: "text-orange-700",  border: "border-orange-200", bg: "bg-orange-50",  dot: "bg-orange-500", rule: "border-l-orange-500" },
+  booking:    { text: "text-accent-2",    border: "border-[#C6D4FF]",  bg: "bg-[#EAF0FF]",  dot: "bg-accent-2",   rule: "border-l-accent-2" },
 };
 
 /** Upcoming soonest-first, then past most-recent-first. */

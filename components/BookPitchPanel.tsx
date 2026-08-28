@@ -60,7 +60,7 @@ function getDayName(iso: string): string {
 function Stars({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="text-xs font-bold text-yellow-400">{Number(rating).toFixed(1)}</span>
+      <span className="text-xs font-bold text-yellow-600">{Number(rating).toFixed(1)}</span>
       {[1, 2, 3, 4, 5].map((i) => (
         <svg key={i} width="10" height="10" viewBox="0 0 24 24" fill={i <= Math.round(rating) ? "#FACC15" : "none"} stroke="#FACC15" strokeWidth="2">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -100,7 +100,7 @@ function CardBookingForm({ totalPence, working, onPaid, onError }: {
     <div className="space-y-4">
       <PaymentElement />
       <button onClick={handlePay} disabled={busy || !stripe}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+        className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {busy
           ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Processing…</>
           : `Pay £${(totalPence / 100).toFixed(2)}`}
@@ -148,18 +148,18 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
   const busy = paying || working;
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+      <div className="flex items-center gap-3 bg-surface border border-border rounded-btn px-3 py-2.5">
         <div className="w-9 h-9 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold capitalize">{savedCard.brand ?? "Card"} •••• {savedCard.last4 ?? "????"}</p>
-          <p className="text-[11px] text-accent">Saved card · no need to re-enter details</p>
+          <p className="text-[11px] text-accent-ink">Saved card · no need to re-enter details</p>
         </div>
         <button onClick={onUseDifferentCard} disabled={busy} className="text-xs text-text-secondary font-medium flex-shrink-0">Change</button>
       </div>
       <button onClick={handlePay} disabled={busy}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+        className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {busy
           ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Processing…</>
           : `Pay £${(totalPence / 100).toFixed(2)}`}
@@ -211,19 +211,19 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
   const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={() => !working && onCancel()}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-scrim px-4" onClick={() => !working && onCancel()}>
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <p className="text-lg font-bold mb-1">Confirm & pay</p>
         <p className="text-sm font-semibold">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-4">{pitch.address}</p>
 
-        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-4 space-y-1.5 text-xs">
+        <div className="bg-surface border border-border rounded-btn p-3 mb-4 space-y-1.5 text-xs">
           <div className="flex justify-between"><span className="text-text-secondary">When</span><span className="font-semibold">{fmtDate(date)} · {time}–{endTime}</span></div>
           <div className="flex justify-between"><span className="text-text-secondary">Pitch hire (1hr)</span><span className="font-semibold">£{(pitchFeePence / 100).toFixed(2)}</span></div>
           <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
           <div className="flex justify-between border-t border-border pt-1.5 mt-1.5">
             <span className="font-semibold">Total</span>
-            <span className="font-bold text-accent">£{(cardTotalPence / 100).toFixed(2)}</span>
+            <span className="font-bold text-accent-ink">£{(cardTotalPence / 100).toFixed(2)}</span>
           </div>
         </div>
 
@@ -241,7 +241,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
                   {teamCreditPence === null ? "—" : `£${(teamCreditPence / 100).toFixed(2)} available`}
                 </p>
                 {!creditOk && teamCreditPence !== null && (
-                  <p className="text-[10px] text-red-400 mt-0.5">£{(shortfallPence / 100).toFixed(2)} short</p>
+                  <p className="text-[10px] text-red-600 mt-0.5">£{(shortfallPence / 100).toFixed(2)} short</p>
                 )}
               </button>
               <button onClick={() => setMethod("card")}
@@ -254,19 +254,19 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
             </div>
           </div>
         ) : (
-          <div className="mb-4 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+          <div className="mb-4 bg-surface border border-border rounded-btn px-3 py-2.5">
             <p className="text-xs font-semibold">Paying by card</p>
             <p className="text-[10px] text-text-secondary mt-0.5">Team credit is available to team captains only.</p>
           </div>
         )}
 
-        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+        {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
         {/* Payment action */}
         {method === "credit" && !creditOk ? (
           <div>
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5 mb-3">
-              <p className="text-xs font-semibold text-yellow-400 mb-0.5">Not enough team credit</p>
+              <p className="text-xs font-semibold text-yellow-600 mb-0.5">Not enough team credit</p>
               <p className="text-[11px] text-yellow-200">
                 This booking costs £{(cardTotalPence / 100).toFixed(2)} but your team only has £{((teamCreditPence ?? 0) / 100).toFixed(2)}.
                 Top up £{(shortfallPence / 100).toFixed(2)} to pay with credit?
@@ -274,14 +274,14 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
             </div>
             <div className="flex gap-3">
               <button onClick={() => setMethod("card")} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Pay by card</button>
-              <button onClick={() => onTopUp(shortfallPence)} className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm">Top up now</button>
+              <button onClick={() => onTopUp(shortfallPence)} className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm">Top up now</button>
             </div>
           </div>
         ) : method === "credit" ? (
           <div className="flex gap-3">
             <button onClick={onCancel} disabled={working} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">Cancel</button>
             <button onClick={onPayCredit} disabled={working}
-              className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+              className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {working
                 ? <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Booking…</>
                 : `Pay £${(cardTotalPence / 100).toFixed(2)} with credit`}
@@ -301,7 +301,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
             <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
           </div>
         ) : (
-          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#00E676", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
+          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
             <CardBookingForm totalPence={cardTotalPence} working={working} onPaid={onCardPaid} onError={onError} />
           </Elements>
         )}
@@ -315,17 +315,17 @@ function BookingConfirmed({ pitch, date, time, posted, onDone }: {
   pitch: Pitch; date: string; time: string; posted: boolean; onDone: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 text-center">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-scrim px-4">
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
         <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <p className="text-lg font-bold mb-1">{posted ? "Pitch Booked & Posted!" : "Pitch Booked!"}</p>
         <p className="text-sm font-semibold mb-0.5">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-1">{pitch.address}</p>
-        <p className="text-xs text-accent font-medium mb-4">{fmtDate(date)} · {time}</p>
-        <div className="bg-surface-2 border border-border rounded-xl p-3 mb-5 text-left space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-text-secondary">Total (inc. 5% fee)</span><span className="font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span></div>
+        <p className="text-xs text-accent-ink font-medium mb-4">{fmtDate(date)} · {time}</p>
+        <div className="bg-surface border border-border rounded-btn p-3 mb-5 text-left space-y-1">
+          <div className="flex justify-between text-xs"><span className="text-text-secondary">Total (inc. 5% fee)</span><span className="font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span></div>
           <p className="text-[10px] text-text-secondary">
             {posted
               ? "Your pitch is secured and the match is live in the Play feed — any team can join straight away."
@@ -333,9 +333,9 @@ function BookingConfirmed({ pitch, date, time, posted, onDone }: {
           </p>
         </div>
         {posted && (
-          <a href="/calendar" className="block w-full py-3 rounded-xl bg-accent text-black font-bold text-sm mb-2">View in Calendar</a>
+          <a href="/calendar" className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm mb-2">View in Calendar</a>
         )}
-        <button onClick={onDone} className={`w-full py-3 rounded-xl font-bold text-sm ${posted ? "bg-surface-2 border border-border text-text-primary" : "bg-accent text-black"}`}>Done</button>
+        <button onClick={onDone} className={`w-full py-3 rounded-xl font-bold text-sm ${posted ? "bg-surface-2 border border-border text-text-primary" : "bg-accent text-white"}`}>Done</button>
       </div>
     </div>
   );
@@ -661,13 +661,13 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       {/* Header */}
       <div className="flex items-center gap-3 px-4 mb-4">
         <div className="flex-1">
-          <h2 className="text-xl font-bold">Book a Pitch</h2>
+          <h2 className="text-xl font-extrabold">Book a Pitch</h2>
           <p className="text-xs text-text-secondary">Reserve a venue for training, friendlies or a kickabout</p>
         </div>
-        <div className="flex bg-surface-2 border border-border rounded-xl p-1">
+        <div className="flex bg-surface border border-border rounded-btn p-1">
           {(["list", "map"] as const).map((v) => (
             <button key={v} onClick={() => setView(v)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${view === v ? "bg-accent text-black" : "text-text-secondary"}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${view === v ? "bg-accent text-white" : "text-text-secondary"}`}>
               {v}
             </button>
           ))}
@@ -675,11 +675,11 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       </div>
 
       {/* Filters — apply live as you change them */}
-      <div className="mx-4 mb-4 bg-surface-2 border border-border rounded-2xl p-4">
+      <div className="mx-4 mb-4 bg-surface border border-border shadow-card rounded-card p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold">Filter pitches</p>
           {anyFilter && (
-            <button onClick={clearFilters} className="text-xs text-accent font-medium">Clear all</button>
+            <button onClick={clearFilters} className="text-xs text-accent-ink font-medium">Clear all</button>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -706,14 +706,14 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           <div className="flex gap-2 overflow-x-auto pb-0.5">
             {formats.map((f) => (
               <button key={f} onClick={() => setFilterSize(f)}
-                className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filterSize === f ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+                className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filterSize === f ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
                 {f}
               </button>
             ))}
           </div>
         </div>
         {filterTime && (
-          <p className="text-[11px] text-accent mt-3">Showing pitches free at {filterHour} on {fmtDate(filterDate)}.</p>
+          <p className="text-[11px] text-accent-ink mt-3">Showing pitches free at {filterHour} on {fmtDate(filterDate)}.</p>
         )}
         {filterDate && filterTime && (() => {
           const dt = new Date(filterDate + "T" + filterTime);
@@ -725,7 +725,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            <p className="text-xs text-yellow-400">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
+            <p className="text-xs text-yellow-600">You have selected a time less than 24 hours from now. The team credits will not be reimbursed if you cannot find an opponent.</p>
           </div>
         )}
       </div>
@@ -734,12 +734,12 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
         <p className="text-xs text-text-secondary">
           {anyFilter ? `${filteredPitches.length} match${filteredPitches.length !== 1 ? "es" : ""}` : "Pitches near you"}
         </p>
-        <p className="text-[11px] text-accent font-medium">{fmtDate(filterDate)}{filterTime ? ` · ${filterHour}` : ""}</p>
+        <p className="text-[11px] text-accent-ink font-medium">{fmtDate(filterDate)}{filterTime ? ` · ${filterHour}` : ""}</p>
       </div>
 
       {error && (
         <div className="mx-4 mb-3 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-          <p className="text-sm text-red-400">{error}</p>
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
 
@@ -765,21 +765,21 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       ) : (
         <div className="flex flex-col gap-4 px-4">
           {filteredPitches.length === 0 ? (
-            <div className="bg-surface-2 border border-border rounded-2xl px-4 py-10 text-center">
+            <div className="bg-surface border border-border shadow-card rounded-card px-4 py-10 text-center">
               <p className="text-sm text-text-secondary">No pitches match your filters.</p>
-              <button onClick={clearFilters} className="text-xs text-accent font-medium mt-2">Clear filters</button>
+              <button onClick={clearFilters} className="text-xs text-accent-ink font-medium mt-2">Clear filters</button>
             </div>
           ) : filteredPitches.map((pitch) => {
             const slots = slotMap[pitch.id];
             const freeCount = (slots ?? []).filter((s) => s.status === "available").length;
             return (
-              <div key={pitch.id} className="bg-surface-2 border border-border rounded-2xl overflow-hidden">
+              <div key={pitch.id} className="bg-surface border border-border shadow-card rounded-card overflow-hidden">
                 {/* Pitch image placeholder */}
                 <div className="w-full h-24 relative flex items-center justify-center bg-gradient-to-br from-green-900 to-green-700">
                   <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(255,255,255,.1) 20px,rgba(255,255,255,.1) 21px),repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(255,255,255,.1) 40px,rgba(255,255,255,.1) 41px)" }} />
                   <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M2 12h20M12 2v20"/></svg>
                   {pitch.is_verified && (
-                    <div className="absolute top-2 left-2 bg-accent/80 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <div className="absolute top-2 left-2 bg-accent/80 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                       <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polyline points="20 6 9 17 4 12"/></svg>
                       Verified
                     </div>
@@ -789,7 +789,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                   <div className="flex items-start justify-between mb-1">
                     <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                     <div className="text-right flex-shrink-0">
-                      <span className="text-lg font-bold text-accent">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span>
+                      <span className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span>
                       <p className="text-[10px] text-text-secondary">per hour</p>
                     </div>
                   </div>
@@ -807,7 +807,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                   <div className="bg-background border border-border rounded-xl p-3">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Availability · {fmtDate(filterDate)}</p>
-                      {slots && <span className="text-[10px] font-semibold text-accent">{freeCount} slot{freeCount !== 1 ? "s" : ""} free</span>}
+                      {slots && <span className="text-[10px] font-semibold text-accent-ink">{freeCount} slot{freeCount !== 1 ? "s" : ""} free</span>}
                     </div>
                     {checkingSlots || !slots ? (
                       <div className="flex items-center gap-1.5 py-2">
@@ -833,8 +833,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                                     : isTaken
                                       ? "line-through text-text-secondary/30 cursor-not-allowed"
                                       : isFilterMatch
-                                        ? "bg-accent text-black"
-                                        : "border border-white/20 text-text-primary hover:border-accent hover:text-accent"
+                                        ? "bg-accent text-white"
+                                        : "border border-white/20 text-text-primary hover:border-accent hover:text-accent-ink"
                                 }`}>
                                 {time}
                               </button>
@@ -846,7 +846,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-surface-2 inline-block opacity-40" />Taken / Closed</span>
                         </div>
                         {freeCount === 0 && (
-                          <p className="text-[11px] text-red-400 mt-2">Fully booked on this date — try another day.</p>
+                          <p className="text-[11px] text-red-600 mt-2">Fully booked on this date — try another day.</p>
                         )}
                       </>
                     )}

@@ -174,11 +174,11 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-xs space-y-1.5">
+      <div className="bg-surface border border-border rounded-btn px-4 py-3 text-xs space-y-1.5">
         <div className="flex justify-between text-text-secondary"><span>Adding to team credits</span><span className="font-bold text-text-primary">£{amount.toFixed(2)}</span></div>
-        <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-bold text-accent">£{(currentCredits + amount).toFixed(2)}</span></div>
+        <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-bold text-accent-ink">£{(currentCredits + amount).toFixed(2)}</span></div>
       </div>
-      <div className="bg-surface-2 border border-border rounded-xl p-4">
+      <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
@@ -186,9 +186,9 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
         <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
         <p className="text-[11px] text-blue-200">Use <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any CVC</p>
       </div>
-      {payError && <p className="text-xs text-red-400 text-center">{payError}</p>}
+      {payError && <p className="text-xs text-red-600 text-center">{payError}</p>}
       <button onClick={handlePay} disabled={!stripe || paying}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
         {paying ? "Processing…" : `Pay £${amount.toFixed(2)}`}
       </button>
       <button onClick={onBack} className="w-full py-2 text-xs text-text-secondary">← Back</button>
@@ -356,31 +356,34 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
 
   return (
     <>
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-5" onClick={onClose}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[80] flex items-end justify-center" style={{ background: "rgba(11,21,38,0.55)" }} onClick={onClose}>
+      {/* Bottom sheet, matching the rebrand's single overlay shape. */}
+      <div className="w-full max-w-lg bg-surface rounded-t-[24px] px-5 pt-5 pb-6 max-h-[88dvh] overflow-y-auto"
+        style={{ boxShadow: "0 -8px 32px rgba(11,21,38,0.18)" }} onClick={(e) => e.stopPropagation()}>
+        <span className="block w-11 h-1 rounded-full bg-border mx-auto mb-4" />
         {credits === null ? (
           <div className="py-10 flex justify-center">
             <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
           </div>
         ) : success ? (
           <div className="flex flex-col items-center text-center gap-4 py-4">
-            <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <div className="w-16 h-16 rounded-full bg-success-bg border-2 border-success-border flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <p className="font-bold text-lg">Credits Added!</p>
             <p className="text-sm text-text-secondary">£{effectiveAmount?.toFixed(2)} added to your team balance.</p>
-            <p className="text-base font-bold text-accent">New balance: £{credits.toFixed(2)}</p>
-            <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+            <p className="text-base font-bold text-accent-ink">New balance: £{credits.toFixed(2)}</p>
+            <button onClick={onClose} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>
           </div>
         ) : clientSecret && effectiveAmount ? (
           <>
             <div className="flex items-center justify-between mb-5">
               <p className="font-bold text-lg">Pay &amp; Top Up</p>
               <button onClick={onClose}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-            <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#00E676", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
+            <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
               <CreditsCheckoutForm
                 amount={effectiveAmount}
                 teamId={teamId}
@@ -401,7 +404,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
             <div className="flex items-center justify-between mb-1">
               <p className="font-bold text-lg">Top Up Credits</p>
               <button onClick={onClose}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
             <p className="text-xs text-text-secondary mb-4">
@@ -411,14 +414,14 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
             {dues.length > 0 && (
               <div className="mb-5">
                 <div className="flex items-center gap-1.5 mb-2">
-                  <p className="text-xs font-bold text-red-400 uppercase tracking-wider">Payments due</p>
+                  <p className="text-xs font-bold text-red-600 uppercase tracking-wider">Payments due</p>
                   <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 rounded-full">{dues.length}</span>
                 </div>
                 <div className="space-y-2">
                   {dues.map((due) => {
                     const busy = dueBusy.has(due.pcsId);
                     return (
-                      <div key={due.pcsId} className="flex items-center gap-2 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+                      <div key={due.pcsId} className="flex items-center gap-2 bg-surface border border-border rounded-btn px-3 py-2.5">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold truncate">{due.kind === "tournament" ? due.opponent : `vs ${due.opponent}`}</p>
                           <p className="text-[10px] text-text-secondary">{due.date} · £{(due.remainingPence / 100).toFixed(2)} share</p>
@@ -426,7 +429,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                         <button
                           onClick={() => (savedCard ? payDueWithCard(due) : startCardEntryForDue(due))}
                           disabled={busy || loadingIntent}
-                          className="flex-shrink-0 text-xs font-bold bg-accent text-black px-3 py-2 rounded-lg disabled:opacity-50">
+                          className="flex-shrink-0 text-xs font-bold bg-accent text-white px-3 py-2 rounded-lg disabled:opacity-50">
                           {busy ? "Paying…" : `Pay £${(due.remainingPence / 100).toFixed(2)}`}
                         </button>
                       </div>
@@ -438,7 +441,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 ) : (
                   <p className="text-[10px] text-text-secondary mt-2">Tap to pay — add a card on your Profile to skip card entry next time.</p>
                 )}
-                {dueError && <p className="text-[11px] text-red-400 mt-2">{dueError}</p>}
+                {dueError && <p className="text-[11px] text-red-600 mt-2">{dueError}</p>}
                 <div className="flex items-center gap-2 my-4">
                   <div className="flex-1 h-px bg-border" />
                   <span className="text-[10px] text-text-secondary uppercase tracking-wider">or top up manually</span>
@@ -449,8 +452,8 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
 
             {duePaidFlash && (
               <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2 mb-4">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <p className="text-[11px] text-accent font-semibold">Payment received — team credit topped up.</p>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <p className="text-[11px] text-accent-ink font-semibold">Payment received — team credit topped up.</p>
               </div>
             )}
 
@@ -459,14 +462,14 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 const owedAmount = owedPence / 100;
                 return (
                   <button onClick={() => { setSelectedAmount(owedAmount); setCustomInput(""); }}
-                    className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === owedAmount && !customInput ? "bg-red-500 text-white border-red-500" : "bg-red-500/10 border-red-500/30 text-red-400"}`}>
+                    className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === owedAmount && !customInput ? "bg-red-500 text-white border-red-500" : "bg-red-500/10 border-red-500/30 text-red-600"}`}>
                     £{owedAmount.toFixed(2)}
                   </button>
                 );
               })()}
               {[10, 20, 50, 100].map((amt) => (
                 <button key={amt} onClick={() => { setSelectedAmount(amt); setCustomInput(""); }}
-                  className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === amt && !customInput ? "bg-accent text-black border-accent" : "bg-surface-2 border-border text-text-primary"}`}>
+                  className={`py-3 rounded-xl border text-sm font-bold transition-colors ${selectedAmount === amt && !customInput ? "bg-accent text-white border-accent" : "bg-surface-2 border-border text-text-primary"}`}>
                   £{amt}
                 </button>
               ))}
@@ -478,25 +481,25 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 type="number" min="1" step="0.01" inputMode="decimal" enterKeyHint="done" placeholder="Custom amount"
                 value={customInput}
                 onChange={(e) => { setCustomInput(e.target.value); setSelectedAmount(null); }}
-                className="w-full bg-surface-2 border border-border rounded-xl pl-7 pr-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+                className="w-full bg-surface border border-border rounded-btn pl-7 pr-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
               />
             </div>
 
             {effectiveAmount && effectiveAmount >= 1 && (
-              <div className="bg-surface-2 border border-border rounded-xl px-4 py-3 mb-4 text-xs space-y-1.5">
+              <div className="bg-surface border border-border rounded-btn px-4 py-3 mb-4 text-xs space-y-1.5">
                 <div className="flex justify-between text-text-secondary"><span>Adding</span><span className="font-semibold text-text-primary">£{effectiveAmount.toFixed(2)}</span></div>
-                <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-semibold text-accent">£{(credits + effectiveAmount).toFixed(2)}</span></div>
+                <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-semibold text-accent-ink">£{(credits + effectiveAmount).toFixed(2)}</span></div>
               </div>
             )}
 
-            {intentError && <p className="text-xs text-red-400 text-center mb-3">{intentError}</p>}
+            {intentError && <p className="text-xs text-red-600 text-center mb-3">{intentError}</p>}
 
             {savedCard ? (
               <>
                 <button
                   disabled={!effectiveAmount || effectiveAmount < 1 || topUpBusy}
                   onClick={payTopUpWithSavedCard}
-                  className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {topUpBusy ? (
                     <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Charging…</>
@@ -514,7 +517,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
               <button
                 disabled={!effectiveAmount || effectiveAmount < 1 || loadingIntent}
                 onClick={handleContinue}
-                className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50"
+                className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50"
               >
                 {loadingIntent ? "Setting up…" : effectiveAmount && effectiveAmount >= 1 ? `Continue to pay £${effectiveAmount.toFixed(2)}` : "Enter an amount"}
               </button>

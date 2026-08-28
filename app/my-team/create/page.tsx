@@ -58,12 +58,12 @@ export default function CreateTeamPage() {
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <header className="flex items-center gap-3 mb-8">
         <a href="/my-team" className="w-9 h-9 rounded-full bg-surface-2 border border-border flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
         </a>
         <div>
-          <h1 className="text-xl font-bold">Register Your Team</h1>
+          <h1 className="text-xl font-extrabold">Register Your Team</h1>
           <p className="text-xs text-text-secondary mt-0.5">Set up your team profile on Unitr</p>
         </div>
       </header>
@@ -72,34 +72,34 @@ export default function CreateTeamPage() {
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Team Name <span className="text-red-400">*</span></label>
+          <label className="text-sm font-medium text-text-secondary">Team Name <span className="text-red-600">*</span></label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Hackney United"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Location <span className="text-red-400">*</span></label>
+          <label className="text-sm font-medium text-text-secondary">Location <span className="text-red-600">*</span></label>
           <input
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="e.g. Hackney, London"
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Level <span className="text-red-400">*</span></label>
+          <label className="text-sm font-medium text-text-secondary">Level <span className="text-red-600">*</span></label>
           <div className="flex gap-2 flex-wrap">
             {levels.map((l) => (
               <button
@@ -107,7 +107,7 @@ export default function CreateTeamPage() {
                 type="button"
                 onClick={() => setLevel(l)}
                 className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
-                  level === l ? "bg-accent text-black border-accent" : "bg-surface-2 border-border text-text-secondary"
+                  level === l ? "bg-accent text-white border-accent" : "bg-surface-2 border-border text-text-secondary"
                 }`}
               >
                 {l}
@@ -117,7 +117,7 @@ export default function CreateTeamPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Format <span className="text-red-400">*</span></label>
+          <label className="text-sm font-medium text-text-secondary">Format <span className="text-red-600">*</span></label>
           <div className="flex gap-2 flex-wrap">
             {formats.map((f) => (
               <button
@@ -125,7 +125,7 @@ export default function CreateTeamPage() {
                 type="button"
                 onClick={() => setFormat(f)}
                 className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
-                  format === f ? "bg-accent text-black border-accent" : "bg-surface-2 border-border text-text-secondary"
+                  format === f ? "bg-accent text-white border-accent" : "bg-surface-2 border-border text-text-secondary"
                 }`}
               >
                 {f}
@@ -141,14 +141,14 @@ export default function CreateTeamPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Tell players what your team is about..."
-            className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60 resize-none"
+            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60 resize-none"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm mt-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>

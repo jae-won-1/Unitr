@@ -109,28 +109,28 @@ export default function TournamentInvitePanel({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-scrim" onClick={onClose}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[88dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 pt-4 pb-2 flex-shrink-0">
           <div>
             <p className="font-bold">Invite teams</p>
             <p className="text-[11px] text-text-secondary">Good-fit teams for {tournamentTitle}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         <div className="px-5 pb-4 overflow-y-auto flex flex-col gap-3">
           {sent > 0 && (
             <div className="flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <p className="text-[11px] text-accent font-semibold">{sent} invitation{sent > 1 ? "s" : ""} sent.</p>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <p className="text-[11px] text-accent-ink font-semibold">{sent} invitation{sent > 1 ? "s" : ""} sent.</p>
             </div>
           )}
 
           {/* Discount */}
-          <div className="flex items-center gap-3 bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+          <div className="flex items-center gap-3 bg-surface border border-border rounded-btn px-3 py-2.5">
             <div className="flex-1">
               <p className="text-xs font-semibold">Discount off buy-in</p>
               <p className="text-[10px] text-text-secondary">Buy-in £{(buyInPence / 100).toFixed(2)} · they pay £{((buyInPence - discountPence) / 100).toFixed(2)}</p>
@@ -146,7 +146,7 @@ export default function TournamentInvitePanel({
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search teams by name, area, level…"
             className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50 placeholder:text-text-secondary" />
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
           {/* Team list */}
           {loading ? (
@@ -178,7 +178,7 @@ export default function TournamentInvitePanel({
 
         <div className="px-5 py-3 border-t border-border flex-shrink-0">
           <button onClick={send} disabled={busy || selected.size === 0}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+            className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
             {busy ? <><svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Sending…</>
               : selected.size > 0 ? `Send ${selected.size} invitation${selected.size > 1 ? "s" : ""}${discountPence > 0 ? ` · £${(discountPence / 100).toFixed(2)} off` : ""}`
               : "Select teams to invite"}

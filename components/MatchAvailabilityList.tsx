@@ -91,7 +91,7 @@ export default function MatchAvailabilityList({
   return (
     <div className="space-y-2">
       {matches.map((m) => (
-        <div key={m.id} className="bg-surface-2 border border-border rounded-xl px-3 py-2.5">
+        <div key={m.id} className="bg-surface border border-border rounded-btn px-3 py-2.5">
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="min-w-0">
               <p className="text-sm font-semibold truncate">vs {m.opponentName}</p>
@@ -101,7 +101,7 @@ export default function MatchAvailabilityList({
               </p>
             </div>
             {m.myStatus === "pending" && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-orange-500/10 text-orange-400 border-orange-500/30 flex-shrink-0">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-orange-500/10 text-orange-600 border-orange-500/30 flex-shrink-0">
                 Reply
               </span>
             )}
