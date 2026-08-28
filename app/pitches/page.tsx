@@ -151,7 +151,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl overflow-y-auto max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-border" /></div>
         <div className="px-5 pb-6">
           <div className="flex items-start justify-between mb-4">
@@ -345,7 +345,7 @@ function PitchAvailabilityPanel({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
         <div className="overflow-y-auto flex-1 px-5 pt-5 pb-3">
 
           {/* Header */}

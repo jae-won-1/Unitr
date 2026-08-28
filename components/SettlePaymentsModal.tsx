@@ -640,7 +640,7 @@ export function SettlePaymentsList() {
 export default function SettlePaymentsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={onClose}>
-      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <div className="min-w-0">
             <p className="font-bold text-base">Settle Payments</p>

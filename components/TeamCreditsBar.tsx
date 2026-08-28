@@ -556,7 +556,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
       {/* Transaction log modal — captain only */}
       {showLog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowLog(false)}>
-          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div>
                 <p className="font-bold text-base">Team Credits</p>
@@ -695,7 +695,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
         const selected = selectedCollectMatch ? collectMatches.find((m) => m.matchId === selectedCollectMatch) ?? null : null;
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-5" onClick={() => setShowCollect(false)}>
-          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-5 max-h-[80dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 {selected && (

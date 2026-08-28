@@ -171,7 +171,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88vh] overflow-y-auto"
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
 

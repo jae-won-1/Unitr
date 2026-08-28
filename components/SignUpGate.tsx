@@ -22,7 +22,7 @@ export default function SignUpGate({ target, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 pb-8 max-h-[85dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

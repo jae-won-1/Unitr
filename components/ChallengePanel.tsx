@@ -415,7 +415,7 @@ export default function ChallengePanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl flex flex-col max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>

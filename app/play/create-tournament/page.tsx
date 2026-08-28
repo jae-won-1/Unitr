@@ -342,7 +342,7 @@ export default function CreateTournamentPage() {
       {showPicker && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/60"
           onClick={() => setShowPicker(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88vh] overflow-y-auto"
+          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[88dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 pt-4 pb-1">
               <div>

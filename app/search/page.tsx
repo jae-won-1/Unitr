@@ -110,6 +110,9 @@ function SearchContent() {
           </svg>
           <input
             type="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search players or teams…"

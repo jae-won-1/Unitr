@@ -265,7 +265,7 @@ export default function TeamsPanel() {
       {sheetOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setSheetOpen(false)}>
           <div
-            className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl max-h-[85vh] flex flex-col"
+            className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl max-h-[85dvh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3">

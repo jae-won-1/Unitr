@@ -26,7 +26,76 @@ body {
   color: var(--text-primary);
 }
 
+/* ── Safe areas ────────────────────────────────────────────────
+   These depend on `viewport-fit=cover`, set in the viewport export in
+   app/layout.tsx. Without it every env() below resolves to 0. */
+
 /* Safe area padding for bottom nav on mobile */
 .pb-safe {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Clears the fixed BottomNav, whose height is its h-16 list plus its own
+   .pb-safe. Mirrors that sum exactly, so content stops just above the nav on
+   both notched and flat-bottomed phones. Replaces a flat pb-20, which went
+   short as soon as the safe area started reporting a real value. */
+.pb-nav {
+  padding-bottom: calc(4rem + max(1rem, env(safe-area-inset-bottom)));
+}
+
+/* ── Mobile viewport height ────────────────────────────────────
+   On mobile browsers 100vh is the *large* viewport — it includes the space the
+   URL bar occupies, so a 100vh page runs under the browser chrome and the last
+   ~60px (usually the primary button) is unreachable. 100dvh tracks the visible
+   area. Patched centrally here rather than across the ~107 call sites; the
+   @supports guard leaves pre-iOS-15.4 browsers on the old behaviour. */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+  .h-screen {
+    height: 100dvh;
+  }
+}
+
+/* ── Touch input ───────────────────────────────────────────────
+   Everything here is scoped to coarse pointers, so desktop is untouched. */
+@media (pointer: coarse) {
+  /* iOS auto-zooms any focused field whose text is under 16px and never zooms
+     back out. The site's inputs are text-sm/text-xs, so this floors them. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Minimum comfortable target on the small controls — chips, icon buttons,
+     the filter row. Applied to interactive elements only. */
+  button,
+  a[role="button"],
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+}
+
+/* Kills the 300ms tap delay and the grey flash Android/iOS paint over taps. */
+a,
+button,
+[role="button"],
+label {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Stops the page behind a sheet from scrolling once the sheet hits its end. */
+.overflow-y-auto,
+.overflow-x-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevents iOS Safari inflating text in landscape. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }

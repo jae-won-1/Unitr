@@ -127,28 +127,33 @@ export default function RegisterPage() {
               <label className="text-sm font-medium text-text-secondary">
                 {accountType === "venue_manager" ? "Your Name" : "Full Name"}
               </label>
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
+              <input type="text" autoComplete="name" autoCapitalize="words" enterKeyHint="next"
+                value={fullName} onChange={(e) => setFullName(e.target.value)}
                 placeholder={accountType === "venue_manager" ? "e.g. Sarah Johnson" : "e.g. Jamie Dawson"}
                 className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-text-secondary">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              <input type="email" inputMode="email" autoComplete="email" autoCapitalize="none"
+                autoCorrect="off" enterKeyHint="next"
+                value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-text-secondary">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              <input type="password" autoComplete="new-password" enterKeyHint="next"
+                value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 8 characters"
                 className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-text-secondary">Confirm Password</label>
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              <input type="password" autoComplete="new-password" enterKeyHint="done"
+                value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter your password"
                 className="bg-surface-2 border border-border rounded-xl px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
             </div>

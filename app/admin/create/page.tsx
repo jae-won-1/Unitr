@@ -170,7 +170,7 @@ export default function AdminCreateEventPage() {
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelCls}>Buy-in per team (£)</label>
-          <input type="number" min="0" step="0.5" className={inputCls} value={buyIn}
+          <input type="number" min="0" step="0.5" inputMode="decimal" className={inputCls} value={buyIn}
             onChange={(e) => setBuyIn(e.target.value)} placeholder="0 = free entry" />
         </div>
         <div>
@@ -178,7 +178,7 @@ export default function AdminCreateEventPage() {
           {isFriendly ? (
             <div className={`${inputCls} text-text-secondary`}>2 — it&rsquo;s a friendly</div>
           ) : (
-            <input type="number" min="2" className={inputCls} value={maxTeams}
+            <input type="number" min="2" inputMode="numeric" className={inputCls} value={maxTeams}
               onChange={(e) => setMaxTeams(e.target.value)} />
           )}
         </div>

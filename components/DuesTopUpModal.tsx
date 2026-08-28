@@ -357,7 +357,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   return (
     <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-5" onClick={onClose}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {credits === null ? (
           <div className="py-10 flex justify-center">
             <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -475,7 +475,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
             <div className="relative mb-5">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-text-secondary">£</span>
               <input
-                type="number" min="1" step="0.01" placeholder="Custom amount"
+                type="number" min="1" step="0.01" inputMode="decimal" enterKeyHint="done" placeholder="Custom amount"
                 value={customInput}
                 onChange={(e) => { setCustomInput(e.target.value); setSelectedAmount(null); }}
                 className="w-full bg-surface-2 border border-border rounded-xl pl-7 pr-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"

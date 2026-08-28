@@ -60,6 +60,11 @@ export default function LoginPage() {
           <label className="text-sm font-medium text-text-secondary">Email</label>
           <input
             type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            enterKeyHint="next"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
@@ -71,6 +76,8 @@ export default function LoginPage() {
           <label className="text-sm font-medium text-text-secondary">Password</label>
           <input
             type="password"
+            autoComplete="current-password"
+            enterKeyHint="go"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Your password"

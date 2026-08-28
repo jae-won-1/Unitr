@@ -291,7 +291,7 @@ function CheckoutForm({
 // ── "Save this card for next time?" prompt shown after a manual payment ───────
 function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip: () => void; saving: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+    <div className="flex flex-col items-center justify-center min-h-[60dvh] text-center px-6">
       <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       </div>
@@ -315,7 +315,7 @@ function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip
 function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
   const total = matchInfo.totalPence / 100;
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-6">
+    <div className="flex flex-col items-center justify-center min-h-[60dvh] text-center px-6">
       <div className="w-20 h-20 rounded-full bg-accent/20 border-2 border-accent/40 flex items-center justify-center mb-5">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round">
           <polyline points="20 6 9 17 4 12"/>

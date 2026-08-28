@@ -108,7 +108,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   return (
     <>
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {done !== null ? (
           <div className="text-center">
             <div className="w-16 h-16 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mx-auto mb-4">
@@ -135,7 +135,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
                     </button>
                   ))}
                 </div>
-                <input type="number" min={1} step={1} value={customInput}
+                <input type="number" min={1} step={1} inputMode="decimal" enterKeyHint="done" value={customInput}
                   onChange={(e) => { setCustomInput(e.target.value); setSelectedAmount(null); }}
                   placeholder="Custom amount (£)"
                   className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50 mb-4" />

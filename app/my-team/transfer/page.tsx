@@ -375,6 +375,9 @@ export default function TransferMarketPage() {
         </svg>
         <input
           type="search"
+          autoCapitalize="none"
+          autoCorrect="off"
+          enterKeyHint="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tab === "players" ? "Search players by name…" : "Search teams by name…"}

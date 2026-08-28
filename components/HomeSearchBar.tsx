@@ -82,6 +82,9 @@ export default function HomeSearchBar() {
         </svg>
         <input
           type="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          enterKeyHint="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}

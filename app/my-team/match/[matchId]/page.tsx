@@ -1132,7 +1132,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
           {presetPickerOpen && presets && (
             <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={() => setPresetPickerOpen(false)}>
-              <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[70dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
                 <div className="p-4 space-y-2">
                   <p className="font-bold text-base mb-2">Load a saved setup</p>
@@ -1155,7 +1155,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       {/* Lineup player picker (captain) */}
       {pickerSlot !== null && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" onClick={() => setPickerSlot(null)}>
-          <div className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md bg-surface border-t border-border rounded-t-2xl p-5 max-h-[70dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <p className="font-bold text-base">Assign {players[pickerSlot]?.position}</p>
               <button type="button" onClick={() => setPickerSlot(null)}>

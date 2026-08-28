@@ -212,7 +212,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={() => !working && onCancel()}>
-      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm bg-[#141414] border border-border rounded-2xl p-6 max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <p className="text-lg font-bold mb-1">Confirm & pay</p>
         <p className="text-sm font-semibold">{pitch.name}</p>
         <p className="text-xs text-text-secondary mb-4">{pitch.address}</p>

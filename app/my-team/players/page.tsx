@@ -27,7 +27,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end" onClick={onClose}>
-      <div className="w-full bg-surface rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full bg-surface rounded-t-2xl p-5 max-h-[85dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
 
         <div className="flex items-center gap-4 mb-5">
