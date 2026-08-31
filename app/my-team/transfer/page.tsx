@@ -359,7 +359,7 @@ export default function TransferMarketPage() {
               <path d="M4 4h16v12H5.17L4 17.17z"/>
             </svg>
             {pending > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
                 {pending}
               </span>
             )}

@@ -173,8 +173,12 @@ export default function TopBar() {
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
+          {/* Every unread indicator in the app is bg-danger — the dots here, the
+              counts in the dropdown, the Payment Status / Settle Payments chips.
+              Blue and yellow badges read as decoration next to a red one, so a
+              new badge should not invent its own colour. */}
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-2 border-2 border-accent" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger border-2 border-accent" />
           )}
         </button>
 
@@ -214,7 +218,7 @@ export default function TopBar() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold">Pay Your Share</p>
-                    <span className="text-[10px] font-bold bg-accent text-white px-1.5 py-0.5 rounded-full">{matchDues}</span>
+                    <span className="text-[10px] font-bold bg-danger text-white px-1.5 py-0.5 rounded-full">{matchDues}</span>
                   </div>
                   <p className="text-[11px] text-text-secondary mt-0.5">
                     {matchDues} played {matchDues > 1 ? "matches" : "match"} awaiting your share · settle in Team Credits → Dues
@@ -236,7 +240,7 @@ export default function TopBar() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold">Join Requests</p>
                   {joinRequests > 0 && (
-                    <span className="text-[10px] font-bold bg-accent text-white px-1.5 py-0.5 rounded-full">{joinRequests}</span>
+                    <span className="text-[10px] font-bold bg-danger text-white px-1.5 py-0.5 rounded-full">{joinRequests}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-0.5">
@@ -259,7 +263,7 @@ export default function TopBar() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-bold">Pending Match Post</p>
                   {openPosts > 0 && (
-                    <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">{openPosts}</span>
+                    <span className="text-[10px] font-bold bg-danger text-white px-1.5 py-0.5 rounded-full">{openPosts}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-0.5">
@@ -280,7 +284,7 @@ export default function TopBar() {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           {unreadMessages > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-accent-2 border-2 border-accent" />
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-danger border-2 border-accent" />
           )}
         </a>
       )}
