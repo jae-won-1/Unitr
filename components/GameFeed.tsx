@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import RingerFeed from "@/components/RingerFeed";
 import DateDial, { countByDate } from "@/components/DateDial";
@@ -21,7 +21,92 @@ import { fmtKickoff, isKickoffPast, toDateKey } from "@/lib/match-dates";
 // this could ship without destabilising that page; they fold together when Play
 // is retired.
 
-type Tab = "ringer" | "matches" | "tournaments";
+// "all" is the default — the feed's job is discovery, and three separate tabs
+// meant a game only ever showed up if you already knew which category to look
+// in. The named types stay as a way to narrow the search, now from a dropdown
+// rather than a row of pills that ran out of width as categories were added.
+type Tab = "all" | "ringer" | "matches" | "tournaments";
+
+export const GAME_TYPES: { key: Tab; label: string }[] = [
+  { key: "all", label: "All games" },
+  { key: "matches", label: "Matches" },
+  { key: "tournaments", label: "Tournaments" },
+  { key: "ringer", label: "Fill In" },
+];
+
+// ── Game-type dropdown ────────────────────────────────────────
+// Shared with the teamless home (app/page.tsx), which renders the same control
+// with everything but Fill In locked, so both roles get an identical shape.
+export function GameTypeSelect({ value, onChange, locked = [], note }: {
+  value: Tab;
+  onChange: (v: Tab) => void;
+  // Types this viewer can't use. Greyed inside the open menu rather than
+  // dropped from it — the point is to show what a team unlocks.
+  locked?: Tab[];
+  note?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const current = GAME_TYPES.find((t) => t.key === value) ?? GAME_TYPES[0];
+
+  return (
+    <div>
+      <div className="relative inline-block" ref={ref}>
+        <button type="button" onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 bg-surface border border-border rounded-full pl-4 pr-3 py-2 text-[13px] font-semibold text-text-primary hover:border-accent transition-colors">
+          {current.label}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            className={`text-text-secondary transition-transform ${open ? "rotate-180" : ""}`}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {open && (
+          // z-30: above the feed cards below it, still under the z-40 chrome and
+          // the z-[60] sheet floor.
+          <div className="absolute left-0 top-11 z-30 w-52 bg-surface border border-border rounded-2xl shadow-xl overflow-hidden">
+            {GAME_TYPES.map((t) => {
+              const isLocked = locked.includes(t.key);
+              return (
+                <button key={t.key} type="button" disabled={isLocked}
+                  onClick={() => { onChange(t.key); setOpen(false); }}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left text-[13px] font-semibold border-b border-border last:border-b-0 transition-colors ${
+                    isLocked
+                      ? "text-text-secondary opacity-60 cursor-not-allowed"
+                      : value === t.key
+                        ? "text-accent-ink bg-accent/[0.06]"
+                        : "text-text-primary hover:bg-surface-2"
+                  }`}>
+                  {t.label}
+                  {isLocked ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  ) : value === t.key ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {note && <p className="text-[11px] text-text-secondary mt-2">{note}</p>}
+    </div>
+  );
+}
 
 type Tournament = {
   id: string;
@@ -410,6 +495,30 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
   );
 }
 
+// ── Section furniture ─────────────────────────────────────────
+// Only shown in All, where the sections need telling apart. Narrowed to one
+// type, the dropdown above already names what you're looking at.
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] font-extrabold tracking-[0.08em] text-text-secondary uppercase pt-1">
+      {children}
+    </p>
+  );
+}
+
+function FeedSpinner() {
+  return <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
+}
+
+function FeedEmpty({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
+      <p className="text-sm text-text-secondary">{title}</p>
+      <p className="text-xs text-text-secondary mt-1">{hint}</p>
+    </div>
+  );
+}
+
 // ── Feed ──────────────────────────────────────────────────────
 export default function GameFeed({ teamId, userId, canAct = false, matchesHeader }: {
   teamId: string | null;
@@ -420,11 +529,12 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   // Status pinned above the Matches list — the captain's own live post.
   matchesHeader?: React.ReactNode;
 }) {
-  const [tab, setTab] = useState<Tab>("matches");
-  // Shared between Matches and Tournaments so switching category keeps the day
-  // you're looking at. Fill In keeps its own dial inside RingerFeed, since its
-  // dates come from a separate query.
+  const [tab, setTab] = useState<Tab>("all");
+  // Shared across every category so narrowing the type keeps the day you're
+  // looking at. Fill In's dates come from a separate query inside RingerFeed,
+  // which reports them up here so one dial can count all three.
   const [dateKey, setDateKey] = useState<string | null>(null);
+  const [ringerCounts, setRingerCounts] = useState<Map<string, number>>(new Map());
   const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
   const { tournaments, loading: tLoading, markJoined } = useOpenTournaments(teamId);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
@@ -436,100 +546,118 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
       .then(({ data }) => setTeamName(data?.name ?? null));
   }, [teamId]);
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "ringer", label: "Fill In" },
-    { key: "matches", label: "Matches" },
-    { key: "tournaments", label: "Tournaments" },
-  ];
+  const showAll = tab === "all";
+  const showMatches = showAll || tab === "matches";
+  const showTournaments = showAll || tab === "tournaments";
+  const showRinger = showAll || tab === "ringer";
 
   const visiblePosts = dateKey ? posts.filter((p) => toDateKey(p.match_date) === dateKey) : posts;
   const visibleTournaments = dateKey ? tournaments.filter((t) => toDateKey(t.matchDate) === dateKey) : tournaments;
 
+  // One dial for the whole feed, so the date survives a change of type. In All
+  // it counts every source at once; narrowed, it counts only what's on screen,
+  // otherwise a day would show a badge for games the filter has hidden.
+  const dialCounts = (() => {
+    const merged = new Map<string, number>();
+    const add = (m: Map<string, number>) => m.forEach((n, k) => merged.set(k, (merged.get(k) ?? 0) + n));
+    if (showMatches) add(countByDate(posts, (p) => p.match_date));
+    if (showTournaments) add(countByDate(tournaments, (t) => t.matchDate));
+    if (showRinger) add(ringerCounts);
+    return merged;
+  })();
+
+  // Empty sections are dropped in All rather than stacking three "nothing here"
+  // cards; narrowed to one type, the empty state is the whole answer and stays.
+  const matchesEmpty = visiblePosts.length === 0;
+  const tournamentsEmpty = visibleTournaments.length === 0;
+  const nothingAtAll = showAll && matchesEmpty && tournamentsEmpty;
+
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border transition-colors ${
-              tab === t.key ? "bg-accent text-white border-accent" : "bg-surface text-text-primary border-border"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <GameTypeSelect value={tab} onChange={setTab} />
 
-      {tab === "ringer" && <RingerFeed showIntro={false} showDateDial />}
+      <DateDial value={dateKey} onChange={setDateKey} counts={dialCounts} />
 
-      {tab === "matches" && (
+      {/* The captain's own live post stays pinned to the top of the feed
+          whenever matches are in view, above the type sections. */}
+      {showMatches && !postsLoading && matchesHeader}
+
+      {showMatches && (
         postsLoading ? (
-          <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
+          <FeedSpinner />
+        ) : matchesEmpty ? (
+          showAll ? null : (
+            <FeedEmpty
+              title={posts.length > 0 ? "No matches posted for this day." : "No open matches right now."}
+              hint={posts.length > 0
+                ? "Try another date, or pick All to see everything."
+                : "Posts from other teams looking for an opponent show up here."}
+            />
+          )
         ) : (
           <div className="space-y-4">
-            {matchesHeader}
-            <DateDial value={dateKey} onChange={setDateKey} counts={countByDate(posts, (p) => p.match_date)} />
-            {visiblePosts.length === 0 ? (
-              <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
-                <p className="text-sm text-text-secondary">
-                  {posts.length > 0 ? "No matches posted for this day." : "No open matches right now."}
-                </p>
-                <p className="text-xs text-text-secondary mt-1">
-                  {posts.length > 0
-                    ? "Try another date, or pick All to see everything."
-                    : "Posts from other teams looking for an opponent show up here."}
-                </p>
-              </div>
-            ) : (
-              visiblePosts.map((p) => (
-                <MatchPostCard key={p.id} post={p}>
-                  {canAct
-                    ? <ChallengeButton post={p} onMatched={removePost} />
-                    : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} compact />}
-                </MatchPostCard>
-              ))
-            )}
+            {showAll && <SectionLabel>Matches</SectionLabel>}
+            {visiblePosts.map((p) => (
+              <MatchPostCard key={p.id} post={p}>
+                {canAct
+                  ? <ChallengeButton post={p} onMatched={removePost} />
+                  : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} compact />}
+              </MatchPostCard>
+            ))}
           </div>
         )
       )}
 
-      {tab === "tournaments" && (
+      {showTournaments && (
         tLoading ? (
-          <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
+          <FeedSpinner />
+        ) : tournamentsEmpty ? (
+          showAll ? null : (
+            <FeedEmpty
+              title={tournaments.length > 0 ? "No events on this day." : "No events right now."}
+              hint={tournaments.length > 0
+                ? "Try another date, or pick All to see everything."
+                : "Tournaments, leagues and hosted friendlies show up here."}
+            />
+          )
         ) : (
           <div className="space-y-4">
-            <DateDial value={dateKey} onChange={setDateKey} counts={countByDate(tournaments, (t) => t.matchDate)} />
-            {visibleTournaments.length === 0 ? (
-              <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
-                <p className="text-sm text-text-secondary">
-                  {tournaments.length > 0 ? "No events on this day." : "No events right now."}
-                </p>
-                <p className="text-xs text-text-secondary mt-1">
-                  {tournaments.length > 0
-                    ? "Try another date, or pick All to see everything."
-                    : "Tournaments, leagues and hosted friendlies show up here."}
-                </p>
-              </div>
-            ) : (
-              visibleTournaments.map((t) => (
-                <TournamentPostCard key={t.id} t={t}>
-                  {canAct
-                    ? (
-                      <EnterTournamentButton
-                        t={t}
-                        teamId={teamId}
-                        teamName={teamName}
-                        onJoined={() => teamId && markJoined(t.id, teamId)}
-                      />
-                    )
-                    : <SuggestButton postId={t.id} kind="tournament" suggested={suggested.has(t.id)} unavailable={unavailable} onSuggest={suggest} />}
-                </TournamentPostCard>
-              ))
-            )}
+            {showAll && <SectionLabel>Tournaments</SectionLabel>}
+            {visibleTournaments.map((t) => (
+              <TournamentPostCard key={t.id} t={t}>
+                {canAct
+                  ? (
+                    <EnterTournamentButton
+                      t={t}
+                      teamId={teamId}
+                      teamName={teamName}
+                      onJoined={() => teamId && markJoined(t.id, teamId)}
+                    />
+                  )
+                  : <SuggestButton postId={t.id} kind="tournament" suggested={suggested.has(t.id)} unavailable={unavailable} onSuggest={suggest} />}
+              </TournamentPostCard>
+            ))}
           </div>
         )
+      )}
+
+      {/* In All the two team sections vanish when empty, so say once that they
+          were empty rather than leaving Fill In looking like the whole feed. */}
+      {nothingAtAll && !postsLoading && !tLoading && (
+        <p className="text-xs text-text-secondary">
+          {dateKey ? "No matches or tournaments on this day." : "No open matches or tournaments right now."}
+        </p>
+      )}
+
+      {showRinger && (
+        <div className="space-y-4">
+          {showAll && <SectionLabel>Fill In</SectionLabel>}
+          {/* The dial above owns the date for every section here, so this feed
+              takes it as a prop and shows no dial of its own. Passing dateKey is
+              what suppresses it — the teamless home mounts RingerFeed without it
+              and keeps the built-in dial. */}
+          <RingerFeed dateKey={dateKey} onDateCounts={setRingerCounts} showIntro={false} />
+        </div>
       )}
     </section>
   );

@@ -8,7 +8,7 @@ import RingerFeed from "@/components/RingerFeed";
 import QuickNav from "@/components/QuickNav";
 import TeamsPanel from "@/components/TeamsPanel";
 import PlayerActionStrip from "@/components/PlayerActionStrip";
-import GameFeed from "@/components/GameFeed";
+import GameFeed, { GameTypeSelect } from "@/components/GameFeed";
 import TeamCreditsBar from "@/components/TeamCreditsBar";
 import PollStatusTile from "@/components/PollStatusTile";
 import MyPostCard, { useMyPosts } from "@/components/MyPostCard";
@@ -314,22 +314,15 @@ function ConfirmedFixtureCard({ fixture, action }: { fixture: ConfirmedFixture; 
 // for them the missing step is the account, not the team.
 function TeamlessFeedToggle({ note }: { note?: string }) {
   return (
-    <div>
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <span className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border bg-accent text-white border-accent">
-          Fill In
-        </span>
-        {["Matches", "Tournaments"].map((label) => (
-          <span key={label}
-            className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold border bg-surface-2 text-text-secondary border-border opacity-60 cursor-not-allowed">
-            {label}
-          </span>
-        ))}
-      </div>
-      <p className="text-[11px] text-text-secondary mt-2">
-        {note ?? "Matches and tournaments are team entries — join or register a team to unlock them."}
-      </p>
-    </div>
+    // The same dropdown GameFeed uses, so the control doesn't change shape when
+    // joining a team unlocks it — only what's inside does. Fill In is the sole
+    // option that can be picked, so it's also the value.
+    <GameTypeSelect
+      value="ringer"
+      onChange={() => {}}
+      locked={["all", "matches", "tournaments"]}
+      note={note ?? "Matches and tournaments are team entries — join or register a team to unlock them."}
+    />
   );
 }
 

@@ -233,13 +233,23 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
 }
 
 // ── Feed ──────────────────────────────────────────────────────
-export default function RingerFeed({ showIntro = true, showDateDial = false }: {
+export default function RingerFeed({ showIntro = true, showDateDial = false, dateKey: dateKeyProp, onDateCounts }: {
   showIntro?: boolean;
   showDateDial?: boolean;
+  // When a parent shows this feed alongside others (GameFeed's "All"), one dial
+  // up there drives every list, so the date arrives from outside and the feed's
+  // own dial stays hidden. Passing this at all takes control — `null` is a real
+  // value meaning "no date picked", so absence is the uncontrolled signal.
+  dateKey?: string | null;
+  // Lets that shared dial count fill-in games too, instead of understating the
+  // days that only have one. Pass a stable function — a raw useState setter is.
+  onDateCounts?: (counts: Map<string, number>) => void;
 } = {}) {
   const { user } = useAuth();
   const { posts, loading, unavailable, reload } = useRingerPosts(user?.id);
-  const [dateKey, setDateKey] = useState<string | null>(null);
+  const [ownDateKey, setOwnDateKey] = useState<string | null>(null);
+  const controlled = dateKeyProp !== undefined;
+  const dateKey = controlled ? dateKeyProp : ownDateKey;
   const [target, setTarget] = useState<RingerPost | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -311,6 +321,10 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
   const counts = countByDate(posts, (p) => p.date);
   const visible = dateKey ? posts.filter((p) => toDateKey(p.date) === dateKey) : posts;
 
+  // `counts` is a fresh Map every render, so this keys off `posts` instead —
+  // listing it in the deps would loop.
+  useEffect(() => { onDateCounts?.(countByDate(posts, (p) => p.date)); }, [posts, onDateCounts]);
+
   return (
     <div className="space-y-4">
       {showIntro && (
@@ -323,7 +337,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false }: {
         </div>
       )}
 
-      {showDateDial && !loading && <DateDial value={dateKey} onChange={setDateKey} counts={counts} />}
+      {showDateDial && !controlled && !loading && <DateDial value={ownDateKey} onChange={setOwnDateKey} counts={counts} />}
 
       {loading ? (
         <div className="flex justify-center py-8"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>
