@@ -11,6 +11,11 @@ type SettleItem = {
   matchId?: string;
   openMatchId?: string;   // set instead of matchId for a tournament entry fee
   bookingId?: string | null;
+  // What this charge IS, for Stripe metadata. A saved-card TOP-UP is charged
+  // through this route too, and must be tagged 'team_credits' so it buckets
+  // with the other top-ups on /admin/finance rather than looking like a
+  // match settlement. Defaults to the settlement case.
+  purpose?: "team_credits" | "match_settlement";
 };
 
 type SettleResult = {
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest) {
           off_session: true,
           confirm: true,
           metadata: {
-            type: "match_settlement",
+            type: it.purpose ?? "match_settlement",
             playerId: it.playerId,
             matchId: it.matchId ?? "",
             openMatchId: it.openMatchId ?? "",
@@ -55,7 +60,9 @@ export async function POST(req: NextRequest) {
             pitchShare: it.sharePence,
             unitrFee: it.feePence,
           },
-          description: `Unitr match settlement — £${(it.sharePence / 100).toFixed(2)} pitch + £${(it.feePence / 100).toFixed(2)} fee`,
+          description: it.purpose === "team_credits"
+            ? `Unitr team credits — £${(it.amountPence / 100).toFixed(2)}`
+            : `Unitr match settlement — £${(it.sharePence / 100).toFixed(2)} pitch + £${(it.feePence / 100).toFixed(2)} fee`,
         });
 
         if (pi.status === "succeeded") {

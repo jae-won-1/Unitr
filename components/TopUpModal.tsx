@@ -29,10 +29,15 @@ function TopUpCheckoutForm({ amount, teamId, userId, currentPence, onSuccess, on
       setPaying(false);
       return;
     }
+    // Pass the PaymentIntent so the ledger row can be reconciled against the
+    // Stripe charge that paid for it (/admin/finance). Also makes the credit
+    // idempotent — a re-confirmed intent hits the unique index and can't
+    // double-credit the team.
     const { data: newBalancePence } = await supabase.rpc("add_credit", {
       p_team_id: teamId,
       p_amount_pence: Math.round(amount * 100),
       p_player_id: userId,
+      p_payment_intent_id: paymentIntent.id,
     });
     onSuccess(
       typeof newBalancePence === "number" ? newBalancePence : currentPence + Math.round(amount * 100),

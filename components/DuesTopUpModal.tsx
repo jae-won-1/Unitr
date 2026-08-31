@@ -33,12 +33,17 @@ export async function applyTopUp(
   teamId: string,
   userId: string,
   amountPence: number,
-  targetPcsId?: string
+  targetPcsId?: string,
+  // The Stripe charge that funded this top-up, where there was one. Recorded on
+  // the ledger row so /admin/finance can reconcile deposits against Stripe, and
+  // so a replayed intent can't credit the team twice (unique index).
+  paymentIntentId?: string | null
 ): Promise<number | null> {
   const { data: newBalancePence } = await supabase.rpc("add_credit", {
     p_team_id: teamId,
     p_amount_pence: amountPence,
     p_player_id: userId,
+    p_payment_intent_id: paymentIntentId ?? null,
   });
 
   if (targetPcsId) {
@@ -161,7 +166,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
-      const newBalancePence = await applyTopUp(teamId, userId, Math.round(amount * 100), targetPcsId);
+      const newBalancePence = await applyTopUp(teamId, userId, Math.round(amount * 100), targetPcsId, paymentIntent.id);
       onSuccess(
         typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount,
         paymentIntent.id,
@@ -248,9 +253,10 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   // Clear a paid-off due locally: refill the team's credit and mark the row.
   // add_credit returns the new balance so it's set directly — a realtime event
   // isn't guaranteed to reach the payer's own browser in time.
-  const applyDuePaid = async (due: MyDue, paidPence: number) => {
+  const applyDuePaid = async (due: MyDue, paidPence: number, paymentIntentId?: string | null) => {
     const { data: newBalancePence } = await supabase.rpc("add_credit", {
       p_team_id: teamId, p_amount_pence: paidPence, p_player_id: userId,
+      p_payment_intent_id: paymentIntentId ?? null,
     });
     if (typeof newBalancePence === "number") setBalance(newBalancePence / 100);
     await supabase.from("payment_collection_status")
@@ -282,7 +288,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
       const data = await res.json();
       const r = data.results?.[0];
       if (r?.ok) {
-        await applyDuePaid(due, due.remainingPence);
+        await applyDuePaid(due, due.remainingPence, r.paymentIntentId);
         setDuePaidFlash(true);
       } else {
         setDueError(r?.error ?? data.error ?? "Card was declined — try topping up manually.");
@@ -336,12 +342,15 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           customerId: savedCard.customerId,
           paymentMethodId: savedCard.paymentMethodId,
           amountPence, sharePence: amountPence, feePence: 0,
+          // Economically a credit top-up, not a match settlement — tag it so it
+          // buckets with the other top-ups on /admin/finance.
+          purpose: "team_credits",
         }] }),
       });
       const data = await res.json();
       const r = data.results?.[0];
       if (r?.ok) {
-        const newBalancePence = await applyTopUp(teamId, userId, amountPence, payTarget?.pcsId ?? undefined);
+        const newBalancePence = await applyTopUp(teamId, userId, amountPence, payTarget?.pcsId ?? undefined, r.paymentIntentId);
         setBalance(typeof newBalancePence === "number" ? newBalancePence / 100 : (credits ?? 0) + effectiveAmount);
         setSuccess(true);
         await reloadDues();

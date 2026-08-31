@@ -105,6 +105,15 @@ begin
     where table_schema='public' and table_name='team_credit_transactions' and column_name='open_match_id') then
     alter table public.team_credit_transactions add column open_match_id uuid references public.open_matches(id);
   end if;
+  -- The Stripe charge that funded a 'deposit', where a card paid for it. Lets
+  -- /admin/finance reconcile top-ups against Stripe, and distinguishes a card
+  -- top-up from the cash-settled dues and manual grants that share this type.
+  -- Mirrored in supabase_credit_topup_reconciliation.sql, which also adds the
+  -- unique index — both files must agree so either run order converges.
+  if not exists (select 1 from information_schema.columns
+    where table_schema='public' and table_name='team_credit_transactions' and column_name='stripe_payment_intent_id') then
+    alter table public.team_credit_transactions add column stripe_payment_intent_id text;
+  end if;
 end $$;
 
 -- Note on reconciliation: balance_pence is the source of truth. Summing
@@ -139,8 +148,18 @@ alter table public.match_posts
 -- ════════════════════════════════════════════════════════════════════════
 
 -- Deposit (joining fee / top-up) — atomic increment, avoids stale-read clobber.
+-- p_payment_intent_id is optional and only set by card top-ups; see
+-- supabase_credit_topup_reconciliation.sql. Kept byte-identical to that file's
+-- definition so re-running either one in any order lands on the same function.
+-- The 3-arg version is dropped first: leaving it in place alongside this one
+-- makes every 3-arg call ambiguous ("function is not unique").
+drop function if exists public.add_credit(uuid, integer, uuid);
+
 create or replace function public.add_credit(
-  p_team_id uuid, p_amount_pence integer, p_player_id uuid
+  p_team_id uuid,
+  p_amount_pence integer,
+  p_player_id uuid,
+  p_payment_intent_id text default null
 ) returns integer language plpgsql security definer as $$
 declare v_new integer;
 begin
@@ -149,8 +168,11 @@ begin
       set balance_pence = public.team_credits.balance_pence + p_amount_pence, updated_at = now()
     returning balance_pence into v_new;
 
-  insert into public.team_credit_transactions(team_id, player_id, type, amount_pence)
-    values (p_team_id, p_player_id, 'deposit', p_amount_pence);
+  insert into public.team_credit_transactions(
+    team_id, player_id, type, amount_pence, stripe_payment_intent_id
+  ) values (
+    p_team_id, p_player_id, 'deposit', p_amount_pence, p_payment_intent_id
+  );
 
   return v_new;
 end $$;
