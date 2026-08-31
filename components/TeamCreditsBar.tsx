@@ -519,29 +519,36 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
             </span>
           )}
         </button>
-        {role === "captain" && (
-          <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
-            className="flex items-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
-            Payment Status
-            {collectMatches.length > 0 && (
+        {/* Payment Status and Settle Payments are one pair, so for the captain
+            they get their own full-width sub-row and split it evenly — left to
+            the outer wrap they were too wide to share a line and the second
+            always dropped below the first. A player sees only Settle Payments,
+            which keeps its natural width in the main row. */}
+        <div className={`flex items-center gap-2 ${role === "captain" ? "w-full" : ""}`}>
+          {role === "captain" && (
+            <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
+              className="flex-1 flex items-center justify-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
+              Payment Status
+              {collectMatches.length > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+                  {collectMatches.length}
+                </span>
+              )}
+            </button>
+          )}
+          {/* Opens in place rather than navigating: its neighbours in this row are
+              all popups, and sending the captain to a full page for the same kind
+              of quick check lost them their position on Home. */}
+          <button onClick={() => setShowSettle(true)}
+            className={`flex items-center justify-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap ${role === "captain" ? "flex-1" : ""}`}>
+            Settle Payments
+            {historyAlertCount > 0 && (
               <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
-                {collectMatches.length}
+                {historyAlertCount}
               </span>
             )}
           </button>
-        )}
-        {/* Opens in place rather than navigating: its neighbours in this row are
-            all popups, and sending the captain to a full page for the same kind
-            of quick check lost them their position on Home. */}
-        <button onClick={() => setShowSettle(true)}
-          className="flex items-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
-          Settle Payments
-          {historyAlertCount > 0 && (
-            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
-              {historyAlertCount}
-            </span>
-          )}
-        </button>
+        </div>
       </div>
       {reserved > 0 && (
         <p className="text-[11px] text-text-secondary mt-1">

@@ -149,7 +149,11 @@ export default function TopBar() {
     // The bar is now a solid accent-green band rather than page-coloured chrome,
     // so everything inside it is white — including the icons, whose stroke is a
     // literal attribute rather than a class.
-    <div className="fixed top-0 left-0 right-0 z-40 h-16 w-full bg-accent flex items-center justify-between gap-2 px-4">
+    // h-14 (56px) sits deliberately *under* the pt-16 (64px) offset every page
+    // uses, so the band clears the page's first row — QuickNav on Home — by 8px
+    // instead of butting straight up against it. Raising this back to h-16
+    // closes that gap again.
+    <div className="fixed top-0 left-0 right-0 z-40 h-14 w-full bg-accent flex items-center justify-between gap-2 px-4">
 
       {/* ── Logo ── */}
       <a href="/" className="text-[19px] font-extrabold tracking-[0.01em] text-white flex-shrink-0">
@@ -286,7 +290,7 @@ export default function TopBar() {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); }}
-            className="w-11 h-11 rounded-full bg-accent-2 flex items-center justify-center"
+            className="w-10 h-10 rounded-full bg-accent-2 flex items-center justify-center"
           >
             <span className="text-sm font-extrabold text-white">{initials}</span>
           </button>
