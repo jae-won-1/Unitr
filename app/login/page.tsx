@@ -48,9 +48,6 @@ export default function LoginPage() {
           <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITR</span>
           <span className="w-[11px] h-6 bg-accent-2 -skew-x-12" />
         </span>
-        <p className="relative mt-2.5 max-w-[280px] text-sm font-semibold leading-relaxed text-white/80">
-          Sort the pitch, the squad and the money in one place.
-        </p>
       </div>
 
       <div className="flex flex-col px-6 pt-6">
