@@ -18,6 +18,17 @@ const playFrequencies = [
   { value: "10+", label: "10+ games" },
 ];
 
+// What a player is here for, which is the question player-team matching turns
+// on — experience says how good someone is, this says what they actually want.
+// "casual" means no team at all: fill-in games only, which is a legitimate end
+// state rather than an unfinished signup. Stored as the short key so the copy
+// can change without a data migration; see supabase_preferred_football_type.sql.
+const footballTypes = [
+  { value: "casual", label: "No team", hint: "Casual kickabouts and fill-in games" },
+  { value: "friendly", label: "Team friendlies", hint: "Regular matches with a team" },
+  { value: "competitive", label: "Competitive team matches", hint: "Leagues and tournaments" },
+];
+
 // Pilot testing is London-only, so the location question is not worth asking
 // yet — every answer would be the same. Profiles still carry a location (the
 // Transfer Market, search and squad lists all render it), so we write this
@@ -39,6 +50,7 @@ export default function RegisterPage() {
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("");
   const [gamesPerMonth, setGamesPerMonth] = useState("");
+  const [footballType, setFootballType] = useState("");
 
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -53,7 +65,7 @@ export default function RegisterPage() {
     if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (accountType === "player" && (!position || !experience || !gamesPerMonth)) {
+    if (accountType === "player" && (!position || !experience || !gamesPerMonth || !footballType)) {
       setError("Please fill in all player fields.");
       return;
     }
@@ -74,6 +86,7 @@ export default function RegisterPage() {
               position,
               experience,
               games_per_month: gamesPerMonth,
+              preferred_football_type: footballType,
               account_type: "player",
             };
 
@@ -233,6 +246,21 @@ export default function RegisterPage() {
                 ))}
               </div>
               <p className="text-xs text-text-secondary">Roughly, per month.</p>
+            </div>
+
+            {/* Stacked rather than chipped: these carry a hint line each, and
+                the third label is too long to sit in a wrapping row. */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Preferred type of football</label>
+              <div className="flex flex-col gap-2">
+                {footballTypes.map((type) => (
+                  <button key={type.value} type="button" onClick={() => setFootballType(type.value)}
+                    className={`w-full px-4 py-3 rounded-xl border text-left transition-colors ${footballType === type.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    <span className="block text-sm font-medium">{type.label}</span>
+                    <span className={`block text-xs mt-0.5 ${footballType === type.value ? "text-white/70" : "text-text-secondary"}`}>{type.hint}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </>
         )}
