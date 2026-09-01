@@ -117,7 +117,9 @@ export default function CreateTeamPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Format <span className="text-red-600">*</span></label>
+          {/* The column stays `format` — it is read across the Transfer Market,
+              TeamsPanel and the match composers. This is a label change only. */}
+          <label className="text-sm font-medium text-text-secondary">Preferred players per side <span className="text-red-600">*</span></label>
           <div className="flex gap-2 flex-wrap">
             {formats.map((f) => (
               <button
