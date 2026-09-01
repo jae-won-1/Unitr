@@ -8,6 +8,7 @@ import TournamentInvitePanel from "@/components/TournamentInvitePanel";
 import EnterTournamentPanel from "@/components/EnterTournamentPanel";
 import { isKickoffPast } from "@/lib/match-dates";
 import { computeStandings } from "@/lib/standings";
+import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-revenue";
 
 // Event detail + management — tournaments, leagues and admin-hosted friendlies
 // (all open_matches rows). The organiser (the hosting team's captain, the venue
@@ -83,6 +84,7 @@ export default function TournamentDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
+  const [revenue, setRevenue] = useState<EventRevenue | null>(null);
 
   // Manual-fixture form
   const [mHome, setMHome] = useState("");
@@ -171,6 +173,15 @@ export default function TournamentDetailPage() {
       .select("discount_pence").eq("open_match_id", params.id).eq("team_id", myTeamId).eq("status", "pending").maybeSingle()
       .then(({ data }) => setInviteDiscountPence(data?.discount_pence ?? 0));
   }, [myTeamId, params.id]);
+
+  // Takings, for the admin who hosts this event (see the block below for why
+  // it is admin-hosted only). Reloads whenever the entry list changes.
+  const isAdminHost = Boolean(t && user && t.organiser_admin_id && t.organiser_admin_id === user.id);
+  useEffect(() => {
+    if (!t || !isAdminHost) { setRevenue(null); return; }
+    loadEventRevenue([{ id: t.id, price_per_team_pence: t.price_per_team_pence, max_teams: t.max_teams }])
+      .then((m) => setRevenue(m.get(t.id) ?? null));
+  }, [t, isAdminHost, teams.length]);
 
   const canManage = Boolean(t && user && (
     (t.organiser_team_id && t.organiser_team_id === myTeamId) ||
@@ -364,6 +375,45 @@ export default function TournamentDetailPage() {
             </div>
           )}
         </section>
+
+        {/* Takings — admin-hosted events only. A venue host reads its money in
+            the venue portal's Reports, and a team host sees the buy-ins land
+            back in Team Credits; only the admin, whose buy-ins simply stay with
+            the platform, has nowhere else to look. */}
+        {isAdminHost && revenue && (
+          <section className="bg-surface border border-border shadow-card rounded-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold">Revenue</p>
+              <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">kept by Unitr</span>
+            </div>
+            <div className="flex items-end justify-between">
+              <p className="text-2xl font-extrabold tabular-nums">{fmtPence(revenue.collectedPence)}</p>
+              <p className="text-[11px] text-text-secondary text-right">
+                {revenue.payingTeams} of {teams.length} entr{teams.length === 1 ? "y" : "ies"} paid<br />
+                {fmtPence(t.price_per_team_pence)} list price per team
+              </p>
+            </div>
+            <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+              {revenue.discountsPence > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[11px] text-text-secondary">Invitation discounts given</span>
+                  <span className="text-[11px] font-semibold tabular-nums">−{fmtPence(revenue.discountsPence)}</span>
+                </div>
+              )}
+              {!isKickoffPast(t.match_date, t.start_time) && revenue.potentialPence > revenue.collectedPence && (
+                <div className="flex justify-between">
+                  <span className="text-[11px] text-text-secondary">If every spot sells at list price</span>
+                  <span className="text-[11px] font-semibold tabular-nums">{fmtPence(revenue.potentialPence)}</span>
+                </div>
+              )}
+              <p className="text-[10px] text-text-secondary pt-1">
+                {revenue.estimated
+                  ? "Estimated from entries at list price — run supabase_credit_ledger.sql for exact figures."
+                  : "Buy-ins debited from each team's credit. You paid the venue outside the app, so nothing is transferred on."}
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* Entry CTA — a captain arriving from the feed or a suggestion needs to
             be able to actually buy in from here, not just read the schedule. */}
