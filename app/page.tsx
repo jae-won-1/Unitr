@@ -367,11 +367,7 @@ function NewUserHome() {
   // Not logged in — landing page
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-2xl bg-surface-2 border border-border p-6 text-center">
-        <p className="text-text-secondary text-sm mb-2">The football platform</p>
-        <h2 className="text-2xl font-extrabold mb-1">Connect. Compete.</h2>
-        <h2 className="text-2xl font-extrabold text-accent-ink mb-3">Conquer Together.</h2>
-        <p className="text-text-secondary text-sm mb-5">Find opponents, book pitches, and build your legacy.</p>
+      <section className="rounded-2xl bg-surface-2 border border-border p-4">
         <div className="flex gap-3">
           <a href="/register" className="flex-1 py-3 rounded-btn bg-accent text-white font-semibold text-sm text-center">Register</a>
           <a href="/login" className="flex-1 py-3 rounded-xl border border-border text-text-primary font-semibold text-sm text-center">Sign In</a>
