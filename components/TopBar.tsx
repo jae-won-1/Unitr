@@ -182,8 +182,13 @@ export default function TopBar() {
           )}
         </button>
 
+        {/* w-80 anchored to the bell overflows the left edge of a narrow phone —
+            the bell sits ~110px in from the right, so 320px of panel runs off
+            screen. On mobile the panel is pinned to the viewport instead (fixed,
+            16px inset); from sm up it hangs off the bell as before. max-h keeps a
+            long list scrolling inside the screen rather than under the fold. */}
         {notifOpen && (
-          <div className="absolute right-0 top-14 w-80 bg-surface border border-border rounded-2xl shadow-xl overflow-hidden z-50">
+          <div className="fixed left-4 right-4 top-14 sm:absolute sm:left-auto sm:right-0 sm:w-80 bg-surface border border-border rounded-2xl shadow-xl overflow-y-auto overscroll-contain max-h-[calc(100vh-5rem)] z-50">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <p className="text-sm font-bold">Notifications</p>
