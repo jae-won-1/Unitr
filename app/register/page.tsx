@@ -7,6 +7,23 @@ import { supabase } from "@/lib/supabase";
 const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
 const experiences = ["Beginner", "Casual", "Intermediate", "Competitive", "Semi-Pro"];
 
+// How much football someone actually plays, which is a different question from
+// how good they are. Buckets rather than a number because the answer is a
+// self-reported estimate — the stored value is the `value`, the label is only
+// ever shown. Kept in sync with supabase_play_frequency.sql.
+const playFrequencies = [
+  { value: "1-2", label: "1–2 games" },
+  { value: "3-5", label: "3–5 games" },
+  { value: "6-9", label: "6–9 games" },
+  { value: "10+", label: "10+ games" },
+];
+
+// Pilot testing is London-only, so the location question is not worth asking
+// yet — every answer would be the same. Profiles still carry a location (the
+// Transfer Market, search and squad lists all render it), so we write this
+// rather than leaving the column null and those cards blank.
+const PILOT_LOCATION = "London";
+
 type AccountType = "player" | "venue_manager";
 
 export default function RegisterPage() {
@@ -19,9 +36,9 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
 
   // Player-only fields
-  const [location, setLocation] = useState("");
   const [position, setPosition] = useState("");
   const [experience, setExperience] = useState("");
+  const [gamesPerMonth, setGamesPerMonth] = useState("");
 
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -36,7 +53,7 @@ export default function RegisterPage() {
     if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (accountType === "player" && (!location || !position || !experience)) {
+    if (accountType === "player" && (!position || !experience || !gamesPerMonth)) {
       setError("Please fill in all player fields.");
       return;
     }
@@ -50,7 +67,15 @@ export default function RegisterPage() {
       const profileData =
         accountType === "venue_manager"
           ? { id: data.user.id, full_name: fullName, account_type: "venue_manager" }
-          : { id: data.user.id, full_name: fullName, location, position, experience, account_type: "player" };
+          : {
+              id: data.user.id,
+              full_name: fullName,
+              location: PILOT_LOCATION,
+              position,
+              experience,
+              games_per_month: gamesPerMonth,
+              account_type: "player",
+            };
 
       const { error: profileError } = await supabase.from("profiles").insert(profileData);
       if (profileError) { setError(profileError.message); setLoading(false); return; }
@@ -174,13 +199,6 @@ export default function RegisterPage() {
         {accountType === "player" && (
           <>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Location</label>
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g. London"
-                className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60" />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-text-secondary">Position</label>
               <div className="flex flex-wrap gap-2">
                 {positions.map((pos) => (
@@ -202,6 +220,19 @@ export default function RegisterPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">How often do you play?</label>
+              <div className="grid grid-cols-2 gap-2">
+                {playFrequencies.map((freq) => (
+                  <button key={freq.value} type="button" onClick={() => setGamesPerMonth(freq.value)}
+                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${gamesPerMonth === freq.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    {freq.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-text-secondary">Roughly, per month.</p>
             </div>
           </>
         )}
