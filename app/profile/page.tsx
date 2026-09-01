@@ -6,7 +6,6 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { loadPlayerStats, type PlayerStats } from "@/lib/stats";
 
 const stripeAppearance = {
   theme: "night" as const,
@@ -183,12 +182,23 @@ type Profile = {
   experience: string | null;
 };
 
-const badges = [
-  { label: "Hat-trick Hero", icon: "⚽" },
-  { label: "Team Player", icon: "🤝" },
-  { label: "Top Scorer", icon: "🏆" },
-  { label: "Consistent", icon: "🔥" },
-];
+// Stats and video are switched off for the pilot. Greyed rather than deleted:
+// the house convention is that a missing element shifts everything around it
+// and breaks muscle memory (see components/QuickNav.tsx), and a player who
+// looks for their stats should find out they are coming, not that they are
+// gone. A placeholder rather than dimmed sample data — greying out invented
+// numbers still shows invented numbers.
+function PilotDisabledSection({ title, blurb }: { title: string; blurb: string }) {
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3 opacity-50">{title}</h3>
+      <div className="bg-surface-2 border border-dashed border-border rounded-card p-5 text-center opacity-60 select-none">
+        <p className="text-sm font-semibold text-text-secondary mb-1">Not available yet</p>
+        <p className="text-xs text-text-secondary">{blurb}</p>
+      </div>
+    </section>
+  );
+}
 
 const FRIENDS = [
   { name: "Marcus Webb", position: "GK", avatar: "MW" },
@@ -207,23 +217,15 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
   const [modal, setModal] = useState<"friends" | "teams" | null>(null);
-  const [myStats, setMyStats] = useState<PlayerStats | null>(null);
-  const [eventRating, setEventRating] = useState<{ avg: number; count: number } | null>(null);
 
-  // Career totals, not team-scoped — a player's own record shouldn't reset
-  // when they transfer.
-  useEffect(() => {
-    if (!user) return;
-    loadPlayerStats(user.id).then(setMyStats);
-    // Organiser ratings from hosted events — table may not exist yet
-    // (supabase_admin_hosting.sql not run): data stays null and nothing renders.
-    supabase.from("admin_player_ratings").select("rating").eq("player_id", user.id)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setEventRating({ avg: data.reduce((s, r) => s + r.rating, 0) / data.length, count: data.length });
-        }
-      });
-  }, [user]);
+  // The stats sections below are disabled for the pilot, so nothing reads a
+  // player's record and the queries that fed them are gone rather than run and
+  // thrown away on every profile view. To switch stats back on, restore:
+  //   • loadPlayerStats(user.id) from lib/stats.ts — career totals, not
+  //     team-scoped, so a player's record survives a transfer
+  //   • select rating from admin_player_ratings where player_id = user.id —
+  //     organiser ratings from hosted events, averaged. The table may not
+  //     exist (supabase_admin_hosting.sql unrun), so it must degrade to null.
 
   return (
     <div className="flex flex-col gap-6">
@@ -239,11 +241,19 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
             Captain — {teamName}
           </span>
         )}
-        <div className="flex gap-2 mt-3 flex-wrap justify-center">
-          <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full font-medium">CAM</span>
-          <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">Right Foot</span>
-          <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">6 years exp.</span>
-        </div>
+        {/* Only what the player actually told us. Preferred foot and years of
+            experience were hardcoded strings and are gone — registration never
+            asks for either. Position was hardcoded "CAM" too; it is real now. */}
+        {(profile?.position || profile?.experience) && (
+          <div className="flex gap-2 mt-3 flex-wrap justify-center">
+            {profile?.position && (
+              <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full font-medium">{profile.position}</span>
+            )}
+            {profile?.experience && (
+              <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">{profile.experience}</span>
+            )}
+          </div>
+        )}
 
         {/* Friends & Bookmarked Teams counts */}
         <div className="flex gap-6 mt-4">
@@ -336,137 +346,30 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       )}
 
-      {/* Stats — real, from submitted results (lib/stats.ts). These were four
-          hardcoded strings; a profile that invents 47 games is worse than one
-          that admits it has none yet. */}
-      <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Season Stats</h3>
-        {myStats && myStats.matchesWithResults > 0 ? (
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { label: "Games", value: myStats.appearances },
-              { label: "Starts", value: myStats.starts },
-              { label: "Goals", value: myStats.goals },
-              { label: "Assists", value: myStats.assists },
-            ].map((s) => (
-              <div key={s.label} className="bg-surface border border-border rounded-btn p-3 text-center">
-                <p className="text-lg font-bold text-accent-ink">{s.value}</p>
-                <p className="text-[10px] text-text-secondary mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
-            <p className="text-sm font-semibold mb-1">No stats yet</p>
-            <p className="text-xs text-text-secondary">Your record starts once you&apos;re named in a submitted match result.</p>
-          </div>
-        )}
-        {eventRating && (
-          <div className="mt-2 bg-surface border border-border rounded-btn px-4 py-3 flex items-center justify-between">
-            <p className="text-xs text-text-secondary">Event rating <span className="text-text-secondary/70">· from organisers of hosted events</span></p>
-            <p className="text-sm font-bold text-accent-ink">
-              {eventRating.avg.toFixed(1)}/10
-              <span className="text-xs text-text-secondary font-normal"> · {eventRating.count} event{eventRating.count === 1 ? "" : "s"}</span>
-            </p>
-          </div>
-        )}
-      </section>
+      {/* Badges were four hardcoded awards ("Hat-trick Hero", "Top Scorer")
+          with nothing behind them, and no way to earn one. Removed outright
+          rather than greyed — unlike stats, it is not a feature waiting to be
+          switched on, so there is nothing to promise. */}
+      <PilotDisabledSection
+        title="Season Stats"
+        blurb="Games, goals and assists start recording once match results go live after the pilot."
+      />
 
-      {/* Badges */}
-      <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Badges</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {badges.map((b) => (
-            <div key={b.label} className="bg-surface border border-border rounded-btn px-4 py-3 flex items-center gap-3">
-              <span className="text-xl">{b.icon}</span>
-              <p className="text-sm font-medium">{b.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PilotDisabledSection
+        title="My Stats"
+        blurb="Start rate, goals and assists per game are derived from match results, which are off during the pilot."
+      />
 
-      {/* Pass accuracy and a match rating have no ingestion pipeline behind
-          them, so they're gone rather than invented. What's left is derivable
-          from the result form. */}
-      {myStats && myStats.matchesWithResults > 0 && (
-      <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">My Stats</h3>
-        <div className="bg-surface border border-border shadow-card rounded-card p-4 space-y-3">
-          {[
-            {
-              label: "Start Rate",
-              value: `${myStats.appearances > 0 ? Math.round((myStats.starts / myStats.appearances) * 100) : 0}%`,
-              bar: myStats.appearances > 0 ? Math.round((myStats.starts / myStats.appearances) * 100) : 0,
-            },
-            {
-              label: "Goals Per Game",
-              value: myStats.goalsPerGame.toFixed(2),
-              bar: Math.min(100, Math.round(myStats.goalsPerGame * 100)),
-            },
-            {
-              label: "Assists Per Game",
-              value: (myStats.appearances > 0 ? myStats.assists / myStats.appearances : 0).toFixed(2),
-              bar: Math.min(100, Math.round((myStats.appearances > 0 ? myStats.assists / myStats.appearances : 0) * 100)),
-            },
-          ].map((s) => (
-            <div key={s.label}>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-text-secondary">{s.label}</span>
-                <span className="font-semibold">{s.value}</span>
-              </div>
-              <div className="w-full h-1.5 bg-background rounded-full">
-                <div className="h-1.5 bg-accent rounded-full" style={{ width: `${s.bar}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-      )}
-
-      {/* Individual Highlights */}
-      <section>
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">Individual Highlights</h3>
-        <div className="space-y-3">
-          {[
-            { id: "h1", title: "Goal vs Regents FC", match: "Feb 15, 2026 · 11v11", duration: "0:18", tag: "Goal" },
-            { id: "h2", title: "Through-ball assist vs Dalston Athletic", match: "Jan 22, 2026 · League", duration: "0:24", tag: "Assist" },
-            { id: "h3", title: "Man of the Match — vs East End FC", match: "Jan 8, 2026 · Friendly", duration: "1:02", tag: "MOTM" },
-          ].map((clip) => (
-            <div key={clip.id} className="bg-surface border border-border shadow-card rounded-card overflow-hidden">
-              <div className="relative w-full" style={{ paddingBottom: "48%", background: "linear-gradient(135deg, #1a0a2e 0%, #2a1040 50%, #150820 100%)" }}>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-12 h-12 rounded-full bg-black/40 border border-white/20 flex items-center justify-center">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  </div>
-                </div>
-                <div className="absolute bottom-2 right-2 bg-scrim text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{clip.duration}</div>
-                <div className="absolute top-2 left-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${clip.tag === "Goal" ? "bg-red-500/80 text-white" : clip.tag === "Assist" ? "bg-blue-500/80 text-white" : "bg-accent/80 text-white"}`}>
-                    {clip.tag}
-                  </span>
-                </div>
-              </div>
-              <div className="px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold">{clip.title}</p>
-                  <p className="text-xs text-text-secondary mt-0.5">{clip.match}</p>
-                </div>
-                <button className="text-xs text-accent-ink font-medium flex items-center gap-1">
-                  Share
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PilotDisabledSection
+        title="Individual Highlights"
+        blurb="Uploading and watching match clips arrives after the pilot, once video ingestion is built."
+      />
 
       {isCaptain && (
         <a href="/my-team" className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center block">
           Manage My Team
         </a>
       )}
-
 
       <button
         onClick={() => signOut()}
