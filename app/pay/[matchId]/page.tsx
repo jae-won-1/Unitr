@@ -6,6 +6,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { saveCardFromIntent } from "@/components/SaveCardPrompt";
+import { authedPost } from "@/lib/authed-fetch";
 
 type MatchInfo = {
   opponent: string;
@@ -67,21 +68,17 @@ function PaySavedCard({
     setPaying(true);
     setPayError(null);
     try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [{
-            playerId: user.id,
-            customerId: savedCard.customerId,
-            paymentMethodId: savedCard.paymentMethodId,
-            amountPence: matchInfo.totalPence,
-            sharePence: matchInfo.sharePence,
-            feePence: matchInfo.feePence,
-            matchId,
-            bookingId: matchInfo.bookingId,
-          }],
-        }),
+      // The route charges the caller's own saved card, looked up from their
+      // profile — sending the card ids from here is what let anyone charge
+      // anyone. It identifies the payer from the session token instead.
+      const res = await authedPost("/api/settle-match", {
+        items: [{
+          amountPence: matchInfo.totalPence,
+          sharePence: matchInfo.sharePence,
+          feePence: matchInfo.feePence,
+          matchId,
+          bookingId: matchInfo.bookingId,
+        }],
       });
       const data = await res.json();
       const result = data.results?.[0];

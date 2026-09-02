@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import TopUpModal from "@/components/TopUpModal";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { authedPost } from "@/lib/authed-fetch";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -122,18 +123,10 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
     setPaying(true);
     onError("");
     try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [{
-            playerId: user.id,
-            customerId: savedCard.customerId,
-            paymentMethodId: savedCard.paymentMethodId,
-            amountPence: totalPence,
-            sharePence: totalPence,
-            feePence: 0,
-          }],
-        }),
+      // Card ids come from the caller's profile server-side now; the session
+      // token says who is paying.
+      const res = await authedPost("/api/settle-match", {
+        items: [{ amountPence: totalPence, sharePence: totalPence, feePence: 0 }],
       });
       const data = await res.json();
       const result = data.results?.[0];

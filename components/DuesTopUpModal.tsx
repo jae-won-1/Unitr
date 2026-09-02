@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
+import { authedPost } from "@/lib/authed-fetch";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -257,13 +258,11 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setDueBusy((prev) => new Set(prev).add(due.pcsId));
     setDueError(null);
     try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: [{
-          playerId: userId,
-          customerId: savedCard.customerId,
-          paymentMethodId: savedCard.paymentMethodId,
+      // pcsId lets the route read the outstanding amount off the due row and
+      // check it belongs to the caller, rather than trusting either from here.
+      const res = await authedPost("/api/settle-match", {
+        items: [{
+          pcsId: due.pcsId,
           amountPence: due.remainingPence,
           sharePence: due.remainingPence,
           feePence: 0,
@@ -271,7 +270,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           // Stripe metadata only — a tournament due carries its open_match id.
           matchId: due.kind === "match" ? due.matchId : undefined,
           openMatchId: due.kind === "tournament" ? due.matchId : undefined,
-        }] }),
+        }],
       });
       const data = await res.json();
       const r = data.results?.[0];
@@ -323,15 +322,14 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setIntentError(null);
     const amountPence = Math.round(effectiveAmount * 100);
     try {
-      const res = await fetch("/api/settle-match", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: [{
-          playerId: userId,
-          customerId: savedCard.customerId,
-          paymentMethodId: savedCard.paymentMethodId,
+      // A plain top-up onto your own card — no due row to derive from, so the
+      // amount stands as chosen. The worst a tampered amount does is overcharge
+      // the person choosing it.
+      const res = await authedPost("/api/settle-match", {
+        items: [{
           amountPence, sharePence: amountPence, feePence: 0,
           teamId,   // the route refills this team's credit once the charge clears
-        }] }),
+        }],
       });
       const data = await res.json();
       const r = data.results?.[0];
