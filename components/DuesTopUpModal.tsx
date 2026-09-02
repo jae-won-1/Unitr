@@ -5,6 +5,7 @@ import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-
 import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { waitForCredit } from "@/lib/credit-sync";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -27,20 +28,17 @@ export type MyDue = {
 
 export type SavedCard = { customerId: string; paymentMethodId: string; last4: string | null };
 
-// Credit the team, then apply the payment toward a single targeted due
-// (targetPcsId) or the player's own outstanding fees oldest-game-first.
+// Apply a completed payment toward a single targeted due (targetPcsId) or the
+// player's own outstanding fees, oldest-game-first.
+//
+// This is the bookkeeping half ONLY. The team's credit is added server-side —
+// by the Stripe webhook for manual card entry, or by /api/settle-match for a
+// saved card — because the browser cannot prove a payment happened.
 export async function applyTopUp(
-  teamId: string,
   userId: string,
   amountPence: number,
   targetPcsId?: string
-): Promise<number | null> {
-  const { data: newBalancePence } = await supabase.rpc("add_credit", {
-    p_team_id: teamId,
-    p_amount_pence: amountPence,
-    p_player_id: userId,
-  });
-
+): Promise<void> {
   if (targetPcsId) {
     const { data: row } = await supabase.from("payment_collection_status")
       .select("share_pence").eq("id", targetPcsId).maybeSingle();
@@ -49,7 +47,7 @@ export async function applyTopUp(
       received: true,
       updated_at: new Date().toISOString(),
     }).eq("id", targetPcsId);
-    return typeof newBalancePence === "number" ? newBalancePence : null;
+    return;
   }
 
   let remaining = amountPence;
@@ -76,8 +74,6 @@ export async function applyTopUp(
     }).eq("id", row.id);
     remaining -= applied;
   }
-
-  return typeof newBalancePence === "number" ? newBalancePence : null;
 }
 
 // ── Dues data ─────────────────────────────────────────────────
@@ -161,11 +157,10 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
-      const newBalancePence = await applyTopUp(teamId, userId, Math.round(amount * 100), targetPcsId);
-      onSuccess(
-        typeof newBalancePence === "number" ? newBalancePence / 100 : currentCredits + amount,
-        paymentIntent.id,
-      );
+      await applyTopUp(userId, Math.round(amount * 100), targetPcsId);
+      // Credit lands via the Stripe webhook — wait for it rather than assuming.
+      const settled = await waitForCredit(teamId, Math.round(currentCredits * 100));
+      onSuccess(settled !== null ? settled / 100 : currentCredits + amount, paymentIntent.id);
     } else {
       setPayError("Payment did not complete. Please try again.");
       setPaying(false);
@@ -245,13 +240,11 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     ? payTarget.amountPence / 100
     : selectedAmount ?? (customInput ? parseFloat(customInput) : null);
 
-  // Clear a paid-off due locally: refill the team's credit and mark the row.
-  // add_credit returns the new balance so it's set directly — a realtime event
-  // isn't guaranteed to reach the payer's own browser in time.
-  const applyDuePaid = async (due: MyDue, paidPence: number) => {
-    const { data: newBalancePence } = await supabase.rpc("add_credit", {
-      p_team_id: teamId, p_amount_pence: paidPence, p_player_id: userId,
-    });
+  // Clear a paid-off due locally and mark the row. The credit itself was
+  // already applied by /api/settle-match, which returns the resulting balance
+  // — a realtime event isn't guaranteed to reach the payer's own browser
+  // in time, so set it directly from that.
+  const applyDuePaid = async (due: MyDue, newBalancePence: number | null) => {
     if (typeof newBalancePence === "number") setBalance(newBalancePence / 100);
     await supabase.from("payment_collection_status")
       .update({ credited_pence: due.sharePence, received: true, updated_at: new Date().toISOString() })
@@ -274,6 +267,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           amountPence: due.remainingPence,
           sharePence: due.remainingPence,
           feePence: 0,
+          teamId,   // the route refills this team's credit once the charge clears
           // Stripe metadata only — a tournament due carries its open_match id.
           matchId: due.kind === "match" ? due.matchId : undefined,
           openMatchId: due.kind === "tournament" ? due.matchId : undefined,
@@ -282,7 +276,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
       const data = await res.json();
       const r = data.results?.[0];
       if (r?.ok) {
-        await applyDuePaid(due, due.remainingPence);
+        await applyDuePaid(due, r.creditedBalancePence ?? null);
         setDuePaidFlash(true);
       } else {
         setDueError(r?.error ?? data.error ?? "Card was declined — try topping up manually.");
@@ -301,7 +295,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setIntentError(null);
     const res = await fetch("/api/create-credits-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: due.remainingPence, teamId, customerId: saveCard.customerId }),
+      body: JSON.stringify({ amountPence: due.remainingPence, teamId, playerId: userId, customerId: saveCard.customerId }),
     });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
@@ -315,7 +309,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setIntentError(null);
     const res = await fetch("/api/create-credits-intent", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId, customerId: saveCard.customerId }),
+      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId, playerId: userId, customerId: saveCard.customerId }),
     });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
@@ -336,13 +330,16 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           customerId: savedCard.customerId,
           paymentMethodId: savedCard.paymentMethodId,
           amountPence, sharePence: amountPence, feePence: 0,
+          teamId,   // the route refills this team's credit once the charge clears
         }] }),
       });
       const data = await res.json();
       const r = data.results?.[0];
       if (r?.ok) {
-        const newBalancePence = await applyTopUp(teamId, userId, amountPence, payTarget?.pcsId ?? undefined);
-        setBalance(typeof newBalancePence === "number" ? newBalancePence / 100 : (credits ?? 0) + effectiveAmount);
+        await applyTopUp(userId, amountPence, payTarget?.pcsId ?? undefined);
+        setBalance(typeof r.creditedBalancePence === "number"
+          ? r.creditedBalancePence / 100
+          : (credits ?? 0) + effectiveAmount);
         setSuccess(true);
         await reloadDues();
       } else {

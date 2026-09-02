@@ -252,11 +252,22 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
 
   // Issue an individual top-up: credit the player's share back to the team and
   // mark their due paid (used when a player settles in cash / outside auto-charge).
+  //
+  // There's no Stripe payment behind this one, so it can't go through the
+  // webhook — record_cash_credit is the deliberate manual path, and it checks
+  // server-side that the caller actually captains this team.
   const markDuePaid = async (group: DueGroup, player: DuePlayer) => {
     if (!teamId || player.status === "paid") return;
     const key = `${group.matchId}:${player.player_id}`;
     setDuesBusy((prev) => new Set(prev).add(key));
-    await supabase.rpc("add_credit", { p_team_id: teamId, p_amount_pence: player.sharePence, p_player_id: player.player_id });
+    const { error: creditErr } = await supabase.rpc("record_cash_credit", {
+      p_team_id: teamId, p_amount_pence: player.sharePence, p_player_id: player.player_id,
+    });
+    if (creditErr) {
+      console.error("markDuePaid: could not record cash payment:", creditErr.message);
+      setDuesBusy((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      return;
+    }
     if (group.bookingId) {
       await supabase.from("player_payments").upsert({
         booking_id: group.bookingId,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
+import { adminSupabase } from "@/lib/supabase-admin";
 
 type SettleItem = {
   playerId: string;
@@ -8,6 +9,7 @@ type SettleItem = {
   amountPence: number;   // total to charge (pitch share + 5% fee)
   sharePence: number;    // the pitch share portion (refills team credit)
   feePence: number;      // the 5% Unitr fee portion
+  teamId?: string | null; // set to refill this team's credit from the charge
   matchId?: string;
   openMatchId?: string;   // set instead of matchId for a tournament entry fee
   bookingId?: string | null;
@@ -17,6 +19,7 @@ type SettleResult = {
   playerId: string;
   ok: boolean;
   paymentIntentId?: string;
+  creditedBalancePence?: number | null;  // team balance after the refill
   error?: string;
   noCard?: boolean;
   requiresAction?: boolean;
@@ -52,6 +55,7 @@ export async function POST(req: NextRequest) {
             matchId: it.matchId ?? "",
             openMatchId: it.openMatchId ?? "",
             bookingId: it.bookingId ?? "",
+            teamId: it.teamId ?? "",
             pitchShare: it.sharePence,
             unitrFee: it.feePence,
           },
@@ -59,7 +63,31 @@ export async function POST(req: NextRequest) {
         });
 
         if (pi.status === "succeeded") {
-          results.push({ playerId: it.playerId, ok: true, paymentIntentId: pi.id });
+          // Refill the team's credit here, on the server that watched the
+          // charge succeed — the browser used to do this with add_credit(),
+          // which meant it could also do it without a charge. Keyed on the
+          // PaymentIntent id, so a retried request credits only once.
+          let creditedBalancePence: number | null = null;
+          if (it.teamId) {
+            const { data, error } = await adminSupabase.rpc("credit_from_payment", {
+              p_team_id: it.teamId,
+              p_amount_pence: it.sharePence,
+              p_player_id: it.playerId,
+              p_payment_intent_id: pi.id,
+            });
+            if (error) {
+              // Charged but not credited. Say so rather than reporting success —
+              // the payment is real and needs reconciling by hand.
+              console.error(`settle-match: credit failed for ${pi.id}:`, error.message);
+              results.push({
+                playerId: it.playerId, ok: false, paymentIntentId: pi.id,
+                error: "Payment taken but credit could not be applied — contact support.",
+              });
+              continue;
+            }
+            creditedBalancePence = typeof data === "number" ? data : null;
+          }
+          results.push({ playerId: it.playerId, ok: true, paymentIntentId: pi.id, creditedBalancePence });
         } else {
           // e.g. requires_action — can't complete off-session.
           results.push({ playerId: it.playerId, ok: false, requiresAction: true, error: `Card needs authentication (${pi.status})` });

@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { supabase } from "@/lib/supabase";
 import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { waitForCredit } from "@/lib/credit-sync";
 
 const PRESETS_POUNDS = [10, 20, 50, 100];
 
 // ── Card entry (inside <Elements>) ────────────────────────────
-function TopUpCheckoutForm({ amount, teamId, userId, currentPence, onSuccess, onBack }: {
-  amount: number; teamId: string; userId: string; currentPence: number;
-  onSuccess: (newBalancePence: number, paymentIntentId: string | null) => void; onBack: () => void;
+function TopUpCheckoutForm({ amount, teamId, currentPence, onSuccess, onBack }: {
+  amount: number; teamId: string; currentPence: number;
+  onSuccess: (newBalancePence: number, paymentIntentId: string | null, pending: boolean) => void;
+  onBack: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -29,14 +30,15 @@ function TopUpCheckoutForm({ amount, teamId, userId, currentPence, onSuccess, on
       setPaying(false);
       return;
     }
-    const { data: newBalancePence } = await supabase.rpc("add_credit", {
-      p_team_id: teamId,
-      p_amount_pence: Math.round(amount * 100),
-      p_player_id: userId,
-    });
+    // The credit is applied by the Stripe webhook, not from here — the browser
+    // has no way to prove a payment happened, and a tab closed at this moment
+    // used to mean a charged card and no credit. Wait for the webhook's write
+    // to show up so the balance we display is the real one.
+    const settled = await waitForCredit(teamId, currentPence);
     onSuccess(
-      typeof newBalancePence === "number" ? newBalancePence : currentPence + Math.round(amount * 100),
+      settled ?? currentPence + Math.round(amount * 100),
       paymentIntent.id,
+      settled === null,
     );
   };
 
@@ -79,6 +81,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   const [loadingSecret, setLoadingSecret] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null); // new balance pence, once paid
+  const [pending, setPending] = useState(false);         // paid, webhook not seen yet
   const saveCard = useSaveCardOffer(userId);
 
   const effectiveAmount = customInput ? parseFloat(customInput) : selectedAmount;
@@ -93,6 +96,8 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
         body: JSON.stringify({
           amountPence: Math.round(effectiveAmount * 100),
           teamId,
+          playerId: userId,   // rides along in the PaymentIntent metadata so the
+                              // webhook can attribute the deposit in the ledger
           customerId: saveCard.customerId,
         }),
       });
@@ -117,8 +122,12 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
             <div className="w-16 h-16 rounded-full bg-success-bg border border-success-border flex items-center justify-center mx-auto mb-4">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
-            <p className="text-lg font-bold mb-1">Top up complete</p>
-            <p className="text-sm text-text-secondary mb-5">£{effectiveAmount?.toFixed(2)} added to your team balance.</p>
+            <p className="text-lg font-bold mb-1">{pending ? "Payment received" : "Top up complete"}</p>
+            <p className="text-sm text-text-secondary mb-5">
+              {pending
+                ? `£${effectiveAmount?.toFixed(2)} taken. Your balance updates in a moment — you can close this.`
+                : `£${effectiveAmount?.toFixed(2)} added to your team balance.`}
+            </p>
             <button onClick={() => onSuccess(done)} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Continue</button>
           </div>
         ) : (
@@ -165,10 +174,9 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
                 <TopUpCheckoutForm
                   amount={effectiveAmount as number}
                   teamId={teamId}
-                  userId={userId}
                   currentPence={currentPence}
-                  onSuccess={(newBalancePence, paymentIntentId) =>
-                    saveCard.offer(paymentIntentId, () => setDone(newBalancePence))}
+                  onSuccess={(newBalancePence, paymentIntentId, isPending) =>
+                    saveCard.offer(paymentIntentId, () => { setPending(isPending); setDone(newBalancePence); })}
                   onBack={() => setClientSecret(null)}
                 />
               </Elements>

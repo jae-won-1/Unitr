@@ -3,7 +3,7 @@ import { stripe } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
   try {
-    const { amountPence, teamId, customerId, email } = await req.json();
+    const { amountPence, teamId, playerId, customerId, email } = await req.json();
 
     if (!amountPence || amountPence < 100) {
       return NextResponse.json({ error: "Minimum top-up is £1.00" }, { status: 400 });
@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
       customer,
       setup_future_usage: "off_session",
       automatic_payment_methods: { enabled: true },
-      metadata: { teamId: teamId ?? "", type: "team_credits" },
+      // The webhook credits the team off this metadata — it is the only link
+      // between the charge and the ledger, so teamId has to be here.
+      metadata: { teamId: teamId ?? "", playerId: playerId ?? "", type: "team_credits" },
       description: `Unitr team credits — £${(amountPence / 100).toFixed(2)}`,
     });
 
