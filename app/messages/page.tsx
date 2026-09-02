@@ -115,7 +115,11 @@ export default function MessagesPage() {
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
           <p className="text-sm font-semibold">No conversations yet</p>
-          <p className="text-xs text-text-secondary max-w-[220px]">Team chats, match chats, and direct messages will show up here.</p>
+          {/* This promised "team chats, match chats" — neither exists; /messages
+              is 1:1 only. Describe what actually lands here. */}
+          <p className="text-xs text-text-secondary max-w-[240px]">
+            Direct messages show up here, along with announcements and payment reminders from your captain.
+          </p>
         </div>
       ) : (
         <div className="px-4">
