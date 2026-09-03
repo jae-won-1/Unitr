@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { fmtFee } from "@/lib/joining-fee";
 import ManageMatchTab from "@/components/my-team/ManageMatchTab";
 import TacticsTab from "@/components/my-team/TacticsTab";
 import StatsTab from "@/components/my-team/StatsTab";
@@ -52,6 +53,7 @@ type Team = {
   description: string;
   captain_id: string;
   member_count?: number;
+  joining_fee_pence?: number | null;
 };
 
 type JoinRequest = {
@@ -149,6 +151,13 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
           {team.description && <p className="text-xs text-text-secondary mb-3">{team.description}</p>}
           <div className="flex items-center gap-2 mb-4 text-xs text-text-secondary">
             <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{team.format}</span>
+            {/* Fee (or its absence) shown up front, so nobody discovers a
+                charge only after their join request is approved. */}
+            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">
+              {(team.joining_fee_pence ?? 0) > 0
+                ? `${fmtFee(team.joining_fee_pence ?? 0)} joining fee`
+                : "No joining fee"}
+            </span>
           </div>
           <div className="flex gap-2">
             <button className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-center text-text-secondary">View Profile</button>
@@ -263,8 +272,8 @@ function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean })
       </div>
       {isCaptain && (
         <div className="flex gap-2 mt-3">
-          <a href="/my-team/team-profile" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
-            Team Profile
+          <a href="/my-team/settings" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
+            Team Settings
           </a>
           <a href="/my-team/announcement/create" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
             Post Announcement

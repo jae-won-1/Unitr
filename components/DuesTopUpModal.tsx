@@ -7,6 +7,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
+import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -141,9 +142,12 @@ export function useMyDues(teamId: string | null, userId: string) {
 }
 
 // ── Card entry step ───────────────────────────────────────────
-function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, onSuccess, onBack }: {
+function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, skipDuesApply, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number;
   targetPcsId?: string;
+  // A joining-fee payment: the deposit is applied to the fee server-side by
+  // credit_from_payment, and must not tick off match-due bookkeeping here.
+  skipDuesApply?: boolean;
   onSuccess: (newBalance: number, paymentIntentId: string) => void; onBack: () => void;
 }) {
   const stripe = useStripe();
@@ -158,7 +162,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
-      await applyTopUp(userId, Math.round(amount * 100), targetPcsId);
+      if (!skipDuesApply) await applyTopUp(userId, Math.round(amount * 100), targetPcsId);
       // Credit lands via the Stripe webhook — wait for it rather than assuming.
       const settled = await waitForCredit(teamId, Math.round(currentCredits * 100));
       onSuccess(settled !== null ? settled / 100 : currentCredits + amount, paymentIntent.id);
@@ -200,12 +204,18 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   onBalanceChange?: (balancePence: number) => void;
 }) {
   const { dues, owedPence, reload: reloadDues } = useMyDues(teamId, userId);
+  // Server-side, any deposit pays the joining fee down first
+  // (supabase_joining_fees.sql) — so "pay your joining fee" is just a top-up
+  // of at least the outstanding amount, and this only reads the result.
+  const { owedPence: feeOwedPence, duePence: feeDuePence, reload: reloadFee } = useJoiningFee(teamId, userId);
   const [credits, setCredits] = useState<number | null>(null);
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
 
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customInput, setCustomInput] = useState("");
   const [payTarget, setPayTarget] = useState<{ pcsId: string; amountPence: number } | null>(null);
+  const [feeTargeted, setFeeTargeted] = useState(false);  // current card entry is for the joining fee
+  const [feeBusy, setFeeBusy] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loadingIntent, setLoadingIntent] = useState(false);
   const [intentError, setIntentError] = useState<string | null>(null);
@@ -250,7 +260,8 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     await supabase.from("payment_collection_status")
       .update({ credited_pence: due.sharePence, received: true, updated_at: new Date().toISOString() })
       .eq("id", due.pcsId);
-    await reloadDues();
+    // Any deposit also pays the joining fee down server-side.
+    await Promise.all([reloadDues(), reloadFee()]);
   };
 
   const payDueWithCard = async (due: MyDue) => {
@@ -284,6 +295,53 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
       setDueError("Payment failed. Please try again.");
     }
     setDueBusy((prev) => { const n = new Set(prev); n.delete(due.pcsId); return n; });
+  };
+
+  // Pay the outstanding joining fee off the saved card: an ordinary top-up of
+  // exactly the amount owed — credit_from_payment applies it to the fee.
+  const payFeeWithSavedCard = async () => {
+    if (!savedCard || feeOwedPence <= 0) return;
+    setFeeBusy(true);
+    setDueError(null);
+    try {
+      const res = await authedPost("/api/settle-match", {
+        items: [{
+          amountPence: feeOwedPence, sharePence: feeOwedPence, feePence: 0,
+          teamId,   // the route refills this team's credit once the charge clears
+        }],
+      });
+      const data = await res.json();
+      const r = data.results?.[0];
+      if (r?.ok) {
+        if (typeof r.creditedBalancePence === "number") setBalance(r.creditedBalancePence / 100);
+        await reloadFee();
+        setDuePaidFlash(true);
+      } else {
+        setDueError(r?.error ?? data.error ?? "Card was declined — try topping up manually.");
+      }
+    } catch {
+      setDueError("Payment failed. Please try again.");
+    }
+    setFeeBusy(false);
+  };
+
+  // No saved card: one-off card entry for exactly the fee owed.
+  const startCardEntryForFee = async () => {
+    if (feeOwedPence <= 0) return;
+    setFeeTargeted(true);
+    setSelectedAmount(feeOwedPence / 100);
+    setCustomInput("");
+    setDueError(null);
+    setLoadingIntent(true);
+    setIntentError(null);
+    const res = await fetch("/api/create-credits-intent", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountPence: feeOwedPence, teamId, playerId: userId, customerId: saveCard.customerId }),
+    });
+    const data = await res.json();
+    if (data.clientSecret) setClientSecret(data.clientSecret);
+    else { setIntentError(data.error ?? "Failed to set up payment."); setFeeTargeted(false); }
+    setLoadingIntent(false);
   };
 
   // No saved card: set up a one-off payment for exactly this due's amount.
@@ -339,7 +397,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           ? r.creditedBalancePence / 100
           : (credits ?? 0) + effectiveAmount);
         setSuccess(true);
-        await reloadDues();
+        await Promise.all([reloadDues(), reloadFee()]);
       } else {
         setIntentError(r?.error ?? data.error ?? "Card was declined — try a different card below.");
       }
@@ -385,12 +443,13 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 userId={userId}
                 currentCredits={credits}
                 targetPcsId={payTarget?.pcsId}
+                skipDuesApply={feeTargeted}
                 onSuccess={(newBalance, paymentIntentId) => saveCard.offer(paymentIntentId, async () => {
                   setBalance(newBalance);
                   setSuccess(true);
-                  await reloadDues();
+                  await Promise.all([reloadDues(), reloadFee()]);
                 })}
-                onBack={() => { setClientSecret(null); setPayTarget(null); }}
+                onBack={() => { setClientSecret(null); setPayTarget(null); setFeeTargeted(false); }}
               />
             </Elements>
           </>
@@ -405,6 +464,31 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
             <p className="text-xs text-text-secondary mb-4">
               Current balance: <span className="font-semibold text-text-primary">£{credits.toFixed(2)}</span>
             </p>
+
+            {feeOwedPence > 0 && (
+              <div className="mb-5">
+                <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">Joining fee due</p>
+                <div className="flex items-center gap-2 bg-surface border border-border rounded-btn px-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold">Team joining fee</p>
+                    <p className="text-[10px] text-text-secondary">
+                      {feeDuePence !== feeOwedPence ? `${fmtFee(feeOwedPence)} of ${fmtFee(feeDuePence)} remaining` : `${fmtFee(feeDuePence)}, paid once`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => (savedCard ? payFeeWithSavedCard() : startCardEntryForFee())}
+                    disabled={feeBusy || loadingIntent}
+                    className="flex-shrink-0 text-xs font-bold bg-accent text-white px-3 py-2 rounded-lg disabled:opacity-50">
+                    {feeBusy ? "Paying…" : `Pay ${fmtFee(feeOwedPence)}`}
+                  </button>
+                </div>
+                <p className="text-[10px] text-text-secondary mt-2">
+                  Your joining fee goes into the team&rsquo;s credit balance, which pays for pitch
+                  bookings and tournament entry fees. Until it&rsquo;s paid you can&rsquo;t join or
+                  vote available for games.
+                </p>
+              </div>
+            )}
 
             {dues.length > 0 && (
               <div className="mb-5">

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { fmtFee } from "@/lib/joining-fee";
 
 type Team = {
   id: string;
@@ -15,6 +16,7 @@ type Team = {
   history: string | null;
   play_style: string | null;
   photo_url: string | null;
+  joining_fee_pence?: number | null;
 };
 
 type Member = { player_id: string; full_name: string; position: string | null; isCaptain?: boolean };
@@ -115,6 +117,9 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
           {team.play_style && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-accent/10 text-accent-ink">{team.play_style}</span>
           )}
+          <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">
+            {(team.joining_fee_pence ?? 0) > 0 ? `${fmtFee(team.joining_fee_pence ?? 0)} joining fee` : "No joining fee"}
+          </span>
         </div>
       </section>
 
@@ -163,13 +168,22 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
 
       {/* CTA */}
       {!isCaptain && !isMember && (
-        <button
-          onClick={handleRequest}
-          disabled={requested || !user}
-          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-60"
-        >
-          {requested ? "Request Sent" : `Request to Join ${team.name}`}
-        </button>
+        <>
+          <button
+            onClick={handleRequest}
+            disabled={requested || !user}
+            className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-60"
+          >
+            {requested ? "Request Sent" : `Request to Join ${team.name}`}
+          </button>
+          {(team.joining_fee_pence ?? 0) > 0 && (
+            <p className="text-xs text-text-secondary text-center mt-2">
+              {fmtFee(team.joining_fee_pence ?? 0)} joining fee, paid once you&rsquo;re approved.
+              It goes into the team&rsquo;s credit balance, which pays for pitch bookings and
+              tournament entry fees.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

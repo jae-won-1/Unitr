@@ -20,6 +20,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { fmtFee, getJoiningFeeStatus } from "@/lib/joining-fee";
 
 export type ConfirmStatus = "confirmed" | "declined" | "pending";
 
@@ -42,23 +43,28 @@ export function AvailabilityButtons({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const [feeOwedPence, setFeeOwedPence] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("match_confirmations")
-        .select("status")
-        .eq("match_id", matchId)
-        .eq("player_id", playerId)
-        .maybeSingle();
+      const [{ data, error }, fee] = await Promise.all([
+        supabase
+          .from("match_confirmations")
+          .select("status")
+          .eq("match_id", matchId)
+          .eq("player_id", playerId)
+          .maybeSingle(),
+        getJoiningFeeStatus(teamId, playerId),
+      ]);
       if (cancelled) return;
       if (error) setError(true);
       else setStatus((data?.status as ConfirmStatus) ?? "pending");
+      setFeeOwedPence(fee.owedPence);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [matchId, playerId]);
+  }, [matchId, playerId, teamId]);
 
   async function set(next: ConfirmStatus) {
     if (busy) return;
@@ -96,6 +102,24 @@ export function AvailabilityButtons({
   }
 
   const pad = size === "sm" ? "py-1.5 text-[11px]" : "py-2 text-xs";
+
+  // House rule: a player who hasn't paid their joining fee can't join or vote
+  // available for games. Greyed rather than hidden, per the QuickNav
+  // convention — the buttons stay so the layout doesn't shift, with the
+  // reason written where they'd have tapped.
+  if (feeOwedPence > 0) {
+    return (
+      <div>
+        <div className="flex gap-2 opacity-40 pointer-events-none" aria-disabled>
+          <span className={`flex-1 ${pad} rounded-btn border bg-surface border-border text-text-secondary font-semibold text-center`}>Available</span>
+          <span className={`flex-1 ${pad} rounded-btn border bg-surface border-border text-text-secondary font-semibold text-center`}>Unavailable</span>
+        </div>
+        <p className="text-[11px] text-red-600 font-semibold mt-1.5">
+          Pay your {fmtFee(feeOwedPence)} joining fee (Top Up on Home) to vote for games.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex gap-2">

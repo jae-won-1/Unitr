@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 import MatchAvailabilityList, { type UpcomingMatch } from "@/components/MatchAvailabilityList";
 
 // Answering the captain's availability poll without leaving home. Same options,
@@ -87,8 +88,13 @@ export default function AvailabilityModal({
 
   const showMatches = matches.length > 0 && !!teamId;
 
+  // Unpaid joining fee blocks voting — same rule AvailabilityButtons applies
+  // to the fixture answers rendered further down this sheet.
+  const { owedPence: feeOwedPence, loading: feeLoading } = useJoiningFee(teamId, userId);
+  const feeBlocked = !feeLoading && feeOwedPence > 0;
+
   const submit = async () => {
-    if (!request) return;
+    if (!request || feeBlocked) return;
     setSubmitting(true);
     setError(null);
     const ids = noneWork ? [] : selected;
@@ -106,7 +112,7 @@ export default function AvailabilityModal({
     onSubmitted(ids);
   };
 
-  const canSubmit = (selected.length > 0 || noneWork) && !submitting;
+  const canSubmit = (selected.length > 0 || noneWork) && !submitting && !feeBlocked;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-scrim px-4" onClick={onClose}>
@@ -132,6 +138,16 @@ export default function AvailabilityModal({
                 ? "Pick every slot you could play. Your captain sees the totals, not who picked what."
                 : "Confirm whether you can play the games your team already has booked in."}
             </p>
+
+            {feeBlocked && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-4">
+                <p className="text-xs text-red-600 font-semibold">
+                  Your {fmtFee(feeOwedPence)} joining fee is still due. Pay it via the Top Up
+                  button on Home to join and vote available for games — it goes into the
+                  team&rsquo;s credits for pitch and tournament fees.
+                </p>
+              </div>
+            )}
 
             {showMatches && (
               <div className="mb-5">

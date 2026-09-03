@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import AvailabilityModal, { useAvailabilityPoll } from "@/components/AvailabilityModal";
 import { useMatchAvailability } from "@/components/MatchAvailabilityList";
+import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 
 // The two things a captain actually asks of a squad player: answer the
 // availability poll, and put money in. Both resolve in a popup — a player who
@@ -16,6 +17,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
   // player, so the tile opens even when there's no poll running.
   const { matches, awaiting, loading: matchesLoading, reload: reloadMatches } = useMatchAvailability(teamId, userId);
   const { owedPence, reload: reloadDues } = useMyDues(teamId, userId);
+  const { owedPence: feeOwedPence, reload: reloadFee } = useJoiningFee(teamId, userId);
   const [balancePence, setBalancePence] = useState<number | null>(null);
   const [showAvailability, setShowAvailability] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -68,18 +70,22 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           onClick={() => teamId && setShowTopUp(true)}
           disabled={!teamId}
           className={`relative rounded-2xl p-4 text-left border disabled:opacity-60 ${
-            owedPence > 0 ? "bg-red-500/10 border-red-500/30" : "bg-surface-2 border-border"
+            owedPence + feeOwedPence > 0 ? "bg-red-500/10 border-red-500/30" : "bg-surface-2 border-border"
           }`}
         >
-          {owedPence > 0 && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-danger" />}
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${owedPence > 0 ? "bg-red-500/20" : "bg-accent/10 border border-accent/30"}`}>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={owedPence > 0 ? "#F87171" : "#0E7A3C"} strokeWidth="2" strokeLinecap="round">
+          {owedPence + feeOwedPence > 0 && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-danger" />}
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${owedPence + feeOwedPence > 0 ? "bg-red-500/20" : "bg-accent/10 border border-accent/30"}`}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={owedPence + feeOwedPence > 0 ? "#F87171" : "#0E7A3C"} strokeWidth="2" strokeLinecap="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
             </svg>
           </div>
           <p className="text-sm font-bold leading-tight">Top Up Team Credit</p>
-          <p className={`text-[11px] mt-1 leading-tight ${owedPence > 0 ? "text-red-600 font-semibold" : "text-text-secondary"}`}>
-            {owedPence > 0
+          {/* The joining fee outranks match dues: until it's paid the player
+              can't vote for games at all, so it's the thing to say first. */}
+          <p className={`text-[11px] mt-1 leading-tight ${owedPence + feeOwedPence > 0 ? "text-red-600 font-semibold" : "text-text-secondary"}`}>
+            {feeOwedPence > 0
+              ? `${fmtFee(feeOwedPence)} joining fee due`
+              : owedPence > 0
               ? `You owe £${(owedPence / 100).toFixed(2)}`
               : balancePence === null ? "Loading…" : `Team balance £${(balancePence / 100).toFixed(2)}`}
           </p>
@@ -104,7 +110,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           teamId={teamId}
           userId={userId}
           onBalanceChange={setBalancePence}
-          onClose={() => { setShowTopUp(false); reloadDues(); }}
+          onClose={() => { setShowTopUp(false); reloadDues(); reloadFee(); }}
         />
       )}
     </>

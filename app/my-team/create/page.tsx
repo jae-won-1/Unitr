@@ -17,6 +17,7 @@ export default function CreateTeamPage() {
   const [level, setLevel] = useState("");
   const [format, setFormat] = useState("");
   const [description, setDescription] = useState("");
+  const [joiningFee, setJoiningFee] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,16 +34,31 @@ export default function CreateTeamPage() {
       return;
     }
 
+    const joiningFeePence = joiningFee ? Math.round(parseFloat(joiningFee) * 100) : 0;
+    if (!Number.isFinite(joiningFeePence) || joiningFeePence < 0) {
+      setError("Joining fee must be a positive amount (or left empty for none).");
+      return;
+    }
+
     setLoading(true);
 
-    const { error: insertError } = await supabase.from("teams").insert({
+    let { error: insertError } = await supabase.from("teams").insert({
       name,
       location,
       level,
       format,
       description,
       captain_id: user.id,
+      joining_fee_pence: joiningFeePence,
     });
+
+    // Missing-migration guard (house convention): if joining_fee_pence isn't
+    // in the schema yet, register the team without it rather than failing.
+    if (insertError && /joining_fee_pence/.test(insertError.message)) {
+      ({ error: insertError } = await supabase.from("teams").insert({
+        name, location, level, format, description, captain_id: user.id,
+      }));
+    }
 
     if (insertError) {
       setError(insertError.message);
@@ -134,6 +150,27 @@ export default function CreateTeamPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-text-secondary">Joining fee <span className="text-text-secondary font-normal">(optional)</span></label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-text-secondary">£</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              inputMode="decimal"
+              value={joiningFee}
+              onChange={(e) => setJoiningFee(e.target.value)}
+              placeholder="0 — no joining fee"
+              className="w-full bg-surface border border-border rounded-btn pl-8 pr-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
+            />
+          </div>
+          <p className="text-xs text-text-secondary">
+            Each new player pays this once, into your team&rsquo;s credit balance — the pot that
+            covers pitch bookings and tournament entry fees. You can change it later in Team Settings.
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">

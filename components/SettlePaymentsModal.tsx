@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
+import { fmtFee } from "@/lib/joining-fee";
 import BottomSheet from "@/components/BottomSheet";
 
 // Settle Payments — per-fixture payment collection for the captain.
@@ -417,6 +418,100 @@ function PaymentCollectionPanel({
   );
 }
 
+// ── Joining fees (captain only) ──────────────────────────────────────────
+// Who has covered their one-off joining fee. The paid amounts are advanced
+// only by the server when a verified payment lands (supabase_joining_fees.sql)
+// — the captain reads them here and can nudge, not tick. Cash handed over in
+// person goes through Record Cash / record_cash_credit like any other credit.
+type FeeRow = {
+  playerId: string;
+  name: string;
+  duePence: number;
+  paidPence: number;
+};
+
+function JoiningFeesPanel({ teamId, captainId }: { teamId: string; captainId: string }) {
+  const [rows, setRows] = useState<FeeRow[]>([]);
+  const [remindedIds, setRemindedIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const { data, error } = await supabase
+        .from("team_members")
+        .select("player_id, joining_fee_due_pence, joining_fee_paid_pence, profiles(full_name)")
+        .eq("team_id", teamId)
+        .eq("status", "approved");
+      if (error) return;   // joining-fees migration not run — panel stays hidden
+      setRows(
+        (data ?? [])
+          .filter((m) => (m.joining_fee_due_pence ?? 0) > 0)
+          .map((m) => ({
+            playerId: m.player_id as string,
+            name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown player",
+            duePence: (m.joining_fee_due_pence as number) ?? 0,
+            paidPence: (m.joining_fee_paid_pence as number) ?? 0,
+          }))
+          .sort((a, b) => {
+            const aOwes = a.paidPence < a.duePence ? 0 : 1;
+            const bOwes = b.paidPence < b.duePence ? 0 : 1;
+            return aOwes - bOwes || a.name.localeCompare(b.name);
+          })
+      );
+    }
+    load();
+  }, [teamId]);
+
+  if (rows.length === 0) return null;
+
+  const remind = async (row: FeeRow) => {
+    setBusyId(row.playerId);
+    await supabase.from("messages").insert({
+      sender_id: captainId,
+      receiver_id: row.playerId,
+      type: "payment_reminder",
+      body: `Reminder: your ${fmtFee(row.duePence - row.paidPence)} joining fee is still due. Pay it via the Top Up button on Home — it goes into the team's credits for pitch and tournament fees. Until then you can't join or vote available for games.`,
+    });
+    setRemindedIds((prev) => new Set(prev).add(row.playerId));
+    setBusyId(null);
+  };
+
+  return (
+    <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-3">
+      <p className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3">Joining fees</p>
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const paid = row.paidPence >= row.duePence;
+          return (
+            <div key={row.playerId} className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">{row.name}</p>
+                <p className="text-[11px] text-text-secondary">
+                  {paid
+                    ? `${fmtFee(row.duePence)} paid`
+                    : row.paidPence > 0
+                    ? `${fmtFee(row.paidPence)} of ${fmtFee(row.duePence)} paid`
+                    : `${fmtFee(row.duePence)} due`}
+                </p>
+              </div>
+              {paid ? (
+                <span className="text-[10px] font-semibold text-accent-ink bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Paid ✓</span>
+              ) : (
+                <button
+                  onClick={() => remind(row)}
+                  disabled={busyId === row.playerId || remindedIds.has(row.playerId)}
+                  className="text-[11px] font-bold text-red-600 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-lg flex-shrink-0 disabled:opacity-50">
+                  {remindedIds.has(row.playerId) ? "Reminded ✓" : busyId === row.playerId ? "Sending…" : "Remind"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── The fixture list itself ───────────────────────────────────────────────
 // Chrome-free so it can sit in a page or in the modal below.
 export function SettlePaymentsList() {
@@ -555,6 +650,8 @@ export function SettlePaymentsList() {
 
   if (fixtures.length === 0) {
     return (
+      <>
+      {isCaptainViewer && teamId && user && <JoiningFeesPanel teamId={teamId} captainId={user.id} />}
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
         <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -562,11 +659,13 @@ export function SettlePaymentsList() {
         <p className="font-semibold">No match history yet</p>
         <p className="text-sm text-text-secondary max-w-[240px]">Confirmed fixtures — upcoming and played — will show up here.</p>
       </div>
+      </>
     );
   }
 
   return (
     <div className="space-y-3">
+      {isCaptainViewer && teamId && user && <JoiningFeesPanel teamId={teamId} captainId={user.id} />}
       {fixtures.map((f) => {
         const m = f.matchRowId ? matchRows[f.matchRowId] : undefined;
         return (

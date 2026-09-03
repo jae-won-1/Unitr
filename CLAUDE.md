@@ -133,7 +133,7 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/players` | Squad list → individual profiles |
 | `/my-team/transfer` | Transfer Market — two-sided player/team discovery, offers, join requests, friend requests |
 | `/my-team/tactics` | Team default formation + tactics board |
-| `/my-team/team-profile` | Team history, play style, photo |
+| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
 | `/my-team/history` | **Settle Payments** — per-fixture payment collection, not a results archive |
@@ -192,6 +192,13 @@ Variants:
   their shares afterwards. Invitations can carry a per-team discount.
 - **Ringers** — a guest pays Unitr a **flat £5 by card**. It never touches team credit or the
   pitch split, and a ringer is excluded from settlement via `match_confirmations.is_ringer`.
+- **Joining fees** — a captain can set a one-off fee (`teams.joining_fee_pence`) asked of each
+  new member. It is not a separate pot: paying it is a top-up into team credit. The fee owed is
+  snapshotted onto `team_members.joining_fee_due_pence` at approval (trigger), and
+  `joining_fee_paid_pence` is advanced **only inside** `credit_from_payment` /
+  `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
+  can't join or vote available for games (`AvailabilityButtons`, `AvailabilityModal`); the
+  captain sees per-member fee status in Settle Payments.
 
 `payment_collection_status` is a **bookkeeping checklist** the captain ticks off — it does not
 move money or call Stripe. The real settlement is the credit ledger.
@@ -215,6 +222,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_open_matches.sql`, `supabase_tournament_*.sql` | Tournaments, schedules, referees, invitations, notifications |
 | `supabase_ringers.sql` | `ringer_requests`, `ringer_signups`, `is_ringer` |
 | `supabase_transfer_market.sql` | `player_offers`, `friend_requests` |
+| `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |

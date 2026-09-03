@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
+import { fmtFee } from "@/lib/joining-fee";
 
 // Team discovery list, laid out the way Plab lists recruiting teams: one row
 // per team, crest on the left, a single grey meta line underneath the name.
@@ -21,6 +22,7 @@ type Team = {
   level: string | null;
   format: string | null;
   photo_url: string | null;
+  joining_fee_pence?: number | null;
   members: number;
 };
 
@@ -46,7 +48,9 @@ function useTeams() {
     async function load() {
       const { data: rows } = await supabase
         .from("teams")
-        .select("id, name, location, level, format, photo_url");
+        // select("*") so the list survives the joining-fees migration not
+        // having been run — naming a missing column fails the whole query.
+        .select("*");
 
       // One query for every approved membership, tallied client-side — a count
       // per team would be N round-trips for a list this size. The captain has no
@@ -90,7 +94,12 @@ function Crest({ team }: { team: Team }) {
 // link — the team page reads memberships and squad data a guest can't see, so
 // intercepting here beats letting them land on a half-empty page.
 function TeamRow({ team, onGuestTap }: { team: Team; onGuestTap?: (team: Team) => void }) {
-  const meta = [team.location, team.format, `${team.members} member${team.members === 1 ? "" : "s"}`]
+  const meta = [
+    team.location,
+    team.format,
+    `${team.members} member${team.members === 1 ? "" : "s"}`,
+    (team.joining_fee_pence ?? 0) > 0 ? `${fmtFee(team.joining_fee_pence ?? 0)} to join` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
   const inner = (
