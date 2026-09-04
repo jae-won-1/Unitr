@@ -9,23 +9,33 @@ export type Role = "new_user" | "player" | "captain" | "venue_manager" | "admin"
 type RoleContextType = {
   role: Role;
   roleLoading: boolean;
+  /**
+   * True when this user reaches the `captain` role by being a co-captain
+   * rather than the captain. They get the captain's screens; the one thing
+   * they don't get is appointing other co-captains, which is the only place
+   * that needs to tell the two apart.
+   */
+  isCoCaptain: boolean;
 };
 
 const RoleContext = createContext<RoleContextType>({
   role: "new_user",
   roleLoading: true,
+  isCoCaptain: false,
 });
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const [role, setRole] = useState<Role>("new_user");
   const [roleLoading, setRoleLoading] = useState(true);
+  const [isCoCaptain, setIsCoCaptain] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
 
     if (!user) {
       setRole("new_user");
+      setIsCoCaptain(false);
       setRoleLoading(false);
       return;
     }
@@ -62,18 +72,25 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           .then(({ data: team }) => {
             if (team) {
               setRole("captain");
+              setIsCoCaptain(false);
               setRoleLoading(false);
               return;
             }
-            // Check approved team membership
+            // Check approved team membership. A member the captain promoted
+            // (is_co_captain) gets the captain's role and so the captain's
+            // screens — that IS the feature. `select("*")` rather than named
+            // columns so the page still resolves a role when
+            // supabase_co_captains.sql hasn't been run.
             supabase
               .from("team_members")
-              .select("id")
+              .select("*")
               .eq("player_id", user.id)
               .eq("status", "approved")
               .maybeSingle()
               .then(({ data: membership }) => {
-                setRole(membership ? "player" : "new_user");
+                const co = Boolean(membership?.is_co_captain);
+                setIsCoCaptain(co);
+                setRole(membership ? (co ? "captain" : "player") : "new_user");
                 setRoleLoading(false);
               });
           });
@@ -81,7 +98,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   }, [user, authLoading]);
 
   return (
-    <RoleContext.Provider value={{ role, roleLoading }}>
+    <RoleContext.Provider value={{ role, roleLoading, isCoCaptain }}>
       {children}
     </RoleContext.Provider>
   );

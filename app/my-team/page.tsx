@@ -21,6 +21,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { fmtFee } from "@/lib/joining-fee";
+import { loadLedTeam } from "@/lib/team-leadership";
 import ManageMatchTab from "@/components/my-team/ManageMatchTab";
 import TacticsTab from "@/components/my-team/TacticsTab";
 import StatsTab from "@/components/my-team/StatsTab";
@@ -311,8 +312,7 @@ function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean })
   useEffect(() => {
     async function load() {
       if (isCaptain) {
-        const { data } = await supabase.from("teams").select("*").eq("captain_id", userId).maybeSingle();
-        setTeam(data ?? null);
+        setTeam(await loadLedTeam<Team>(userId, "*"));
         return;
       }
       const { data: mem } = await supabase
@@ -390,8 +390,8 @@ function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "capta
     async function load() {
       let teamId: string | undefined;
       if (role === "captain") {
-        const { data } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-        teamId = data?.id;
+        const led = await loadLedTeam<{ id: string }>(userId, "id");
+        teamId = led?.id;
       } else {
         const { data: mem } = await supabase.from("team_members").select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
         teamId = mem?.team_id;

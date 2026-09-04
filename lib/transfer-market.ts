@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { actingCaptainId, loadLeadership } from "@/lib/team-leadership";
 
 // Data layer for the Transfer Market. Kept out of the page because every card
 // needs the viewer's *relationship* to the row it renders, not just the row —
@@ -48,13 +49,15 @@ export type MarketEdges = {
 
 const EMPTY_EDGES: MarketEdges = { friends: new Map(), offers: new Map(), joins: new Map() };
 
+// `captainTeamId` is the team the viewer may recruit for — a co-captain
+// recruits too, so it's set for them as well.
 export async function loadViewer(userId: string): Promise<Viewer> {
-  const { data: own } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-  if (own) return { userId, captainTeamId: own.id, myTeamId: own.id };
-
-  const { data: mem } = await supabase.from("team_members")
-    .select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
-  return { userId, captainTeamId: null, myTeamId: mem?.team_id ?? null };
+  const led = await loadLeadership(userId);
+  return {
+    userId,
+    captainTeamId: led?.canManage ? led.teamId : null,
+    myTeamId: led?.teamId ?? null,
+  };
 }
 
 // Squad membership for a batch of players, so a captain can tell a free agent
@@ -166,7 +169,11 @@ export async function respondToFriendRequest(fromId: string, toId: string, accep
     .eq("from_player_id", fromId).eq("to_player_id", toId);
 }
 
-export async function sendOffer(teamId: string, captainId: string, playerId: string, message: string | null) {
+// `actingUserId` is whoever pressed Send — the offer itself is filed under the
+// team's captain, so a co-captain's offer reads as the team's and the unique
+// (team, player) key still means one offer per player per team.
+export async function sendOffer(teamId: string, actingUserId: string, playerId: string, message: string | null) {
+  const captainId = await actingCaptainId(actingUserId, teamId);
   await supabase.from("player_offers")
     .upsert({ team_id: teamId, captain_id: captainId, player_id: playerId, message, status: "pending" },
       { onConflict: "team_id,player_id" });

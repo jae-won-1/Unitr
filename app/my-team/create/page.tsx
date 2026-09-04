@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
 const levels = ["Casual", "Competitive", "Semi-Pro"];
-const formats = ["5-a-side", "7-a-side", "11-a-side"];
+const formats = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 
 export default function CreateTeamPage() {
   const router = useRouter();

@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import BookPitchPanel from "@/components/BookPitchPanel";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type ConfirmedDate = {
   id: string;
@@ -98,7 +99,7 @@ export default function CreateMatchPage() {
   const [pitchOptions, setPitchOptions] = useState<PitchOption[]>([]);
   const [draggingPitchId, setDraggingPitchId] = useState<string | null>(null);
   const [description, setDescription] = useState("");
-  const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
+  const [team, setTeam] = useState<{ id: string; name: string; location: string | null; captain_id: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availabilityRequest, setAvailabilityRequest] = useState<{ id: string; date_options: { id: string; date: string; time: string; dayName: string }[] } | null>(null);
@@ -134,9 +135,10 @@ export default function CreateMatchPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("teams").select("id, name, location")
-      .eq("captain_id", user.id).maybeSingle()
-      .then(({ data }) => setTeam(data));
+    // Captain or co-captain: both post games for the team.
+    loadLedTeam<{ id: string; name: string; location: string | null; captain_id: string }>(
+      user.id, "id, name, location, captain_id",
+    ).then(setTeam);
   }, [user]);
 
   useEffect(() => {
@@ -261,7 +263,9 @@ export default function CreateMatchPage() {
 
     const base = {
       team_id: team.id,
-      captain_id: user.id,
+      // Filed under the team's captain even when a co-captain posts it, so
+      // every "my team's posts" query keeps finding it.
+      captain_id: team.captain_id ?? user.id,
       team_name: team.name,
       team_location: team.location ?? "",
       description,

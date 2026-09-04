@@ -3,11 +3,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { FORMATIONS, FORMATION_KEYS, DEFAULT_FORMATION, slotsFor, PLAY_STYLES } from "@/lib/formations";
+import {
+  FORMATIONS, DEFAULT_FORMATION, slotsFor, PLAY_STYLES,
+  teamSizeFromFormat, formationKeysFor, resolveFormation, formatLabelForSize,
+} from "@/lib/formations";
 import { loadTeamTactics, type TeamTactic } from "@/components/my-team/TacticsTab";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
+import { loadLeadership } from "@/lib/team-leadership";
 
-type PitchInfo = { id?: string; name: string; address?: string; price: number };
+// `format` rides along on the pitch option the opponent picked ("7-a-side"),
+// so a confirmed friendly knows how many a side it is without needing a column
+// of its own. Older posts predate it — the posting team's format is the fallback.
+type PitchInfo = { id?: string; name: string; address?: string; price: number; format?: string };
 
 type Match = {
   id: string;
@@ -17,6 +24,8 @@ type Match = {
   postingTeamName: string;
   challengingTeamName: string;
   confirmedPitch: PitchInfo;
+  // How many a side, as a format string. Pitch first, posting team second.
+  format: string | null;
   match_date: string;
   match_time: string;
   status: string;
@@ -489,7 +498,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       if (!m) { setMatch(null); return; }
 
       const [{ data: pt }, { data: ct }] = await Promise.all([
-        supabase.from("teams").select("name").eq("id", m.posting_team_id).maybeSingle(),
+        supabase.from("teams").select("name, format").eq("id", m.posting_team_id).maybeSingle(),
         supabase.from("teams").select("name").eq("id", m.challenging_team_id).maybeSingle(),
       ]);
 
@@ -501,21 +510,18 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
         postingTeamName: pt?.name ?? "Unknown",
         challengingTeamName: ct?.name ?? "Unknown",
         confirmedPitch: m.confirmed_pitch as PitchInfo,
+        format: (m.confirmed_pitch as PitchInfo | null)?.format || pt?.format || null,
         match_date: m.match_date,
         match_time: m.match_time,
         status: m.status,
         created_at: m.created_at,
       });
 
-      const { data: captainTeam } = await supabase.from("teams").select("id").eq("captain_id", currentUser.id).maybeSingle();
-      let tid = captainTeam?.id ?? null;
-      if (!tid) {
-        const { data: mem } = await supabase.from("team_members").select("team_id")
-          .eq("player_id", currentUser.id).eq("status", "approved").maybeSingle();
-        tid = mem?.team_id ?? null;
-      }
-      setMyTeamId(tid);
-      setIsCaptain(!!captainTeam && captainTeam.id === tid);
+      // "Captain" on this page means whoever runs the team — a co-captain
+      // manages a match exactly as the captain does.
+      const led = await loadLeadership(currentUser.id);
+      setMyTeamId(led?.teamId ?? null);
+      setIsCaptain(Boolean(led?.canManage));
 
       // is_ringer arrives with supabase_ringers.sql. Before that migration the
       // column doesn't exist and selecting it fails the whole query, taking the
@@ -620,7 +626,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
     await supabase.from("match_tactics").upsert({
       match_id: match.id,
       team_id: myTeamId,
-      formation,
+      // The resolved key, not the raw state: a preset or an older row can carry
+      // a formation from a different size, and writing that back would leave a
+      // lineup nobody can see.
+      formation: resolveFormation(formation, teamSizeFromFormat(match.format)),
       style,
       notes,
       lineup,
@@ -655,7 +664,14 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const myTeamName = myTeamId === match.postingTeamId ? match.postingTeamName : match.challengingTeamName;
   const opponentTeamId = myTeamId === match.postingTeamId ? match.challengingTeamId : match.postingTeamId;
   const opponentName = myTeamId === match.postingTeamId ? match.challengingTeamName : match.postingTeamName;
-  const players = slotsFor(formation);
+  // Everything on the lineup board is keyed off how many a side this game is:
+  // which formations are offered, how many dots the pitch gets, and which
+  // formation is shown when the stored one belongs to another size (a team that
+  // saved 4-3-3 and then got matched onto a 5-a-side pitch).
+  const teamSize = teamSizeFromFormat(match.format);
+  const formationKeys = formationKeysFor(teamSize);
+  const activeFormation = resolveFormation(formation, teamSize);
+  const players = slotsFor(activeFormation, teamSize);
 
   // Who's pickable for the lineup: anyone who hasn't ruled themselves out.
   // Not the confirmed-only set — a captain builds a shape before the last
@@ -678,7 +694,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
   const oppIn = oppTeamConfs.filter((c) => c.status === "confirmed").length;
 
   // ── Result-view derived data ──────────────────────────────────
-  const pitchPositions = slotsFor(formation);
+  const pitchPositions = slotsFor(activeFormation, teamSize);
   const myStarters = myResultPlayers.filter((p) => p.started);
   const myBench    = myResultPlayers.filter((p) => p.subbed_on);
   const myScorers  = myResultPlayers.filter((p) => p.goals > 0);
@@ -869,15 +885,15 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
       {!hasResult && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup</p>
+            <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup · {formatLabelForSize(teamSize)}</p>
             <span className="text-[10px] text-text-secondary">{isCaptain ? "Tap a position to assign" : "Set by captain"}</span>
           </div>
 
           {isCaptain && (
             <div className="flex gap-2 overflow-x-auto pb-2 mb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {FORMATION_KEYS.map((f) => (
+              {formationKeys.map((f) => (
                 <button key={f} type="button" onClick={() => setFormation(f)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${formation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${activeFormation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {f}
                 </button>
               ))}
@@ -1086,10 +1102,10 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             <div>
               <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Formation</p>
               <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {FORMATION_KEYS.map((f) => (
+                {formationKeys.map((f) => (
                   <button key={f} type="button" disabled={!isCaptain} onClick={() => setFormation(f)}
                     className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border disabled:opacity-60 ${
-                      formation === f ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                      activeFormation === f ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
                     {f}
                   </button>
                 ))}

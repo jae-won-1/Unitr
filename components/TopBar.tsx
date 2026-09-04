@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadLeadership } from "@/lib/team-leadership";
 
 // /join is on this list for the same reason the auth screens are: it is an
 // entry point, often the first Unitr screen someone ever sees, and it carries
@@ -43,19 +44,22 @@ export default function TopBar() {
   useEffect(() => {
     if (!user) { setJoinRequests(0); setOpenPosts(0); return; }
 
-    supabase.from("teams").select("id").eq("captain_id", user.id).maybeSingle()
-      .then(async ({ data: team }) => {
-        if (!team) { setJoinRequests(0); return; }
-        const { count } = await supabase.from("team_members")
-          .select("id", { count: "exact", head: true })
-          .eq("team_id", team.id).eq("status", "pending");
-        setJoinRequests(count ?? 0);
-      });
+    // Both badges belong to whoever runs the team — captain or co-captain.
+    // Posts are filed under the captain's id whoever posted them.
+    (async () => {
+      const led = await loadLeadership(user.id);
+      if (!led?.canManage) { setJoinRequests(0); setOpenPosts(0); return; }
 
-    supabase.from("match_posts")
-      .select("id", { count: "exact", head: true })
-      .eq("captain_id", user.id).eq("status", "open")
-      .then(({ count }) => setOpenPosts(count ?? 0));
+      const { count: pending } = await supabase.from("team_members")
+        .select("id", { count: "exact", head: true })
+        .eq("team_id", led.teamId).eq("status", "pending");
+      setJoinRequests(pending ?? 0);
+
+      const { count: open } = await supabase.from("match_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("captain_id", led.captainId).eq("status", "open");
+      setOpenPosts(open ?? 0);
+    })();
   }, [user]);
 
   // Outstanding share dues: matches the user played (already done) where their

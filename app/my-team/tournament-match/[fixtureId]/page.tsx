@@ -19,7 +19,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { FORMATION_KEYS, slotsFor, PLAY_STYLES } from "@/lib/formations";
+import {
+  slotsFor, PLAY_STYLES,
+  teamSizeFromFormat, formationKeysFor, resolveFormation, formatLabelForSize,
+} from "@/lib/formations";
 import { loadTeamTactics, type TeamTactic } from "@/components/my-team/TacticsTab";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import { fmtKickoff } from "@/lib/match-dates";
@@ -27,8 +30,11 @@ import {
   loadTournamentFixture, loadFixtureTactics, saveFixtureTactics, sideOf,
   EMPTY_TACTICS, type TeamTournamentFixture, type FixtureTactics,
 } from "@/lib/tournament-match";
+import { loadLeadership } from "@/lib/team-leadership";
 
-type Tournament = { id: string; title: string; match_date: string; start_time: string; pitch_name: string };
+// `format` is the organiser's "how many a side" for the whole tournament — one
+// answer for every game in it, the same way one buy-in covers them all.
+type Tournament = { id: string; title: string; match_date: string; start_time: string; pitch_name: string; format: string | null };
 
 type SquadMember = { player_id: string; full_name: string; status: string; is_ringer: boolean };
 
@@ -100,28 +106,21 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
       setFixture(fx);
 
       const { data: om } = await supabase.from("open_matches")
-        .select("id, title, match_date, start_time, pitch_name")
+        .select("id, title, match_date, start_time, pitch_name, format")
         .eq("id", fx.openMatchId).maybeSingle();
       setTournament((om ?? null) as Tournament | null);
 
-      // Same resolution the friendly page uses: captain first, then an approved
-      // membership. A captain is a squad member too, so both paths land on a team.
-      const { data: captainTeam } = await supabase.from("teams")
-        .select("id, name").eq("captain_id", uid).maybeSingle();
-      let tid = captainTeam?.id ?? null;
-      let tname: string | null = captainTeam?.name ?? null;
-      if (!tid) {
-        const { data: mem } = await supabase.from("team_members")
-          .select("team_id").eq("player_id", uid).eq("status", "approved").maybeSingle();
-        tid = mem?.team_id ?? null;
-        if (tid) {
-          const { data: t } = await supabase.from("teams").select("name").eq("id", tid).maybeSingle();
-          tname = t?.name ?? null;
-        }
-      }
+      // Same resolution the friendly page uses: the team this user runs or
+      // plays for, and whether they run it — captain or co-captain both pick
+      // the line-up here.
+      const led = await loadLeadership(uid);
+      const tid = led?.teamId ?? null;
       setMyTeamId(tid);
-      setIsCaptain(Boolean(captainTeam && captainTeam.id === tid));
-      if (tname) setMyTeamName(tname);
+      setIsCaptain(Boolean(led?.canManage));
+      if (tid) {
+        const { data: t } = await supabase.from("teams").select("name").eq("id", tid).maybeSingle();
+        if (t?.name) setMyTeamName(t.name);
+      }
     })();
   }, [user, params.fixtureId]);
 
@@ -168,7 +167,13 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
     if (!myTeamId) return;
     setSaving(true);
     setSaveError(null);
-    const ok = await saveFixtureTactics(params.fixtureId, myTeamId, tactics);
+    // Save the formation the board is actually showing: a preset, or a plan
+    // written before the organiser set the format, can hold a key from another
+    // size, and storing that would leave a lineup nobody sees.
+    const ok = await saveFixtureTactics(params.fixtureId, myTeamId, {
+      ...tactics,
+      formation: resolveFormation(tactics.formation, teamSizeFromFormat(tournament?.format)),
+    });
     setSaving(false);
     if (!ok) setSaveError(TACTICS_MISSING_MSG);
   };
@@ -200,7 +205,12 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
   // and a pending player is still a candidate, badged as one below.
   const candidates = squad.filter((s) => s.status !== "declined");
   const nameById = new Map(squad.map((s) => [s.player_id, s.full_name]));
-  const slots = slotsFor(tactics.formation);
+  // The tournament decides how many a side, so the board and the formation
+  // chips follow it rather than defaulting to eleven.
+  const teamSize = teamSizeFromFormat(tournament?.format);
+  const formationKeys = formationKeysFor(teamSize);
+  const activeFormation = resolveFormation(tactics.formation, teamSize);
+  const slots = slotsFor(activeFormation, teamSize);
   const canEdit = isCaptain && side !== null && tacticsAvailable;
 
   const setTac = (patch: Partial<FixtureTactics>) => setTactics((prev) => ({ ...prev, ...patch }));
@@ -381,7 +391,7 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
           {tab === "lineup" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup</p>
+                <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{myTeamName} · Starting Lineup · {formatLabelForSize(teamSize)}</p>
                 <span className="text-[10px] text-text-secondary">{canEdit ? "Tap a position to assign" : "Set by captain"}</span>
               </div>
 
@@ -393,10 +403,10 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
 
               {canEdit && (
                 <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {FORMATION_KEYS.map((f) => (
+                  {formationKeys.map((f) => (
                     <button key={f} type="button" onClick={() => setTac({ formation: f })}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-                        tactics.formation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                        activeFormation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                       {f}
                     </button>
                   ))}
@@ -504,10 +514,10 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
                 <div>
                   <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Formation</p>
                   <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {FORMATION_KEYS.map((f) => (
+                    {formationKeys.map((f) => (
                       <button key={f} type="button" disabled={!canEdit} onClick={() => setTac({ formation: f })}
                         className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border disabled:opacity-60 ${
-                          tactics.formation === f ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
+                          activeFormation === f ? "bg-accent text-white border-accent" : "bg-surface text-text-secondary border-border"}`}>
                         {f}
                       </button>
                     ))}

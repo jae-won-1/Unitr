@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
+import { outcomeOf, OUTCOME_TEXT } from "@/lib/match-results";
 import { fmtFee } from "@/lib/joining-fee";
 import BottomSheet from "@/components/BottomSheet";
+import { loadLeadership } from "@/lib/team-leadership";
 
 // Settle Payments — per-fixture payment collection for the captain.
 //
@@ -447,15 +449,35 @@ function JoiningFeesPanel({ teamId, captainId }: { teamId: string; captainId: st
         .eq("team_id", teamId)
         .eq("status", "approved");
       if (error) return;   // joining-fees migration not run — panel stays hidden
+
+      // The captain owes the fee they set, like everyone else, and their copy
+      // of it is on `teams` rather than team_members
+      // (supabase_captain_joining_fee.sql). Read with select("*") so the row
+      // still comes back before that migration is run.
+      const { data: team } = await supabase
+        .from("teams").select("*").eq("id", teamId).maybeSingle();
+      const capDue = (team?.captain_joining_fee_due_pence as number | null) ?? 0;
+      const captainRow: FeeRow[] = capDue > 0 && team?.captain_id
+        ? [{
+            playerId: team.captain_id as string,
+            name: "You (captain)",
+            duePence: capDue,
+            paidPence: (team.captain_joining_fee_paid_pence as number | null) ?? 0,
+          }]
+        : [];
+
       setRows(
-        (data ?? [])
-          .filter((m) => (m.joining_fee_due_pence ?? 0) > 0)
-          .map((m) => ({
-            playerId: m.player_id as string,
-            name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown player",
-            duePence: (m.joining_fee_due_pence as number) ?? 0,
-            paidPence: (m.joining_fee_paid_pence as number) ?? 0,
-          }))
+        [
+          ...captainRow,
+          ...(data ?? [])
+            .filter((m) => (m.joining_fee_due_pence ?? 0) > 0)
+            .map((m) => ({
+              playerId: m.player_id as string,
+              name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown player",
+              duePence: (m.joining_fee_due_pence as number) ?? 0,
+              paidPence: (m.joining_fee_paid_pence as number) ?? 0,
+            })),
+        ]
           .sort((a, b) => {
             const aOwes = a.paidPence < a.duePence ? 0 : 1;
             const bOwes = b.paidPence < b.duePence ? 0 : 1;
@@ -500,6 +522,10 @@ function JoiningFeesPanel({ teamId, captainId }: { teamId: string; captainId: st
               </div>
               {paid ? (
                 <span className="text-[10px] font-semibold text-accent-ink bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Paid ✓</span>
+              ) : row.playerId === captainId ? (
+                // The captain's own row: nobody to remind but themselves, so
+                // it says where to pay instead of offering a self-DM.
+                <span className="text-[10px] font-semibold text-red-600 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full flex-shrink-0">Top up on Home</span>
               ) : (
                 <button
                   onClick={() => remind(row)}
@@ -530,22 +556,15 @@ export function SettlePaymentsList() {
   useEffect(() => {
     if (!user) return;
     async function load() {
-      // Resolve the captain id this player's history is tied to (their own
-      // id if they captain a team, otherwise their team's captain).
-      let captainId: string | undefined = user!.id;
-      const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
-      let tid: string | undefined = ownTeam?.id;
-      if (!ownTeam) {
-        const { data: membership } = await supabase.from("team_members")
-          .select("team_id").eq("player_id", user!.id).eq("status", "approved").maybeSingle();
-        if (!membership?.team_id) { setLoading(false); return; }
-        tid = membership.team_id;
-        const { data: team } = await supabase.from("teams").select("captain_id").eq("id", membership.team_id).maybeSingle();
-        captainId = team?.captain_id;
-      }
+      // The team's history hangs off its captain's id whoever set the games
+      // up, so that's what this reads — and a co-captain gets the captain's
+      // view of it, collection controls included.
+      const led = await loadLeadership(user!.id);
+      const captainId = led?.captainId;
+      const tid = led?.teamId;
       if (!captainId || !tid) { setLoading(false); return; }
       setTeamId(tid);
-      setIsCaptainViewer(user!.id === captainId);
+      setIsCaptainViewer(Boolean(led?.canManage));
 
       // Matches where this team posted and was challenged
       const { data: myPosts } = await supabase.from("match_posts")
@@ -693,17 +712,25 @@ export function SettlePaymentsList() {
               </div>
               {f.isUpcoming ? (
                 <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Upcoming</span>
-              ) : f.matchRowId && m?.result_verified && matchResults[f.matchRowId] && (() => {
+              ) : f.matchRowId && matchResults[f.matchRowId] && (() => {
+                // Shown as soon as this captain files it, not only once the
+                // opponent agrees — the same rule the Calendar and the manage
+                // page follow, with "Pending" carrying the difference.
                 const r = matchResults[f.matchRowId];
-                const outcome = r.teamScore > r.opponentScore ? "won" : r.teamScore < r.opponentScore ? "lost" : "drew";
-                const colorClass = outcome === "won" ? "text-accent-ink" : outcome === "lost" ? "text-red-500" : "text-text-secondary";
                 return (
-                  <p className={`text-3xl font-extrabold flex-shrink-0 ${colorClass}`}>{r.teamScore} – {r.opponentScore}</p>
+                  <div className="flex flex-col items-end flex-shrink-0 leading-none">
+                    <p className={`text-3xl font-extrabold ${OUTCOME_TEXT[outcomeOf(r.teamScore, r.opponentScore)]}`}>
+                      {r.teamScore} – {r.opponentScore}
+                    </p>
+                    <span className="text-[10px] font-semibold text-text-secondary mt-1">
+                      {m?.result_verified ? "Full time" : "Pending"}
+                    </span>
+                  </div>
                 );
               })()}
             </div>
 
-            {!f.isUpcoming && isCaptainViewer && f.matchRowId && (!m?.result_verified || !matchResults[f.matchRowId]) ? (
+            {!f.isUpcoming && isCaptainViewer && f.matchRowId && !matchResults[f.matchRowId] ? (
               <a href={`/my-team/match/${f.matchRowId}/result`} className="block w-full mt-3 py-2 rounded-xl bg-red-500 text-white text-xs font-bold text-center">
                 Submit Result
               </a>

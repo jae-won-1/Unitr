@@ -4,7 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
-const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "11-a-side"];
+const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const SURFACE_OPTIONS = ["Natural Grass", "Artificial Grass (3G)", "Artificial Grass (4G)", "Indoor", "Concrete"];
 const AMENITY_OPTIONS = ["Changing Rooms", "Showers", "Parking", "Floodlights", "Café / Canteen", "CCTV", "First Aid"];
 

@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import TopUpModal from "@/components/TopUpModal";
 import { seedAvailabilityFromPoll } from "@/lib/event-availability";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 // The challenger's side of a match post: pick one of the poster's pitch
 // options, confirm, and both teams are debited their half of the fee (or, for
@@ -117,9 +118,10 @@ export default function ChallengePanel({
       return;
     }
 
-    // Get challenger's team
-    const { data: team } = await supabase
-      .from("teams").select("id, name").eq("captain_id", user.id).maybeSingle();
+    // Get challenger's team — captain or co-captain, either can accept a game
+    const team = await loadLedTeam<{ id: string; name: string; captain_id: string }>(
+      user.id, "id, name, captain_id",
+    );
     if (!team) { setSaving(false); return; }
 
     const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
@@ -188,7 +190,9 @@ export default function ChallengePanel({
       post_id: post.id,
       challenger_team_id: team.id,
       challenger_team_name: team.name,
-      challenger_captain_id: user.id,
+      // The team's captain, whoever pressed the button — the challenge is the
+      // team's, and every "our fixtures" query keys off this id.
+      challenger_captain_id: team.captain_id ?? user.id,
       selected_pitch: pitch,
       status: "accepted",
     });
@@ -281,7 +285,7 @@ export default function ChallengePanel({
         const allPlayers: { player_id: string; team_id: string }[] = [
           ...(members ?? []),
           { player_id: post.captain_id, team_id: post.team_id },
-          { player_id: user.id, team_id: team.id },
+          { player_id: team.captain_id ?? user.id, team_id: team.id },
         ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
 
         if (allPlayers.length > 0) {

@@ -258,7 +258,10 @@ export default function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">How often do you play?</label>
+              <div className="flex items-baseline justify-between gap-2">
+                <label className="text-sm font-medium text-text-secondary">How often do you play?</label>
+                <span className="text-xs text-text-secondary">Roughly, per month.</span>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 {playFrequencies.map((freq) => (
                   <button key={freq.value} type="button" onClick={() => setGamesPerMonth(freq.value)}
@@ -267,7 +270,6 @@ export default function RegisterPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-text-secondary">Roughly, per month.</p>
             </div>
 
             {/* Stacked rather than chipped: these carry a hint line each, and

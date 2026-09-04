@@ -10,6 +10,7 @@ import {
   type CalendarEntry, type EntryKind,
 } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
+import { OUTCOME_TEXT } from "@/lib/match-results";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 
 // The Calendar owns every commitment the viewer has, upcoming and past. It
@@ -71,7 +72,19 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
           <p className="text-[15px] font-bold truncate">{entry.title}</p>
           {entry.subtitle && <p className="text-xs font-medium text-text-secondary truncate mt-0.5">{entry.subtitle}</p>}
         </div>
-        {entry.badge && (
+        {/* A played fixture leads with its score. The status badge it replaces
+            ("Confirmed", "Paid ✓") is about getting to kickoff, which stopped
+            being the news the moment someone filed a result. */}
+        {entry.result ? (
+          <div className="flex flex-col items-end flex-shrink-0 leading-none">
+            <span className={`text-xl font-extrabold tracking-tight ${OUTCOME_TEXT[entry.result.outcome]}`}>
+              {entry.result.teamScore} – {entry.result.opponentScore}
+            </span>
+            <span className="text-[10px] font-semibold text-text-secondary mt-1">
+              {entry.result.verified ? "Full time" : "Pending"}
+            </span>
+          </div>
+        ) : entry.badge && (
           <span className="text-[10px] font-semibold text-text-secondary bg-background border border-border px-2.5 py-0.5 rounded-full flex-shrink-0">
             {entry.badge}
           </span>
@@ -229,8 +242,8 @@ export default function CalendarPage() {
     // Only a captain can post, so only a captain's team is worth resolving here
     // — it's what "Turn into Match Post" writes the post against.
     if (captain && teamId) {
-      const { data } = await supabase.from("teams").select("id, name, location").eq("id", teamId).maybeSingle();
-      setTeam(data ? { id: data.id, name: data.name, location: data.location ?? "" } : null);
+      const { data } = await supabase.from("teams").select("id, name, location, format").eq("id", teamId).maybeSingle();
+      setTeam(data ? { id: data.id, name: data.name, location: data.location ?? "", format: data.format ?? null } : null);
     } else {
       setTeam(null);
     }

@@ -9,6 +9,7 @@ import EnterTournamentPanel from "@/components/EnterTournamentPanel";
 import { isKickoffPast } from "@/lib/match-dates";
 import { computeStandings } from "@/lib/standings";
 import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-revenue";
+import { loadLedTeam, loadLeadership } from "@/lib/team-leadership";
 
 // Event detail + management — tournaments, leagues and admin-hosted friendlies
 // (all open_matches rows). The organiser (the hosting team's captain, the venue
@@ -163,24 +164,18 @@ export default function TournamentDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("teams").select("id, name").eq("captain_id", user.id).maybeSingle()
-      .then(({ data }) => { setMyTeamId(data?.id ?? null); setMyTeamName(data?.name ?? null); });
+    loadLedTeam<{ id: string; name: string }>(user.id, "id, name")
+      .then((data) => { setMyTeamId(data?.id ?? null); setMyTeamName(data?.name ?? null); });
   }, [user]);
 
-  // The squad the viewer plays for, captain or not. Distinct from myTeamId,
-  // which is deliberately captain-only because it gates buying in. This one
-  // only decides which fixtures in the schedule are "ours" — a player needs to
-  // walk into their own game and read the lineup as much as a captain does.
+  // The squad the viewer plays for, whatever their rank. Distinct from
+  // myTeamId, which is deliberately leader-only because it gates buying in.
+  // This one only decides which fixtures in the schedule are "ours" — a player
+  // needs to walk into their own game and read the lineup as much as a captain
+  // does.
   useEffect(() => {
     if (!user) { setMyPlayingTeamId(null); return; }
-    const uid = user.id;
-    (async () => {
-      const { data: cap } = await supabase.from("teams").select("id").eq("captain_id", uid).maybeSingle();
-      if (cap?.id) { setMyPlayingTeamId(cap.id); return; }
-      const { data: mem } = await supabase.from("team_members")
-        .select("team_id").eq("player_id", uid).eq("status", "approved").maybeSingle();
-      setMyPlayingTeamId(mem?.team_id ?? null);
-    })();
+    loadLeadership(user.id).then((led) => setMyPlayingTeamId(led?.teamId ?? null));
   }, [user]);
 
   // Pending invitation for this team → discount off the buy-in.

@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { KIND_LABEL, KIND_STYLE, type CalendarEntry } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
+import { pitchFormatFor } from "@/lib/formations";
+import { loadResultScorers, OUTCOME_TEXT, type FixtureResult, type ResultScorer } from "@/lib/match-results";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import TournamentFixtureList from "@/components/TournamentFixtureList";
+import { takeDownPost } from "@/lib/take-down-post";
 
 // What opens when you tap anything on the Calendar. Basic detail for everyone;
 // the management CTA appears only for the person entitled to it.
@@ -17,7 +20,9 @@ import TournamentFixtureList from "@/components/TournamentFixtureList";
 // sheet is the door to them, plus the one action that had nowhere else to live
 // once the Play page went away: turning a booking into a secured match post.
 
-export type ViewerTeam = { id: string; name: string; location: string } | null;
+// `format` rides along because a post carries how many a side it is, on the
+// pitch option — that's what the lineup board reads once the game is confirmed.
+export type ViewerTeam = { id: string; name: string; location: string; format: string | null } | null;
 
 function getDayName(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -62,7 +67,7 @@ function PostBookingForm({ entry, team, onPosted }: {
         name: pitch?.name ?? "Pitch",
         address: pitch?.address ?? "",
         price: booking.total_price_pence / 100,
-        format: pitch?.formats?.[0] ?? "5-a-side",
+        format: pitchFormatFor(pitch?.formats, team.format),
         distance: "",
         time: booking.start_time,
       }],
@@ -102,17 +107,83 @@ function PostBookingForm({ entry, team, onPosted }: {
   );
 }
 
+// ── The score, once someone has filed one ─────────────────────────────
+// The sheet is where a played fixture gets read, so it carries the full score
+// rather than the card's chip: the result from this team's side, whether it is
+// settled or still waiting on the opponent, and who scored.
+//
+// Scorers are fetched here rather than travelling on the CalendarEntry — a
+// scorer list is one extra query per fixture, and the Calendar can be showing
+// twenty of them at once while the sheet only ever shows the one that's open.
+function ResultBlock({ result, matchId, teamId, opponent }: {
+  result: FixtureResult;
+  /** Null for anything but a friendly, which is the only kind whose scorers
+   *  can be split by the viewer's own team. */
+  matchId: string | null;
+  teamId: string | null;
+  opponent: string;
+}) {
+  const [scorers, setScorers] = useState<{ mine: ResultScorer[]; theirs: ResultScorer[] } | null>(null);
+
+  useEffect(() => {
+    if (!matchId || !teamId) return;
+    let live = true;
+    loadResultScorers(matchId, teamId).then((s) => { if (live) setScorers(s); });
+    return () => { live = false; };
+  }, [matchId, teamId]);
+
+  const word = result.outcome === "won" ? "Won" : result.outcome === "lost" ? "Lost" : "Drew";
+  const hasScorers = (scorers?.mine.length ?? 0) + (scorers?.theirs.length ?? 0) > 0;
+
+  return (
+    <div className="bg-surface border border-border rounded-btn p-4 space-y-3">
+      <div className="flex flex-col items-center gap-1">
+        <p className={`text-4xl font-extrabold tracking-tighter leading-none ${OUTCOME_TEXT[result.outcome]}`}>
+          {result.teamScore} – {result.opponentScore}
+        </p>
+        <p className="text-[11px] font-semibold text-text-secondary">
+          {word} · {result.verified ? "Full time" : "Pending"}
+        </p>
+      </div>
+
+      {!result.verified && (
+        <p className="text-[11px] text-yellow-600 text-center">
+          Waiting for {opponent} to submit a matching score.
+        </p>
+      )}
+
+      {hasScorers && scorers && (
+        <div className="border-t border-border pt-3 flex gap-2 text-[11px]">
+          <div className="flex-1 space-y-0.5">
+            {scorers.mine.map((p) => (
+              <p key={p.playerId} className="text-text-secondary">⚽ {p.name}{p.goals > 1 ? ` ×${p.goals}` : ""}</p>
+            ))}
+          </div>
+          <div className="flex-1 space-y-0.5 text-right">
+            {scorers.theirs.map((p) => (
+              <p key={p.playerId} className="text-text-secondary">{p.name}{p.goals > 1 ? ` ×${p.goals}` : ""} ⚽</p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Take down an open post ────────────────────────────────────────────
 function TakeDownButton({ entry, onRemoved }: { entry: CalendarEntry; onRemoved: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // /api/posts/take-down owns what a take-down means — releasing the credit
+  // earmark, and handing a secured booking back so it can be posted again.
   const handle = async () => {
     setBusy(true);
-    await supabase.from("match_posts").update({ status: "cancelled" }).eq("id", entry.id);
-    // The booking goes back to being a plain booking, so it can be posted again.
-    await supabase.from("pitch_bookings").update({ post_id: null }).eq("post_id", entry.id);
+    setError(null);
+    const err = await takeDownPost(entry.id);
     setBusy(false);
+    if (err) { setError(err); return; }
     onRemoved();
   };
 
@@ -130,6 +201,7 @@ function TakeDownButton({ entry, onRemoved }: { entry: CalendarEntry; onRemoved:
       <p className="text-xs text-text-secondary mb-3">
         Your post will no longer be visible to other teams. This can&apos;t be undone.
       </p>
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
       <div className="flex gap-2">
         <button onClick={() => setConfirming(false)} disabled={busy}
           className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40">Cancel</button>
@@ -169,7 +241,10 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
 
   // Who gets to act, and on what.
   const canManageMatch = isCaptain && entry.kind === "friendly" && entry.matchId;
-  const needsResult = canManageMatch && !entry.isUpcoming && !entry.resultVerified;
+  // Only asked of a captain who hasn't filed one. A submitted-but-unverified
+  // score is the opponent's move to make, not a second job for this captain —
+  // the block above already says so.
+  const needsResult = canManageMatch && !entry.isUpcoming && !entry.result;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onClose}>
@@ -200,6 +275,15 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
               </div>
             ))}
           </div>
+
+          {entry.result && (
+            <ResultBlock
+              result={entry.result}
+              matchId={entry.kind === "friendly" ? entry.matchId : null}
+              teamId={viewerTeamId}
+              opponent={entry.title.replace(/^vs /, "")}
+            />
+          )}
 
           {/* Availability, for anyone in the squad. A friendly records it
               against its matches row, an entered tournament against its

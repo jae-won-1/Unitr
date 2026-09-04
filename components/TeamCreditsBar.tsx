@@ -6,6 +6,8 @@ import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import SettlePaymentsModal from "@/components/SettlePaymentsModal";
 import BottomSheet from "@/components/BottomSheet";
 import CashOutModal from "@/components/CashOutModal";
+import { loadLeadership } from "@/lib/team-leadership";
+import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 
 // The team's money bar: credit balance and transaction log, the player's own
 // top-up / settle-up popup, and — for captains — the payment status of every
@@ -63,19 +65,18 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [historyAlertCount, setHistoryAlertCount] = useState(0);
   // Dues drive the bar's badge and warning strip; the modal owns paying them.
   const { dues: myDues, owedPence: myOwedPence, reload: reloadMyDues } = useMyDues(teamId, userId);
+  // The viewer's own joining fee. A captain owes one too — the fee they set
+  // buys the credit that pays for the pitches they play on
+  // (supabase_captain_joining_fee.sql) — and until it's in they can't vote
+  // available for a game, so it outranks match dues in this bar.
+  const { owedPence: feeOwedPence, reload: reloadFee } = useJoiningFee(teamId, userId);
 
   // Effect 1: resolve team ID
   useEffect(() => {
     async function loadTeam() {
-      let tid: string | null = null;
-      if (role === "captain") {
-        const { data } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-        tid = data?.id ?? null;
-      } else {
-        const { data } = await supabase.from("team_members").select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
-        tid = data?.team_id ?? null;
-      }
-      setTeamId(tid);
+      // One resolver for both roles — a co-captain arrives here with
+      // role="captain" and no team of their own to be found by captain_id.
+      setTeamId((await loadLeadership(userId))?.teamId ?? null);
     }
     loadTeam();
   }, [userId, role]);
@@ -524,7 +525,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
           <span className="text-text-secondary text-xs">›</span>
         </button>
         <button onClick={() => setShowTopUp(true)}
-          className={`flex items-center gap-1.5 text-[13px] font-bold px-3.5 py-2.5 rounded-full border whitespace-nowrap ${myOwedPence > 0 ? "text-white bg-danger border-danger" : "text-white bg-accent border-accent"}`}>
+          className={`flex items-center gap-1.5 text-[13px] font-bold px-3.5 py-2.5 rounded-full border whitespace-nowrap ${myOwedPence + feeOwedPence > 0 ? "text-white bg-danger border-danger" : "text-white bg-accent border-accent"}`}>
           + Top Up
           {myDues.length > 0 && (
             <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white text-danger text-[10px] font-bold flex items-center justify-center">
@@ -567,6 +568,18 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
         <p className="text-[11px] text-text-secondary mt-1">
           £{reserved.toFixed(2)} reserved for a pending match · £{(credits - reserved).toFixed(2)} available
         </p>
+      )}
+      {feeOwedPence > 0 && (
+        <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 mt-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <p className="text-[11px] text-red-600">
+            <span className="font-semibold">{fmtFee(feeOwedPence)} joining fee due.</span>{" "}
+            {role === "captain"
+              ? "The fee you set applies to you too — top up that much to put it into the team's credit."
+              : "Top up that much to pay it into the team's credit."}{" "}
+            Until it&apos;s paid you can&apos;t vote available for games.
+          </p>
+        </div>
       )}
       {myOwedPence > 0 && (
         <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-2">
@@ -812,7 +825,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
           teamId={teamId}
           userId={userId}
           onBalanceChange={(pence) => setCredits(pence / 100)}
-          onClose={() => { setShowTopUp(false); reloadMyDues(); }}
+          onClose={() => { setShowTopUp(false); reloadMyDues(); reloadFee(); }}
         />
       )}
 

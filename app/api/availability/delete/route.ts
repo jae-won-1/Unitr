@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 
 // Delete a team's live availability poll and every answer on it.
 //
@@ -20,12 +20,17 @@ export async function DELETE(req: NextRequest) {
 
     const { data: poll } = await adminSupabase
       .from("availability_requests")
-      .select("captain_id")
+      .select("captain_id, team_id")
       .eq("id", requestId)
       .maybeSingle();
 
     if (!poll) return NextResponse.json({ error: "Poll not found" }, { status: 404 });
-    if (poll.captain_id !== callerId) return forbidden("That poll belongs to another team.");
+    // The poll is filed under the team's captain even when a co-captain
+    // opened it, so the question is "do you run this team?", not "is this
+    // row's id yours?".
+    const mayDelete = poll.captain_id === callerId
+      || (poll.team_id ? await isTeamLeader(callerId, poll.team_id as string) : false);
+    if (!mayDelete) return forbidden("That poll belongs to another team.");
 
     await adminSupabase.from("availability_responses").delete().eq("request_id", requestId);
     await adminSupabase.from("availability_requests").delete().eq("id", requestId);

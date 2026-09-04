@@ -12,8 +12,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/contexts/RoleContext";
-import { supabase } from "@/lib/supabase";
 import TacticsTab from "@/components/my-team/TacticsTab";
+import { loadLeadership } from "@/lib/team-leadership";
 
 export default function TacticsPage() {
   const { user } = useAuth();
@@ -23,13 +23,8 @@ export default function TacticsPage() {
   useEffect(() => {
     if (!user) { setTeamId(null); return; }
     async function load() {
-      const { data: captained } = await supabase
-        .from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
-      if (captained?.id) { setTeamId(captained.id); return; }
-      const { data: mem } = await supabase
-        .from("team_members").select("team_id")
-        .eq("player_id", user!.id).eq("status", "approved").maybeSingle();
-      setTeamId(mem?.team_id ?? null);
+      const led = await loadLeadership(user!.id);
+      setTeamId(led?.teamId ?? null);
     }
     load();
   }, [user]);

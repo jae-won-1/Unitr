@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtKickoff, isKickoffPast } from "@/lib/match-dates";
 import { type MatchPost, type PitchOption } from "@/components/ChallengePanel";
+import { loadLeadership } from "@/lib/team-leadership";
+import { takeDownPost } from "@/lib/take-down-post";
 
 // A captain's own open match post. It is status rather than feed content —
 // "is anyone biting?" — so it sits above the Matches feed on the home screen
@@ -12,39 +14,46 @@ import { type MatchPost, type PitchOption } from "@/components/ChallengePanel";
 // Every still-open post this captain owns. Challenges are accepted the moment
 // a team confirms (see ChallengePanel), so an open post has had no takers yet —
 // there is no pending-challenge queue to count.
-export function useMyPosts(captainId?: string) {
+// Takes the acting user — a co-captain sees (and can take down) the team's
+// posts, which are filed under the captain's id whoever pressed Post.
+export function useMyPosts(userId?: string) {
   const [posts, setPosts] = useState<MatchPost[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!captainId) return;
-    supabase
-      .from("match_posts")
-      .select("*")
-      .eq("captain_id", captainId)
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setPosts((data ?? []).map((row) => ({
-          id: row.id,
-          team_id: row.team_id,
-          captain_id: row.captain_id,
-          team: row.team_name,
-          location: row.team_location ?? "",
-          date: fmtKickoff(row.match_date, row.match_time),
-          match_date: row.match_date,
-          match_time: row.match_time,
-          pitchOptions: (row.pitch_options ?? []) as PitchOption[],
-          description: row.description ?? "",
-          availabilityMatch: false,
-          status: row.status,
-          payment_mode: row.payment_mode ?? "credit",
-          pitchSecured: Boolean(row.pitch_secured),
-          securedBookingId: row.secured_booking_id ?? null,
-        })).filter((p) => !isKickoffPast(p.match_date, p.match_time)));
-        setLoading(false);
-      });
-  }, [captainId]);
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const led = await loadLeadership(userId);
+      const captainId = led?.canManage ? led.captainId : userId;
+      const { data } = await supabase
+        .from("match_posts")
+        .select("*")
+        .eq("captain_id", captainId)
+        .eq("status", "open")
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      setPosts((data ?? []).map((row) => ({
+        id: row.id,
+        team_id: row.team_id,
+        captain_id: row.captain_id,
+        team: row.team_name,
+        location: row.team_location ?? "",
+        date: fmtKickoff(row.match_date, row.match_time),
+        match_date: row.match_date,
+        match_time: row.match_time,
+        pitchOptions: (row.pitch_options ?? []) as PitchOption[],
+        description: row.description ?? "",
+        availabilityMatch: false,
+        status: row.status,
+        payment_mode: row.payment_mode ?? "credit",
+        pitchSecured: Boolean(row.pitch_secured),
+        securedBookingId: row.secured_booking_id ?? null,
+      })).filter((p) => !isKickoffPast(p.match_date, p.match_time)));
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
 
   const removePost = (id: string) => setPosts((prev) => prev.filter((p) => p.id !== id));
   return { posts, loading, removePost };
@@ -54,14 +63,17 @@ export function useMyPosts(captainId?: string) {
 export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRemoved: (id: string) => void }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [takingDown, setTakingDown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Goes through /api/posts/take-down like the admin's moderation list — the
+  // route is what releases the credit earmark and hands a secured booking back,
+  // and doing it in two places is how those two stop matching.
   const handleTakeDown = async () => {
     setTakingDown(true);
-    await supabase.from("match_posts").update({ status: "cancelled" }).eq("id", post.id);
-    if (post.securedBookingId) {
-      await supabase.from("pitch_bookings").update({ post_id: null }).eq("id", post.securedBookingId);
-    }
+    setError(null);
+    const err = await takeDownPost(post.id);
     setTakingDown(false);
+    if (err) { setError(err); return; }
     setShowConfirm(false);
     onRemoved(post.id);
   };
@@ -139,6 +151,7 @@ export default function MyPostCard({ post, onRemoved }: { post: MatchPost; onRem
             <p className="text-sm text-text-secondary mb-5">
               Your post will no longer be visible to other teams. This cannot be undone.
             </p>
+            {error && <p className="text-xs text-red-600 mb-3 -mt-3">{error}</p>}
             <div className="flex gap-3">
               <button onClick={() => setShowConfirm(false)} disabled={takingDown}
                 className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold disabled:opacity-40">

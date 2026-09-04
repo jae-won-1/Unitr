@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, isTeamCaptain, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
 import {
   allocateEqually, loadContributors, loadRefundableIntents,
   type Contributor,
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 //        catches up on its own rather than drifting.
 
 async function mayRefund(callerId: string, teamId: string): Promise<boolean> {
-  return (await isTeamCaptain(callerId, teamId)) || (await isAdmin(callerId));
+  return (await isTeamLeader(callerId, teamId)) || (await isAdmin(callerId));
 }
 
 // Balance, and what of it is actually spare — reserved credit is earmarked

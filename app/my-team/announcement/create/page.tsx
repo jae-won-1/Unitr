@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type RosterPlayer = { player_id: string; name: string };
 
@@ -48,7 +49,7 @@ export default function CreateAnnouncementPage() {
   useEffect(() => {
     if (!user) return;
     async function loadRoster() {
-      const { data: team } = await supabase.from("teams").select("id, captain_id").eq("captain_id", user!.id).maybeSingle();
+      const team = await loadLedTeam<{ id: string; captain_id: string }>(user!.id, "id, captain_id");
       if (!team) return;
       const [{ data: members }, { data: captainProfile }] = await Promise.all([
         supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", team.id).eq("status", "approved"),
@@ -107,12 +108,14 @@ export default function CreateAnnouncementPage() {
     setPosting(true);
     setError(null);
 
-    const { data: team } = await supabase.from("teams").select("id, name").eq("captain_id", user.id).maybeSingle();
+    // A co-captain posts announcements too; the row is filed under the team's
+    // captain so the squad's announcement feed keeps finding it.
+    const team = await loadLedTeam<{ id: string; name: string; captain_id: string }>(user.id, "id, name, captain_id");
     if (!team) { setPosting(false); setError("No team found. Register your team first."); return; }
 
     const { error: insertError } = await supabase.from("team_announcements").insert({
       team_id: team.id,
-      captain_id: user.id,
+      captain_id: team.captain_id ?? user.id,
       title: title.trim() || null,
       body: body.trim(),
     });

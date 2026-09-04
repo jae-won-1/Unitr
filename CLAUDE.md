@@ -75,7 +75,8 @@ page was deleted. Don't "clean these up" without a reason; ~15 call sites point 
 `contexts/RoleContext.tsx` derives one of four roles, checked in this order:
 
 - `venue_manager` — `profiles.account_type`; skips all player logic
-- `captain` — captains a row in `teams`
+- `captain` — captains a row in `teams`, **or** is an approved member with
+  `team_members.is_co_captain`
 - `player` — has an approved `team_members` row
 - `new_user` — signed in but teamless, or signed out
 
@@ -83,6 +84,37 @@ Role decides which Home renders, whether the "Your posts" filter appears on the 
 and whether an action is a real button or a greyed slot. **Greyed rather than hidden** is the
 house convention — a missing element shifts everything around it and breaks muscle memory
 (see `components/QuickNav.tsx`).
+
+### Co-captains
+
+A captain can promote approved squad members to co-captain from Team Settings
+(`components/my-team/CoCaptainsPanel.tsx` → the `set_co_captain` RPC). A co-captain has the
+captain's authority **everywhere except appointing other co-captains** — that stays with the
+person who was handed the team. They reach the `captain` role, so every captain screen and
+CTA is theirs; `useRole().isCoCaptain` is the only place the two are told apart, and the only
+thing it changes is that panel.
+
+Two rules make that work without rewriting every query, both living in
+**`lib/team-leadership.ts`**:
+
+1. **"The team I run" is resolved there**, never by `.eq("captain_id", user.id)` at the call
+   site — a co-captain captains no team, so that lookup finds nothing for them. Use
+   `loadLedTeam(userId, cols)` (drop-in for that query) or `loadLeadership(userId)`, which
+   returns `{ teamId, captainId, isCaptain, isCoCaptain, canManage }`.
+2. **Anything filed under a captain's id is filed under the TEAM'S captain** — a match post,
+   a challenge (`challenger_captain_id`), an availability poll, an announcement, a player
+   offer — even when a co-captain pressed the button. The fixture belongs to the team either
+   way, and every existing `.eq("captain_id", …)` read keeps finding it. `actingCaptainId()`
+   is that lookup.
+
+The database enforces the split independently (`supabase_co_captains.sql`): `is_team_leader()`
+gates the captain-only RPCs (`record_cash_credit`, the two invite-code functions,
+`enter_own_tournament`), `isTeamLeader` in `lib/api-auth.ts` gates the API routes, and a
+trigger refuses any write to `is_co_captain` that doesn't come from the captain's own session
+— necessary because RLS on `team_members` is `using (true)`.
+
+A co-captain is a squad member, so they still owe their joining fee, and losing the
+membership row loses the promotion with it.
 
 ## Pages
 
@@ -139,7 +171,7 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/players` | Squad list → individual profiles |
 | `/my-team/transfer` | Transfer Market — two-sided player/team discovery, offers, join requests, friend requests |
 | `/my-team/tactics` | Team default formation + tactics board |
-| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee, invite link (was `/my-team/team-profile`) |
+| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee, invite link, co-captains (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
 | `/my-team/history` | **Settle Payments** — per-fixture payment collection, not a results archive |
@@ -295,6 +327,14 @@ Variants:
   `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
   can't join or vote available for games (`AvailabilityButtons`, `AvailabilityModal`); the
   captain sees per-member fee status in Settle Payments.
+  **The captain owes it too.** They play in the games the fee pays for, and they have no
+  `team_members` row, so their copy of the same two numbers sits on `teams`
+  (`captain_joining_fee_due_pence` / `_paid_pence`, `supabase_captain_joining_fee.sql`).
+  Setting a non-zero fee — at registration or later in Team Settings — snapshots it and fires
+  a bell notification telling the captain to top up that much; the snapshot is taken once, so
+  raising the fee later never re-charges them, exactly as it never re-charges the squad.
+  `lib/joining-fee.ts` falls back to those columns when there's no membership row, so every
+  gate the squad lives under applies to the captain unchanged.
 
 `payment_collection_status` is a **bookkeeping checklist** the captain ticks off — it does not
 move money or call Stripe. The real settlement is the credit ledger.
@@ -322,6 +362,8 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_refunds.sql` | `refund_credit`, `team_card_contributions`, refund columns on the ledger; run after `supabase_joining_fees.sql` |
 | `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
 | `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |
+| `supabase_captain_joining_fee.sql` | `teams.captain_joining_fee_due_pence` / `_paid_pence`, the snapshot + notify triggers, and the captain branch of `apply_deposit_to_joining_fee`; run after `supabase_joining_fees.sql` |
+| `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
@@ -343,6 +385,14 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 - **Missing migrations degrade, they don't crash.** Selecting from a table that isn't there
   fails the query — features guard for it and disable the button with an explanation
   (see `useSuggestions` in `GameFeed.tsx`, `RingerRequestPanel`).
+- **Lineups follow the match size.** Selectable formats are 5 / 7 / 8 / 11-a-side, and
+  `lib/formations.ts` groups formations by players-per-side. A friendly reads its size off
+  `confirmed_pitch.format` (falling back to the posting team's `teams.format`), a tournament
+  fixture off `open_matches.format`, and a saved team preset off the formation key itself —
+  keys are unique across sizes, so a stored string still names exactly one layout. A
+  formation belonging to another size renders as that size's default (`resolveFormation`)
+  rather than drawing eleven dots on a 5-a-side board; saves write the resolved key. Slot
+  order inside a formation is still history — adding formations is safe, reordering is not.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.
@@ -354,9 +404,10 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   public, so the API routes are where authorisation actually happens. A route identifies the
   caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the
   `Authorization` header — never an id from the body) and checks entitlement with
-  `isTeamCaptain`, `isTeamMember`, `ownsPitch` or `isAdmin` from the same file. The browser
-  side is `authedPost` / `authedDelete` / `authedGet` in `lib/authed-fetch.ts` — a plain
-  `fetch("/api/…")` from a component is a bug, it will 401.
+  `isTeamLeader` (captain or co-captain — the usual one), `isTeamCaptain`, `isTeamMember`,
+  `ownsPitch` or `isAdmin` from the same file. The browser side is `authedPost` /
+  `authedDelete` / `authedGet` in `lib/authed-fetch.ts` — a plain `fetch("/api/…")` from a
+  component is a bug, it will 401.
 - **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
   the amount all come from the session and the database. `/api/connect/venue-transfer` is the
   sharp end: it moves real money out of the platform balance, so it caps every transfer at

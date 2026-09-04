@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { authedDelete } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
+import { actingCaptainId } from "@/lib/team-leadership";
 
 // Poll creation, shared by the Collect Availability page and the captain's home
 // tile. One implementation because the create step has a rule that is easy to
@@ -83,9 +84,16 @@ export default function AvailabilityPollForm({
     }
 
     const date_options = filled.map((r) => parseDateOption(r.date, r.time, r.location));
+    // A co-captain opens polls too. The row is filed under the team's captain
+    // so every squad member's "is there a poll for my team?" still matches,
+    // whoever pressed Send.
     const { error: insertError } = await supabase
       .from("availability_requests")
-      .insert({ team_id: teamId, captain_id: captainId, date_options });
+      .insert({
+        team_id: teamId,
+        captain_id: await actingCaptainId(captainId, teamId),
+        date_options,
+      });
 
     setSaving(false);
     if (insertError) { setError(insertError.message); return; }

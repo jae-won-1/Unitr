@@ -7,6 +7,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import AvailabilityPollForm, { DateOption } from "@/components/AvailabilityPollForm";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type AvailabilityRequest = {
   id: string;
@@ -261,6 +262,9 @@ function PlayerAvailabilityTab({ userId }: { userId: string }) {
 // ── Captain availability tab ──────────────────────────────────
 function CaptainAvailabilityTab({ userId }: { userId: string }) {
   const [teamId, setTeamId] = useState<string | null>(null);
+  // The poll is filed under the team's captain even when a co-captain opens
+  // it, so every squad member's "is there a poll for my team?" still matches.
+  const [captainId, setCaptainId] = useState<string | null>(null);
   const [request, setRequest] = useState<AvailabilityRequest | null | undefined>(undefined);
   const [responses, setResponses] = useState<PlayerResponse[]>([]);
   const [totalMembers, setTotalMembers] = useState(0);
@@ -270,9 +274,10 @@ function CaptainAvailabilityTab({ userId }: { userId: string }) {
   // Without that the captain stayed staring at the create form after sending.
   const load = useCallback(async () => {
     {
-      const { data: team } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
+      const team = await loadLedTeam<{ id: string; captain_id: string }>(userId, "id, captain_id");
       if (!team) { setLoading(false); return; }
       setTeamId(team.id);
+      setCaptainId(team.captain_id ?? userId);
 
       const { count } = await supabase.from("team_members").select("*", { count: "exact", head: true })
         .eq("team_id", team.id).eq("status", "approved");
@@ -306,7 +311,7 @@ function CaptainAvailabilityTab({ userId }: { userId: string }) {
     </div>
   );
   if (!request) return (
-    <AvailabilityPollForm teamId={teamId} captainId={userId} onCreated={load} />
+    <AvailabilityPollForm teamId={teamId} captainId={captainId ?? userId} onCreated={load} />
   );
 
   return (

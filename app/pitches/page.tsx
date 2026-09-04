@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { pitchFormatFor } from "@/lib/formations";
+import { loadLedTeam } from "@/lib/team-leadership";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -581,7 +583,7 @@ function PitchesContent() {
     }
     if (mode !== "credit" || !user) return;
     async function loadCredits() {
-      const { data: team } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
+      const team = await loadLedTeam<{ id: string }>(user!.id, "id");
       if (!team?.id) return;
       const { data } = await supabase.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
       setTeamCredits(((data?.balance_pence ?? 0) - (data?.reserved_pence ?? 0)) / 100);
@@ -657,7 +659,7 @@ function PitchesContent() {
     }
   }, [selectMode, pitches]);
 
-  const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
+  const formats = ["All", "5-a-side", "7-a-side", "8-a-side", "11-a-side"];
   const filteredPitches = filterFormat === "All" ? pitches : pitches.filter((p) => p.formats.includes(filterFormat));
 
   const isAffordable = (pitch: Pitch) =>
@@ -710,7 +712,9 @@ function PitchesContent() {
   const confirmSelection = () => {
     const options = pickedPitches.map((p) => ({
       id: p.id, name: p.name, address: p.address,
-      price: p.price_per_hour, format: p.formats[0] ?? "", distance: "",
+      // The filter chip is the captain saying which game this is — take it when
+      // the pitch actually offers it, rather than guessing at its first format.
+      price: p.price_per_hour, format: pitchFormatFor(p.formats, filterFormat === "All" ? null : filterFormat), distance: "",
       // Per-date times for this pitch (overrides baked in) so each post books the right slot.
       slotTimes: Object.fromEntries(effectiveSlots(p.id).map((s) => [s.matchDate, s.time])),
     }));

@@ -17,7 +17,7 @@ import { loadSquadStats, emptyPlayerStats, type PlayerStats } from "@/lib/stats"
 
 type SubTab = "squad" | "scout" | "watchlist";
 
-type Member = { id: string; name: string; position: string | null; experience: string | null; isCaptain: boolean; stats: PlayerStats };
+type Member = { id: string; name: string; position: string | null; experience: string | null; isCaptain: boolean; isCoCaptain: boolean; stats: PlayerStats };
 type WatchRow = { id: string; playerId: string; name: string; position: string | null; note: string | null };
 
 const MISSING_TABLE_MSG = "The watchlist isn't set up yet — run supabase_player_watchlist.sql.";
@@ -43,11 +43,21 @@ function SquadList({ teamId }: { teamId: string }) {
       const { data: team } = await supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle();
       // teams.captain_id → profiles has no registered FK, so an embedded select
       // fails the whole query with PGRST200. Fetch and merge instead.
-      const { data: rows } = await supabase
+      // is_co_captain arrives with supabase_co_captains.sql; selecting a
+      // column that isn't there fails the whole query, so fall back to the
+      // pre-co-captain shape and simply show nobody as one.
+      const withFlag = await supabase
         .from("team_members")
-        .select("player_id, profiles(full_name, position, experience)")
+        .select("player_id, is_co_captain, profiles(full_name, position, experience)")
         .eq("team_id", teamId)
         .eq("status", "approved");
+      const { data: rows } = withFlag.error
+        ? await supabase
+            .from("team_members")
+            .select("player_id, profiles(full_name, position, experience)")
+            .eq("team_id", teamId)
+            .eq("status", "approved")
+        : withFlag;
 
       const out: Member[] = [];
       if (team?.captain_id) {
@@ -59,10 +69,11 @@ function SquadList({ teamId }: { teamId: string }) {
           position: cap?.position ?? null,
           experience: cap?.experience ?? null,
           isCaptain: true,
+          isCoCaptain: false,
           stats: squadStats.get(team.captain_id) ?? emptyPlayerStats(team.captain_id),
         });
       }
-      for (const r of (rows ?? []) as unknown as { player_id: string; profiles: { full_name: string; position: string | null; experience: string | null } | null }[]) {
+      for (const r of (rows ?? []) as unknown as { player_id: string; is_co_captain?: boolean | null; profiles: { full_name: string; position: string | null; experience: string | null } | null }[]) {
         if (r.player_id === team?.captain_id) continue;   // captain already added
         out.push({
           id: r.player_id,
@@ -70,9 +81,14 @@ function SquadList({ teamId }: { teamId: string }) {
           position: r.profiles?.position ?? null,
           experience: r.profiles?.experience ?? null,
           isCaptain: false,
+          isCoCaptain: Boolean(r.is_co_captain),
           stats: squadStats.get(r.player_id) ?? emptyPlayerStats(r.player_id),
         });
       }
+      // Co-captains sit directly under the captain — the squad list doubles as
+      // "who do I ask?", and that ordering answers it.
+      out.sort((a, b) =>
+        Number(b.isCaptain) - Number(a.isCaptain) || Number(b.isCoCaptain) - Number(a.isCoCaptain));
 
       if (cancelled) return;
       setMembers(out);
@@ -101,8 +117,10 @@ function SquadList({ teamId }: { teamId: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-[7px]">
               <p className="text-sm font-bold truncate">{m.name}</p>
-              {m.isCaptain && (
-                <span className="text-[9px] font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-[5px] bg-[#E7F8EC] text-accent-ink border border-[#B7E8C6] flex-shrink-0">C</span>
+              {(m.isCaptain || m.isCoCaptain) && (
+                <span className="text-[9px] font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-[5px] bg-[#E7F8EC] text-accent-ink border border-[#B7E8C6] flex-shrink-0">
+                  {m.isCaptain ? "C" : "VC"}
+                </span>
               )}
             </div>
             <p className="text-[11px] font-medium text-text-secondary mt-0.5">

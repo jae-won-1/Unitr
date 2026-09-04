@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import BookPitchPanel from "@/components/BookPitchPanel";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 // Captain-hosted tournament creation.
 //   1. The captain books & pays for a multi-hour pitch block upfront from team
@@ -27,7 +28,7 @@ type Pitch = {
 
 const MIN_TEAMS = 4;
 const MIN_HOURS = 2;
-const FORMATS = ["5-a-side", "7-a-side", "11-a-side"];
+const FORMATS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const LEVELS = ["Mixed", "Casual", "Competitive"];
 
 function addHours(time: string, hours: number): string {
@@ -44,7 +45,7 @@ export default function CreateTournamentPage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
+  const [team, setTeam] = useState<{ id: string; name: string; location: string | null } | null>(null);
   const [creditPence, setCreditPence] = useState<number | null>(null);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [loadingPitches, setLoadingPitches] = useState(true);
@@ -67,8 +68,8 @@ export default function CreateTournamentPage() {
   // Load the captain's team + credit.
   useEffect(() => {
     if (!user) return;
-    supabase.from("teams").select("id, name, location").eq("captain_id", user.id).maybeSingle()
-      .then(async ({ data }) => {
+    loadLedTeam<{ id: string; name: string; location: string | null }>(user.id, "id, name, location")
+      .then(async (data) => {
         setTeam(data);
         if (data) {
           const { data: credit } = await supabase.from("team_credits")

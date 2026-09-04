@@ -13,7 +13,7 @@ type PricingRule = { id: string; name: string; days: number[]; start_time: strin
 type SettingsTab = "info" | "pitches" | "schedule" | "pricing" | "holidays" | "payouts";
 type PitchItem = { id: string; name: string; price_per_hour: number; formats: string[]; surfaces: string[]; capacity: number | null };
 
-const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "11-a-side"];
+const FORMAT_OPTIONS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const SURFACE_OPTIONS = ["Natural Grass", "Artificial Grass (3G)", "Artificial Grass (4G)", "Indoor", "Concrete"];
 const AMENITY_OPTIONS = ["Changing Rooms", "Showers", "Parking", "Floodlights", "Café / Canteen", "CCTV", "First Aid"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];

@@ -29,6 +29,7 @@ import { isUpcomingDate, sortKey, fmtKickoff } from "@/lib/match-dates";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import TournamentFixtureList from "@/components/TournamentFixtureList";
+import { loadLeadership } from "@/lib/team-leadership";
 
 export type TeamFixture = {
   postId: string;
@@ -64,9 +65,15 @@ async function attachMatchRowIds<T extends { postId: string }>(
  * they challenged into. Tournaments are appended from open_matches.
  */
 export async function loadTeamFixtures(userId: string, teamId: string | null): Promise<TeamFixture[]> {
+  // Posts and challenges are filed under the team's captain, so a co-captain
+  // asks the captain's question. A plain player asks it as themselves and gets
+  // nothing back, which is the intended answer.
+  const led = await loadLeadership(userId);
+  const keyId = led?.canManage ? led.captainId : userId;
+
   const { data: myPosts } = await supabase
     .from("match_posts").select("id, match_date, match_time")
-    .eq("captain_id", userId).eq("status", "matched");
+    .eq("captain_id", keyId).eq("status", "matched");
 
   const posterFixtures = await Promise.all(
     (myPosts ?? []).map(async (post) => {
@@ -85,7 +92,7 @@ export async function loadTeamFixtures(userId: string, teamId: string | null): P
 
   const { data: myChallenges } = await supabase
     .from("challenges").select("post_id, selected_pitch")
-    .eq("challenger_captain_id", userId).eq("status", "accepted");
+    .eq("challenger_captain_id", keyId).eq("status", "accepted");
 
   const challengerFixtures = await Promise.all(
     (myChallenges ?? []).map(async (c) => {
@@ -105,12 +112,12 @@ export async function loadTeamFixtures(userId: string, teamId: string | null): P
   const withIds = await attachMatchRowIds([...posterFixtures, ...challengerFixtures]);
   const matchFixtures: TeamFixture[] = withIds.map((f) => ({ ...f, kind: "match" }));
 
-  // Filtering on captain_id means a player simply gets none of these, without
-  // needing to know the viewer's role here.
+  // Filtering on the captain's id means a player simply gets none of these,
+  // without needing to know the viewer's role here.
   const { data: openPosts } = await supabase
     .from("match_posts")
     .select("id, match_date, match_time, pitch_options, pitch_secured")
-    .eq("captain_id", userId).eq("status", "open");
+    .eq("captain_id", keyId).eq("status", "open");
 
   const openPostFixtures: TeamFixture[] = (openPosts ?? []).map((p) => {
     const options = (p.pitch_options ?? []) as { name?: string }[];

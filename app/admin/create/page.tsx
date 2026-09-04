@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-const FORMATS = ["5-a-side", "7-a-side", "11-a-side"];
+const FORMATS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const LEVELS = ["Mixed", "Casual", "Competitive"];
 
 const EVENT_TYPES = [

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import InviteLinkPanel from "@/components/my-team/InviteLinkPanel";
+import CoCaptainsPanel from "@/components/my-team/CoCaptainsPanel";
+import { loadLeadership } from "@/lib/team-leadership";
 
 // Team Settings is cut back to the joining fee for now. The team profile
 // fields (history, play style, photo) still live on `teams` and are still
@@ -19,6 +21,9 @@ type Team = {
 export default function TeamSettingsPage() {
   const { user } = useAuth();
   const [team, setTeam] = useState<Team | null | undefined>(undefined);
+  // Only the actual captain appoints co-captains — a co-captain gets every
+  // other control on this page and a sentence where the panel would be.
+  const [isCaptain, setIsCaptain] = useState(false);
   const [joiningFee, setJoiningFee] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -29,13 +34,15 @@ export default function TeamSettingsPage() {
     // select("*") rather than named columns so the page still loads when the
     // joining-fees migration hasn't been run (a named select of a missing
     // column fails the whole query).
-    supabase.from("teams").select("*")
-      .eq("captain_id", user.id).maybeSingle()
-      .then(({ data }) => {
-        setTeam(data ?? null);
-        const feePence = data?.joining_fee_pence ?? 0;
-        setJoiningFee(feePence > 0 ? (feePence / 100).toFixed(2).replace(/\.00$/, "") : "");
-      });
+    (async () => {
+      const led = await loadLeadership(user.id);
+      if (!led?.canManage) { setTeam(null); return; }
+      setIsCaptain(led.isCaptain);
+      const { data } = await supabase.from("teams").select("*").eq("id", led.teamId).maybeSingle();
+      setTeam((data as Team) ?? null);
+      const feePence = data?.joining_fee_pence ?? 0;
+      setJoiningFee(feePence > 0 ? (feePence / 100).toFixed(2).replace(/\.00$/, "") : "");
+    })();
   }, [user]);
 
   const joiningFeePence = joiningFee ? Math.round(parseFloat(joiningFee) * 100) : 0;
@@ -69,7 +76,7 @@ export default function TeamSettingsPage() {
   if (!team) {
     return (
       <div className="flex items-center justify-center min-h-screen px-4">
-        <p className="text-text-secondary">Only the team captain can edit team settings.</p>
+        <p className="text-text-secondary">Only the team captain or a co-captain can edit team settings.</p>
       </div>
     );
   }
@@ -89,6 +96,21 @@ export default function TeamSettingsPage() {
       </header>
 
       <InviteLinkPanel teamId={team.id} teamName={team.name} />
+
+      {isCaptain ? (
+        <CoCaptainsPanel teamId={team.id} />
+      ) : (
+        // Greyed rather than hidden, per the QuickNav convention: a co-captain
+        // should be able to see the one power they don't have, not wonder
+        // where the panel went.
+        <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-6 opacity-60">
+          <p className="text-sm font-bold mb-1">Co-captains</p>
+          <p className="text-xs text-text-secondary">
+            Only {team.name}&rsquo;s captain can appoint or remove co-captains. Everything
+            else on this page is yours to change.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">

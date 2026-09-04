@@ -558,7 +558,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
                       <label className="text-xs font-medium">Format</label>
                       <select value={omForm.format} onChange={(e) => setOm("format", e.target.value)}
                         className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none text-text-primary">
-                        {["5-a-side", "7-a-side", "11-a-side"].map((f) => <option key={f} value={f}>{f}</option>)}
+                        {["5-a-side", "7-a-side", "8-a-side", "11-a-side"].map((f) => <option key={f} value={f}>{f}</option>)}
                       </select>
                     </div>
                     <div className="flex flex-col gap-1.5">

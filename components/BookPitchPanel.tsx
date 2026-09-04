@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
+import { pitchFormatFor } from "@/lib/formations";
 import { stripePromise } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import TopUpModal from "@/components/TopUpModal";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { loadLedTeam } from "@/lib/team-leadership";
 import { authedPost } from "@/lib/authed-fetch";
 import "leaflet/dist/leaflet.css";
 
@@ -347,9 +349,9 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   const [view, setView] = useState<"list" | "map">("list");
   const [bookerName, setBookerName] = useState<string>("");
   // The captain's team — needed to auto-post the booking as a secured match.
-  // Present only when the user is a team captain (loaded by captain_id), so it
+  // Present only when the user runs a team (captain or co-captain), so it
   // doubles as the "is this user an admin/captain?" flag for payment options.
-  const [team, setTeam] = useState<{ id: string; name: string; location: string } | null>(null);
+  const [team, setTeam] = useState<{ id: string; name: string; location: string | null; format: string | null; captain_id: string } | null>(null);
   // Available team credit (balance − reserved), in pence. null = not loaded / no account.
   const [teamCreditPence, setTeamCreditPence] = useState<number | null>(null);
   const isCaptain = team !== null;
@@ -377,7 +379,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   // Shortfall to top up, set when a captain opts to top up from the payment modal.
   const [topUpShortfall, setTopUpShortfall] = useState<number | null>(null);
 
-  const formats = ["All", "5-a-side", "7-a-side", "11-a-side"];
+  const formats = ["All", "5-a-side", "7-a-side", "8-a-side", "11-a-side"];
   // Compare on the hour since slots are hourly (TimePicker can return :15/:30/:45)
   const filterHour = filterTime ? `${filterTime.slice(0, 2)}:00` : "";
 
@@ -398,7 +400,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   useEffect(() => {
     if (!user) return;
     async function loadName() {
-      const { data: ownTeam } = await supabase.from("teams").select("id, name, location").eq("captain_id", user!.id).maybeSingle();
+      const ownTeam = await loadLedTeam<{ id: string; name: string; location: string | null; format: string | null; captain_id: string }>(user!.id, "id, name, location, format, captain_id");
       if (ownTeam?.name) {
         setTeam(ownTeam);
         setBookerName(ownTeam.name);
@@ -601,13 +603,13 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
         name: pitch.name,
         address: pitch.address,
         price: pitch.price_per_hour,
-        format: pitch.formats[0] ?? "5-a-side",
+        format: pitchFormatFor(pitch.formats, team?.format),
         distance: "",
         time,
       };
       const { data: post } = await supabase.from("match_posts").insert({
         team_id: team.id,
-        captain_id: user.id,
+        captain_id: team.captain_id ?? user.id,
         team_name: team.name,
         team_location: team.location ?? "",
         match_date: date,

@@ -14,6 +14,7 @@ import PollStatusTile from "@/components/PollStatusTile";
 import MyPostCard, { useMyPosts } from "@/components/MyPostCard";
 import SuggestionsStrip from "@/components/SuggestionsStrip";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
+import { loadLeadership } from "@/lib/team-leadership";
 import { isUpcomingDate, sortKey } from "@/lib/match-dates";
 
 type ConfirmedFixture = {
@@ -149,11 +150,18 @@ function useConfirmedFixtures(userId: string | undefined) {
     if (!userId) { setLoading(false); return; }
 
     async function load() {
+      // Posts and challenges are filed under the TEAM'S captain, so a
+      // co-captain asks the same question the captain would. A plain squad
+      // player still asks it as themselves and gets nothing back — their
+      // fixtures come from the tournament pass below and the Calendar.
+      const led = await loadLeadership(userId);
+      const keyId = led?.canManage ? led.captainId : userId!;
+
       // Side A: posts I created that are now matched
       const { data: myPosts } = await supabase
         .from("match_posts")
         .select("id, team_name, match_date, match_time")
-        .eq("captain_id", userId)
+        .eq("captain_id", keyId)
         .eq("status", "matched");
 
       const posterFixtures: ConfirmedFixture[] = await Promise.all(
@@ -180,7 +188,7 @@ function useConfirmedFixtures(userId: string | undefined) {
       const { data: myChallenges } = await supabase
         .from("challenges")
         .select("post_id, selected_pitch")
-        .eq("challenger_captain_id", userId)
+        .eq("challenger_captain_id", keyId)
         .eq("status", "accepted");
 
       const challengerFixtures: ConfirmedFixture[] = await Promise.all(
@@ -215,16 +223,9 @@ function useConfirmedFixtures(userId: string | undefined) {
         for (const f of matchFixtures) f.matchId = matchByPost.get(f.id) ?? null;
       }
 
-      // Resolve this user's team (captain or approved member) to pull in
+      // The viewer's team (captained, co-captained or played for) pulls in
       // tournament fixtures — entered or hosted — alongside matches.
-      const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-      let teamId: string | null = ownTeam?.id ?? null;
-      if (!teamId) {
-        const { data: membership } = await supabase.from("team_members")
-          .select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
-        teamId = membership?.team_id ?? null;
-      }
-      const tournaments = await loadUpcomingTournamentFixtures(teamId);
+      const tournaments = await loadUpcomingTournamentFixtures(led?.teamId ?? null);
       const tournamentFixtures: ConfirmedFixture[] = tournaments.map((t) => ({
         id: t.id,
         opponent: "",

@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { loadTournamentFixtures } from "@/lib/tournament-fixtures";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
+import { loadFixtureResults, resultKey, type FixtureResult } from "@/lib/match-results";
+import { loadLeadership } from "@/lib/team-leadership";
 
 // Everything the viewer is committed to, from every table that can commit them,
 // flattened into one shape.
@@ -41,6 +43,9 @@ export type CalendarEntry = {
   /** Written back after a booking is turned into a post, to flip the CTA. */
   postId: string | null;
   resultVerified: boolean;
+  /** The submitted score from the viewer's side, once a captain has filed one.
+   *  Null for anything with no result, and for kinds that can't have one. */
+  result: FixtureResult | null;
   isUpcoming: boolean;
 };
 
@@ -88,23 +93,11 @@ function base(date: string, time: string) {
   return { date: toDateKey(date), time: time ?? "", isUpcoming: isUpcomingDate(date) };
 }
 
-// ── The viewer's team ─────────────────────────────────────────────────
-// Captaining takes precedence: someone can captain one team and be an approved
-// member of none, and the captain path is what unlocks posting and managing.
-async function resolveTeam(userId: string): Promise<{ teamId: string | null; isCaptain: boolean }> {
-  const { data: own } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-  if (own) return { teamId: own.id, isCaptain: true };
-
-  const { data: mem } = await supabase.from("team_members")
-    .select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
-  return { teamId: mem?.team_id ?? null, isCaptain: false };
-}
-
 // ── Confirmed friendlies ──────────────────────────────────────────────
 // Two sides of the same fixture: posts this captain made that got challenged,
 // and challenges they sent that were accepted. The `matches` row is what the
 // manage screen keys off, so both sides resolve post_id → matches.id.
-async function loadFriendlies(captainId: string): Promise<CalendarEntry[]> {
+async function loadFriendlies(captainId: string, teamId: string | null): Promise<CalendarEntry[]> {
   const [{ data: myPosts }, { data: myChallenges }] = await Promise.all([
     supabase.from("match_posts")
       .select("id, match_date, match_time").eq("captain_id", captainId).eq("status", "matched"),
@@ -153,6 +146,14 @@ async function loadFriendlies(captainId: string): Promise<CalendarEntry[]> {
     .in("post_id", drafts.map((d) => d.postId));
   const matchByPost = new Map((rows ?? []).map((r) => [r.post_id as string, r]));
 
+  // The score this team filed, if it filed one. Read from the team's own
+  // match_results row, so it is already the right way round for the viewer.
+  const results = teamId
+    ? await loadFixtureResults((rows ?? []).map((r) => ({
+        matchId: r.id as string, teamId, verified: Boolean(r.result_verified),
+      })))
+    : new Map<string, FixtureResult>();
+
   return drafts.map((d) => {
     const m = matchByPost.get(d.postId);
     const price = (m?.confirmed_pitch as { price?: number } | null)?.price;
@@ -170,6 +171,7 @@ async function loadFriendlies(captainId: string): Promise<CalendarEntry[]> {
       openMatchId: null,
       postId: d.postId,
       resultVerified: Boolean(m?.result_verified),
+      result: m && teamId ? results.get(resultKey(m.id as string, teamId)) ?? null : null,
       ...base(d.date, d.time),
     };
   });
@@ -194,6 +196,7 @@ async function loadTournaments(teamId: string | null): Promise<CalendarEntry[]> 
     openMatchId: t.entered ? t.id : null,
     postId: null,
     resultVerified: false,
+    result: null,
     ...base(t.date, t.time),
   }));
 }
@@ -226,6 +229,7 @@ async function loadMyPosts(captainId: string): Promise<CalendarEntry[]> {
       openMatchId: null,
       postId: r.id,
       resultVerified: false,
+      result: null,
       ...base(r.match_date, r.match_time),
     };
   });
@@ -241,7 +245,7 @@ async function loadRingerGames(userId: string): Promise<CalendarEntry[]> {
   if (error || !signups || signups.length === 0) return [];
 
   const { data: matches } = await supabase.from("matches")
-    .select("id, posting_team_id, challenging_team_id, match_date, match_time, confirmed_pitch")
+    .select("id, posting_team_id, challenging_team_id, match_date, match_time, confirmed_pitch, result_verified")
     .in("id", signups.map((s) => s.match_id));
   const matchById = new Map((matches ?? []).map((m) => [m.id as string, m]));
 
@@ -250,6 +254,16 @@ async function loadRingerGames(userId: string): Promise<CalendarEntry[]> {
     ? await supabase.from("teams").select("id, name").in("id", teamIds)
     : { data: [] as { id: string; name: string }[] };
   const teamName = new Map((teams ?? []).map((t) => [t.id as string, t.name as string]));
+
+  // A ringer reads the score from the side they guested for, not from whichever
+  // team happened to post the fixture.
+  const results = await loadFixtureResults(signups
+    .filter((s) => matchById.has(s.match_id))
+    .map((s) => ({
+      matchId: s.match_id as string,
+      teamId: s.team_id as string,
+      verified: Boolean(matchById.get(s.match_id)?.result_verified),
+    })));
 
   const out: CalendarEntry[] = [];
   for (const s of signups) {
@@ -270,7 +284,8 @@ async function loadRingerGames(userId: string): Promise<CalendarEntry[]> {
       matchId: s.match_id,
       openMatchId: null,
       postId: null,
-      resultVerified: false,
+      resultVerified: Boolean(m.result_verified),
+      result: results.get(resultKey(s.match_id, s.team_id)) ?? null,
       ...base(m.match_date, m.match_time),
     });
   }
@@ -308,6 +323,7 @@ async function loadBookings(userId: string): Promise<CalendarEntry[]> {
       openMatchId: null,
       postId: r.post_id ?? null,
       resultVerified: false,
+      result: null,
       ...base(r.match_date, r.start_time),
     };
   });
@@ -315,20 +331,19 @@ async function loadBookings(userId: string): Promise<CalendarEntry[]> {
 
 // ── The whole picture ─────────────────────────────────────────────────
 export async function loadCalendarEntries(userId: string): Promise<CalendarData> {
-  const { teamId, isCaptain } = await resolveTeam(userId);
+  const led = await loadLeadership(userId);
+  const teamId = led?.teamId ?? null;
+  const isCaptain = Boolean(led?.canManage);
 
-  // A squad player's friendlies hang off their captain's id, not their own —
-  // the fixture belongs to the team either way.
-  let captainId = userId;
-  if (!isCaptain && teamId) {
-    const { data: team } = await supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle();
-    captainId = (team?.captain_id as string) ?? userId;
-  }
+  // Friendlies and posts hang off the TEAM'S captain id, not the viewer's —
+  // true for a squad player and true for a co-captain, since the fixture
+  // belongs to the team whoever set it up.
+  const captainId = led?.captainId ?? userId;
 
   const [friendlies, tournaments, myPosts, ringers, bookings] = await Promise.all([
-    loadFriendlies(captainId),
+    loadFriendlies(captainId, teamId),
     loadTournaments(teamId),
-    isCaptain ? loadMyPosts(userId) : Promise.resolve([]),
+    isCaptain ? loadMyPosts(captainId) : Promise.resolve([]),
     loadRingerGames(userId),
     loadBookings(userId),
   ]);

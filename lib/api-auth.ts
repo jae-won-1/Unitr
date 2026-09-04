@@ -73,6 +73,27 @@ export async function isTeamCaptain(userId: string, teamId: string): Promise<boo
   return data?.captain_id === userId;
 }
 
+// Captain OR co-captain — the question every team-money route asks. A
+// co-captain has the captain's authority everywhere except appointing other
+// co-captains, and no route does that (set_co_captain is an RPC the database
+// gates on captaincy itself).
+//
+// Degrades to a plain captain check if supabase_co_captains.sql hasn't been
+// run: the named select of the missing column errors, and nobody is a
+// co-captain yet anyway.
+export async function isTeamLeader(userId: string, teamId: string): Promise<boolean> {
+  if (await isTeamCaptain(userId, teamId)) return true;
+  const { data } = await adminSupabase
+    .from("team_members")
+    .select("id")
+    .eq("team_id", teamId)
+    .eq("player_id", userId)
+    .eq("status", "approved")
+    .eq("is_co_captain", true)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 // Captain or approved squad member. A pending join request is not membership.
 export async function isTeamMember(userId: string, teamId: string): Promise<boolean> {
   if (await isTeamCaptain(userId, teamId)) return true;

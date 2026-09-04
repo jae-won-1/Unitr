@@ -17,8 +17,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  FORMATION_KEYS, DEFAULT_FORMATION, slotsFor,
-  PLAY_STYLES, PRESSING_LEVELS, TACTIC_SITUATIONS,
+  slotsFor, PLAY_STYLES, PRESSING_LEVELS, TACTIC_SITUATIONS,
+  TEAM_SIZES, formationKeysFor, defaultFormationFor, sizeOfFormation,
+  teamSizeFromFormat, formatLabelForSize, type TeamSize,
 } from "@/lib/formations";
 
 export type TeamTactic = {
@@ -49,7 +50,9 @@ export async function loadTeamTactics(teamId: string): Promise<TeamTactic[] | nu
 
 // ── Pitch preview ─────────────────────────────────────────────────────
 function PitchPreview({ formation }: { formation: string }) {
-  const slots = slotsFor(formation);
+  // A preset carries no size of its own — the formation key is the size, since
+  // keys are unique across them. A 2-3-1 preview gets seven dots, not eleven.
+  const slots = slotsFor(formation, sizeOfFormation(formation));
   return (
     <svg viewBox="0 0 100 130" className="w-full rounded-xl bg-[#0d2818] border border-border">
       <rect x="1" y="1" width="98" height="128" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
@@ -71,17 +74,25 @@ function PitchPreview({ formation }: { formation: string }) {
 
 // ── Editor ────────────────────────────────────────────────────────────
 function TacticEditor({
-  teamId, userId, existing, onDone, onCancel,
+  teamId, userId, existing, teamSize, onDone, onCancel,
 }: {
   teamId: string;
   userId: string;
   existing: TeamTactic | null;
+  /** The team's own format, which a new setup starts on. */
+  teamSize: TeamSize;
   onDone: () => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState(existing?.title ?? "");
   const [situation, setSituation] = useState(existing?.situation ?? "");
-  const [formation, setFormation] = useState(existing?.formation ?? DEFAULT_FORMATION);
+  // A team mostly plays one size, so that's where a new setup starts — but a
+  // squad that plays 11s all season still enters the odd 7-a-side tournament,
+  // so the size is a choice rather than a fact about the team.
+  const [size, setSize] = useState<TeamSize>(
+    existing ? sizeOfFormation(existing.formation) : teamSize
+  );
+  const [formation, setFormation] = useState(existing?.formation ?? defaultFormationFor(teamSize));
   const [style, setStyle] = useState<string | null>(existing?.style ?? null);
   const [pressing, setPressing] = useState<string | null>(existing?.pressing ?? null);
   const [notes, setNotes] = useState(existing?.notes ?? "");
@@ -147,9 +158,23 @@ function TacticEditor({
           </div>
 
           <div>
+            <label className="block text-xs font-semibold text-text-secondary mb-1.5">Match size</label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {TEAM_SIZES.map((n) => (
+                <button key={n} type="button"
+                  onClick={() => { setSize(n); setFormation(defaultFormationFor(n)); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    size === n ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+                  {formatLabelForSize(n)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs font-semibold text-text-secondary mb-1.5">Formation</label>
             <div className="flex flex-wrap gap-2 mb-3">
-              {FORMATION_KEYS.map((f) => (
+              {formationKeysFor(size).map((f) => (
                 <button key={f} type="button" onClick={() => setFormation(f)}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                     formation === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
@@ -232,7 +257,8 @@ function TacticCard({
           )}
           <p className="text-sm font-bold truncate">{tactic.title}</p>
           <p className="text-xs text-text-secondary mt-0.5">
-            {[tactic.formation, tactic.style, tactic.pressing && `${tactic.pressing} press`].filter(Boolean).join(" · ")}
+            {[formatLabelForSize(sizeOfFormation(tactic.formation)), tactic.formation, tactic.style,
+              tactic.pressing && `${tactic.pressing} press`].filter(Boolean).join(" · ")}
           </p>
         </button>
         <span className="text-text-secondary text-xs flex-shrink-0 mt-1">{open ? "▲" : "▼"}</span>
@@ -269,6 +295,7 @@ export default function TacticsTab({
   const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TeamTactic | null | undefined>(undefined); // undefined = closed
+  const [teamSize, setTeamSize] = useState<TeamSize>(teamSizeFromFormat(null));
 
   const load = useCallback(async () => {
     const rows = await loadTeamTactics(teamId);
@@ -278,6 +305,13 @@ export default function TacticsTab({
   }, [teamId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The team's own format only seeds a NEW setup's size — it never rewrites a
+  // saved one, whose size is whatever formation the captain picked.
+  useEffect(() => {
+    supabase.from("teams").select("format").eq("id", teamId).maybeSingle()
+      .then(({ data }) => setTeamSize(teamSizeFromFormat(data?.format)));
+  }, [teamId]);
 
   async function remove(id: string) {
     await supabase.from("team_tactics").delete().eq("id", id);
@@ -340,7 +374,7 @@ export default function TacticsTab({
 
       {editing !== undefined && (
         <TacticEditor
-          teamId={teamId} userId={userId} existing={editing}
+          teamId={teamId} userId={userId} existing={editing} teamSize={teamSize}
           onDone={() => { setEditing(undefined); load(); }}
           onCancel={() => setEditing(undefined)}
         />

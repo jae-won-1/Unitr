@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRole } from "@/contexts/RoleContext";
 import { supabase } from "@/lib/supabase";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type Announcement = { id: string; title: string | null; body: string; created_at: string; authorName: string };
 
@@ -42,8 +43,8 @@ export default function TeamAnnouncementsPage() {
     async function load() {
       let teamId: string | undefined;
       if (role === "captain") {
-        const { data } = await supabase.from("teams").select("id").eq("captain_id", user!.id).maybeSingle();
-        teamId = data?.id;
+        const led = await loadLedTeam<{ id: string }>(user!.id, "id");
+        teamId = led?.id;
       } else {
         const { data: mem } = await supabase.from("team_members").select("team_id").eq("player_id", user!.id).eq("status", "approved").maybeSingle();
         teamId = mem?.team_id;

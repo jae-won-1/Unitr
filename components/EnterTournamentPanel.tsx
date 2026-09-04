@@ -56,7 +56,7 @@ export default function EnterTournamentPanel({
   const buyIn = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
 
   const handleJoin = async () => {
-    if (!user || !myTeamId) { setError("You need to be a team captain to enter a tournament."); return; }
+    if (!user || !myTeamId) { setError("You need to be a captain or co-captain to enter a tournament."); return; }
     setSaving(true);
     setError(null);
     setShortfall(null);
@@ -166,7 +166,7 @@ export default function EnterTournamentPanel({
           className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
           {saving ? "Entering…" : `Pay £${(buyIn / 100).toFixed(2)} & Enter`}
         </button>
-        {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}
+        {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only a team’s captain or co-captain can enter a tournament.</p>}
       </div>
 
       {/* Top up mid-entry — this sheet stays mounted behind it so the captain

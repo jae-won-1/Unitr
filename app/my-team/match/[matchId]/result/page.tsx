@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type Match = {
   id: string;
@@ -55,7 +56,7 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
       if (!m) { setMatch(null); return; }
       setMatch(m);
 
-      const { data: captainTeam } = await supabase.from("teams").select("id, name").eq("captain_id", user!.id).maybeSingle();
+      const captainTeam = await loadLedTeam<{ id: string; name: string }>(user!.id, "id, name");
       let tid = captainTeam?.id ?? null;
       let resolvedName = captainTeam?.name;
       if (!tid) {

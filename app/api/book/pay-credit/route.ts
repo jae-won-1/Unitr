@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, isTeamCaptain, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 
 // Debit a team's credit for a DIRECT pitch booking (no opponent/match).
 // This is the single-team counterpart to split_pitch_fee — a captain paying
@@ -22,8 +22,8 @@ export async function POST(req: NextRequest) {
     if (!teamId || !feePence || feePence < 1) {
       return NextResponse.json({ error: "Missing teamId or fee" }, { status: 400 });
     }
-    if (!(await isTeamCaptain(callerId, teamId))) {
-      return forbidden("Only the captain can pay from team credit.");
+    if (!(await isTeamLeader(callerId, teamId))) {
+      return forbidden("Only the captain or a co-captain can pay from team credit.");
     }
     const amount = Math.round(feePence);
 

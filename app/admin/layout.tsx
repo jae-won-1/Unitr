@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 const TABS = [
   { label: "Hub", href: "/admin" },
   { label: "Host an event", href: "/admin/create" },
+  { label: "Posts", href: "/admin/posts" },
   { label: "Finance", href: "/admin/finance" },
 ];
 

@@ -10,6 +10,7 @@ import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { loadLeadership } from "@/lib/team-leadership";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
 // shortest path in the app: see the price, see the match, pay, you're in the
@@ -75,13 +76,7 @@ export function useRingerPosts(userId: string | undefined) {
     // them — they're already in that squad.
     let myTeamId: string | null = null;
     if (userId) {
-      const { data: ownTeam } = await supabase.from("teams").select("id").eq("captain_id", userId).maybeSingle();
-      myTeamId = ownTeam?.id ?? null;
-      if (!myTeamId) {
-        const { data: mem } = await supabase.from("team_members")
-          .select("team_id").eq("player_id", userId).eq("status", "approved").maybeSingle();
-        myTeamId = mem?.team_id ?? null;
-      }
+      myTeamId = (await loadLeadership(userId))?.teamId ?? null;
     }
 
     const mapped: RingerPost[] = [];

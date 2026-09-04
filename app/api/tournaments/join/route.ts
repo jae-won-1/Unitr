@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
-import { getCallerId, isTeamCaptain, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue } from "@/lib/venue-payout";
 
 // A team buys into a tournament (open_matches, match_type='tournament').
@@ -34,8 +34,8 @@ export async function POST(req: NextRequest) {
     if (!openMatchId || !teamId) {
       return NextResponse.json({ error: "Missing openMatchId or teamId" }, { status: 400 });
     }
-    if (!(await isTeamCaptain(userId, teamId))) {
-      return forbidden("Only the captain can enter the team into a tournament.");
+    if (!(await isTeamLeader(userId, teamId))) {
+      return forbidden("Only the captain or a co-captain can enter the team into a tournament.");
     }
 
     // 1) Load the tournament listing.

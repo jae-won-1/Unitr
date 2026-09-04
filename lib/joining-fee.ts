@@ -7,10 +7,12 @@
 // server-side by credit_from_payment / record_cash_credit
 // (supabase_joining_fees.sql) — this module just reads them.
 //
-// A captain has no team_members row, so they never owe one. If the
-// joining-fees migration hasn't been run the select fails on the missing
-// columns; per the house convention that degrades (owed 0, everything
-// stays enabled) rather than crashing the surface that asked.
+// A captain has no team_members row, so their copy of the same two numbers
+// lives on `teams` (captain_joining_fee_*, supabase_captain_joining_fee.sql)
+// and is read from there. The captain plays in the games the fee pays for, so
+// they owe it like anyone else. If either migration hasn't been run the select
+// fails on the missing columns; per the house convention that degrades (owed
+// 0, everything stays enabled) rather than crashing the surface that asked.
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -40,9 +42,26 @@ export async function getJoiningFeeStatus(
     .eq("player_id", playerId)
     .eq("status", "approved")
     .maybeSingle();
-  if (error || !data) return NOTHING_OWED;   // captain, or migration missing
-  const due = data.joining_fee_due_pence ?? 0;
-  const paid = data.joining_fee_paid_pence ?? 0;
+
+  if (!error && data) {
+    const due = data.joining_fee_due_pence ?? 0;
+    const paid = data.joining_fee_paid_pence ?? 0;
+    return { duePence: due, paidPence: paid, owedPence: Math.max(0, due - paid) };
+  }
+
+  // No membership row: either the migration is missing (error) or this is the
+  // team's captain, whose own fee is snapshotted onto the team.
+  return getCaptainFeeStatus(teamId, playerId);
+}
+
+async function getCaptainFeeStatus(teamId: string, playerId: string): Promise<JoiningFeeStatus> {
+  // select("*") rather than named columns so a team row still reads back when
+  // supabase_captain_joining_fee.sql hasn't been run.
+  const { data } = await supabase
+    .from("teams").select("*").eq("id", teamId).eq("captain_id", playerId).maybeSingle();
+  if (!data) return NOTHING_OWED;            // not the captain
+  const due = (data.captain_joining_fee_due_pence as number | null) ?? 0;
+  const paid = (data.captain_joining_fee_paid_pence as number | null) ?? 0;
   return { duePence: due, paidPence: paid, owedPence: Math.max(0, due - paid) };
 }
 

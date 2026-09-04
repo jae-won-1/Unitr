@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadLedTeam } from "@/lib/team-leadership";
 
 type Player = {
   id: string;
@@ -107,19 +108,18 @@ export default function PlayersPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Get captain's team first
-    supabase
-      .from("teams")
-      .select("id, name")
-      .eq("captain_id", user.id)
-      .maybeSingle()
-      .then(async ({ data: team }) => {
+    // The team this user runs — captain or co-captain
+    loadLedTeam<{ id: string; name: string; captain_id: string }>(user.id, "id, name, captain_id")
+      .then(async (team) => {
         if (!team) { setLoading(false); return; }
         setTeamName(team.name);
 
-        // Get captain profile + approved members
+        // The captain has no team_members row, so their profile is fetched
+        // separately and put at the head of the list. That's the team's
+        // captain, not the viewer — a co-captain is in the members query.
+        const captainId = team.captain_id ?? user!.id;
         const [{ data: captainProfile }, { data: members }] = await Promise.all([
-          supabase.from("profiles").select("id, full_name, position, experience, location").eq("id", user!.id).maybeSingle(),
+          supabase.from("profiles").select("id, full_name, position, experience, location").eq("id", captainId).maybeSingle(),
           supabase.from("team_members")
             .select("profiles(id, full_name, position, experience, location)")
             .eq("team_id", team.id).eq("status", "approved"),
@@ -128,7 +128,7 @@ export default function PlayersPage() {
         const memberProfiles = (members ?? []).map((row: any) => row.profiles).filter(Boolean) as Player[];
         const allProfiles = [
           ...(captainProfile ? [captainProfile] : []),
-          ...memberProfiles.filter((p) => p.id !== user!.id),
+          ...memberProfiles.filter((p) => p.id !== captainId),
         ];
 
         setPlayers(allProfiles);
