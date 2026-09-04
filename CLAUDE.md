@@ -271,7 +271,11 @@ Variants:
   hold/capture; the challenger simply reimburses their half on join
   (`reimburse_secured_pitch`).
 - **Tournaments** — a flat per-team buy-in comes out of team credit at join; the squad settles
-  their shares afterwards. Invitations can carry a per-team discount.
+  their shares afterwards. Invitations can carry a per-team discount. Entry is written in
+  exactly two places (`supabase_tournament_entry_lockdown.sql`): `/api/tournaments/join` for
+  anything paid, and the `enter_own_tournament` RPC for an organiser fielding a team in their
+  own tournament, where there is no buy-in to take. `open_match_teams` takes no client
+  inserts — an open policy there meant a team could enter a paid event for free.
 - **Ringers** — a guest pays Unitr a **flat £5 by card**. It never touches team credit or the
   pitch split, and a ringer is excluded from settlement via `match_confirmations.is_ringer`.
 - **Refunds** — money can go back out, two ways, both through `refund_credit`
@@ -314,6 +318,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_open_matches.sql`, `supabase_tournament_*.sql` | Tournaments, schedules, referees, invitations, notifications |
 | `supabase_ringers.sql` | `ringer_requests`, `ringer_signups`, `is_ringer` |
 | `supabase_transfer_market.sql` | `player_offers`, `friend_requests` |
+| `supabase_tournament_entry_lockdown.sql` | Closes client inserts/deletes on `open_match_teams`; `enter_own_tournament` RPC for the organiser's own free entry; run after `supabase_open_matches.sql` |
 | `supabase_refunds.sql` | `refund_credit`, `team_card_contributions`, refund columns on the ledger; run after `supabase_joining_fees.sql` |
 | `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
 | `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |

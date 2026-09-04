@@ -137,7 +137,13 @@ export default function CashOutModal({ teamId, onClose, onDone }: {
   return (
     <BottomSheet
       title="Refund team credit"
-      subtitle={preview ? `${money(preview.availablePence)} available` : undefined}
+      subtitle={
+        preview
+          ? preview.unallocatedPence > 0
+            ? `${money(preview.refundablePence)} refundable of ${money(preview.availablePence)}`
+            : `${money(preview.availablePence)} available`
+          : undefined
+      }
       onClose={onClose}
       footer={
         nothingToRefund ? undefined : confirming ? (
@@ -171,6 +177,19 @@ export default function CashOutModal({ teamId, onClose, onDone }: {
           </p>
         ) : (
           <>
+            {preview!.unallocatedPence > 0 && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3.5 py-3">
+                <p className="text-xs font-semibold text-text-primary">
+                  {money(preview!.unallocatedPence)} of this balance can&rsquo;t be refunded
+                </p>
+                <p className="text-[11px] text-text-secondary mt-0.5">
+                  A refund can only reverse a card payment we have a record of. This much came in as
+                  cash the captain logged by hand, or from players already refunded in full — it stays
+                  in the team balance and has to be settled in person.
+                </p>
+              </div>
+            )}
+
             <p className="text-xs text-text-secondary">
               Everyone who paid in by card gets the same amount back, up to what they personally put in.
               The team&rsquo;s balance drops by the same total.
@@ -191,13 +210,6 @@ export default function CashOutModal({ teamId, onClose, onDone }: {
                 </span>
               </div>
             ))}
-
-            {preview!.unallocatedPence > 0 && (
-              <p className="text-[11px] text-yellow-600">
-                {money(preview!.unallocatedPence)} of the balance has no card behind it — cash the captain
-                recorded by hand, or money already refunded. It stays in the team balance.
-              </p>
-            )}
 
             {confirming && (
               <div className="bg-danger/10 border border-danger/30 rounded-xl px-3.5 py-3">

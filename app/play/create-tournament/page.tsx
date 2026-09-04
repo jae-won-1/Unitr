@@ -181,13 +181,23 @@ export default function CreateTournamentPage() {
 
     // 5) Enter the organiser's own team (they host and play; no buy-in — they
     //    fronted the pitch and get reimbursed as others join).
-    await supabase.from("open_match_teams").insert({
-      open_match_id: om.id,
-      team_id: team.id,
-      team_name: team.name,
-      joined_by: user.id,
-      payment_status: "paid",
+    //
+    //    Through an RPC rather than a direct insert: open_match_teams no longer
+    //    accepts client writes (supabase_tournament_entry_lockdown.sql), because
+    //    an open insert policy let any team enter a PAID tournament without
+    //    going through /api/tournaments/join, where the buy-in is taken. This is
+    //    the one entry that legitimately has nothing to charge, and the RPC
+    //    checks the caller captains the organising team before writing it.
+    const { error: enterErr } = await supabase.rpc("enter_own_tournament", {
+      p_open_match_id: om.id,
+      p_team_id: team.id,
+      p_team_name: team.name,
     });
+    if (enterErr) {
+      // The tournament is posted and the pitch is paid for — don't fail the
+      // whole thing over the organiser's own entry, which they can add later.
+      console.error("enter_own_tournament failed:", enterErr.message);
+    }
 
     // 5b) Ask the squad if they can play it. Hosting is still entering: the
     //     organiser fields a team, so the entry raises the same availability
