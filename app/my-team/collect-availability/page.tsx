@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { authedDelete } from "@/lib/authed-fetch";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,11 +71,7 @@ function CaptainResponsesView({
           <p className="text-sm font-semibold">Select up to 3 dates to post matches</p>
         </div>
         <button onClick={async () => {
-          await fetch("/api/availability/delete", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ requestId: request.id, captainId: user.id }),
-          });
+          await authedDelete("/api/availability/delete", { requestId: request.id });
           onNewRequest();
         }} className="ml-3 px-3 py-2 rounded-xl border border-border text-xs text-text-secondary">
           New request
@@ -287,11 +284,7 @@ function CaptainAvailabilityTab({ userId }: { userId: string }) {
       if (!req) { setRequest(null); setLoading(false); return; }
       const active = (req.date_options as DateOption[]).filter((o) => !isExpired(o));
       if (active.length === 0) {
-        await fetch("/api/availability/delete", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestId: req.id, captainId: userId }),
-        });
+        await authedDelete("/api/availability/delete", { requestId: req.id });
         setRequest(null); setLoading(false); return;
       }
       setRequest({ ...req, date_options: active });

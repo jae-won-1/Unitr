@@ -349,18 +349,12 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
 
   // Creates the Stripe Elements client secret for manual card entry. Lazy —
   // only called when there's no saved card, or the player picks "Change".
-  const createClientSecret = async (info: MatchInfo, customerId: string | null) => {
+  const createClientSecret = async (info: MatchInfo) => {
     try {
-      const res = await fetch("/api/create-payment-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amountPence: info.totalPence,
-          bookingId: info.bookingId ?? params.matchId,
-          playerId: user!.id,
-          customerId,
-          email: user!.email,
-        }),
+      // Payer, customer and email come off the session server-side now.
+      const res = await authedPost("/api/create-payment-intent", {
+        amountPence: info.totalPence,
+        bookingId: info.bookingId ?? params.matchId,
       });
       const data = await res.json();
       if (data.clientSecret) {
@@ -485,7 +479,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       // Only pre-create a Stripe Elements payment intent when there's no saved
       // card to pay with instantly — the saved-card path charges off-session.
       if (!hasSavedCard) {
-        await createClientSecret(info, profile?.stripe_customer_id ?? null);
+        await createClientSecret(info);
       }
     }
     load();
@@ -493,7 +487,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
 
   const handleUseDifferentCard = () => {
     setUseManualEntry(true);
-    if (matchInfo && !clientSecret) createClientSecret(matchInfo, savedCard?.customerId ?? null);
+    if (matchInfo && !clientSecret) createClientSecret(matchInfo);
   };
 
   const handleSavedCardSuccess = (paymentIntentId: string) => {

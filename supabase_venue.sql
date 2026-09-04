@@ -12,7 +12,9 @@ create table if not exists public.pitch_availability (
 );
 
 alter table public.pitch_availability enable row level security;
+drop policy if exists "Anyone can view availability" on public.pitch_availability;
 create policy "Anyone can view availability" on public.pitch_availability for select using (true);
+drop policy if exists "Venue owners can manage availability" on public.pitch_availability;
 create policy "Venue owners can manage availability" on public.pitch_availability for all using (true);
 
 
@@ -28,7 +30,9 @@ create table if not exists public.pitch_blocks (
 );
 
 alter table public.pitch_blocks enable row level security;
+drop policy if exists "Anyone can view blocks" on public.pitch_blocks;
 create policy "Anyone can view blocks" on public.pitch_blocks for select using (true);
+drop policy if exists "Venue owners can manage blocks" on public.pitch_blocks;
 create policy "Venue owners can manage blocks" on public.pitch_blocks for all using (true);
 
 

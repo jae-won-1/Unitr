@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AvailabilityPollForm, { DateOption } from "@/components/AvailabilityPollForm";
 import AvailabilityModal from "@/components/AvailabilityModal";
-import MatchAvailabilityList, { useMatchAvailability } from "@/components/MatchAvailabilityList";
+import AvailabilityList, { useEventAvailability, useSquadAnswers } from "@/components/AvailabilityList";
 import BottomSheet from "@/components/BottomSheet";
 
 // The captain's whole availability loop, run from home without a redirect:
@@ -91,10 +91,14 @@ type PollStatusTileProps = {
 
 export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) {
   const { request, responses, squadSize, myAnswer, loading, reload } = usePollStatus(teamId, userId);
-  // Confirmed fixtures need the captain's own answer too, and plenty of them
-  // never went through a poll — so the tile has something to show even when
-  // no poll is running.
-  const { matches, awaiting: myMatchesAwaiting, reload: reloadMatches } = useMatchAvailability(teamId, userId);
+  // Confirmed games need the captain's own answer too, and plenty of them never
+  // went through a poll — the captain took a match off the feed or entered a
+  // tournament outright — so the tile has something to show even when no poll
+  // is running.
+  const { events, awaiting: myEventsAwaiting, reload: reloadEvents } = useEventAvailability(teamId, userId);
+  // The squad's tally per game — this is the captain's tile, and picking a
+  // matchday squad is the reason they opened it.
+  const { counts, reload: reloadCounts } = useSquadAnswers(teamId, events);
   const [view, setView] = useState<"status" | "create" | "vote" | null>(null);
 
   const replied = responses.length;
@@ -108,15 +112,15 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
   const WAITING = "bg-orange-50 text-orange-700 border-orange-200";
   const DONE = "bg-success-bg text-accent-ink border-success-border";
   const badge = !request
-    ? (myMatchesAwaiting > 0 ? { label: "Your reply", tone: WAITING } : null)
+    ? (myEventsAwaiting > 0 ? { label: "Your reply", tone: WAITING } : null)
     : !iVoted ? { label: "Your vote", tone: DONE }
     : waiting > 0 ? { label: `${waiting} left`, tone: WAITING }
     : { label: "Complete", tone: DONE };
 
   const subtitle = loading ? "Checking…"
     : !request
-      ? (matches.length > 0
-          ? `${matches.length} confirmed match${matches.length === 1 ? "" : "es"} · tap to set availability`
+      ? (events.length > 0
+          ? `${events.length} confirmed game${events.length === 1 ? "" : "s"} · tap to set availability`
           : "No poll running · tap to start one")
     : !iVoted ? `${replied} of ${squadSize} replied · you haven't voted yet`
     : `${replied} of ${squadSize} replied${waiting > 0 ? ` · waiting on ${waiting}` : " · all in"}`;
@@ -125,7 +129,7 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
     <>
       <button
         type="button"
-        onClick={() => setView(request || matches.length > 0 ? "status" : "create")}
+        onClick={() => setView(request || events.length > 0 ? "status" : "create")}
         disabled={loading || !teamId}
         className="w-full rounded-card px-4 py-3.5 text-left border bg-surface border-border shadow-card disabled:opacity-60"
       >
@@ -185,7 +189,7 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
         </BottomSheet>
       )}
 
-      {view === "status" && (request || matches.length > 0) && (
+      {view === "status" && (request || events.length > 0) && (
         <BottomSheet
           onClose={() => setView(null)}
           title="Availability"
@@ -196,18 +200,19 @@ export default function PollStatusTile({ teamId, userId }: PollStatusTileProps) 
 
           {/* Confirmed fixtures first: they're happening either way, whereas a
               poll option is still only a proposal. */}
-          {matches.length > 0 && teamId && userId && (
+          {events.length > 0 && teamId && userId && (
             <div className="mb-5">
-              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Confirmed matches</p>
-              <MatchAvailabilityList
-                matches={matches} userId={userId} teamId={teamId} onChanged={reloadMatches}
+              <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Confirmed games</p>
+              <AvailabilityList
+                events={events} userId={userId} teamId={teamId} counts={counts}
+                onChanged={() => { reloadEvents(); reloadCounts(); }}
               />
             </div>
           )}
 
           {request && (
           <div className="space-y-2 mb-4">
-            {matches.length > 0 && (
+            {events.length > 0 && (
               <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">Poll dates</p>
             )}
             {request.date_options.map((opt) => {

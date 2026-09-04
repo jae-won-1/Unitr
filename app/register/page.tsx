@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
 
 const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
 const experiences = ["Beginner", "Casual", "Intermediate", "Competitive", "Semi-Pro"];
@@ -57,6 +58,12 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ?invite=<code> — this account is being created to take a captain's invite
+  // link. Read after mount rather than with useSearchParams, which would force
+  // a Suspense boundary around the whole form.
+  const [invite, setInvite] = useState<string | null>(null);
+  useEffect(() => { setInvite(inviteFromLocation()); }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -95,7 +102,11 @@ export default function RegisterPage() {
     }
 
     setLoading(false);
-    router.push(accountType === "venue_manager" ? "/venue/calendar" : "/");
+    // /join/<code> rather than joining here: that page redeems the code and is
+    // the one screen that explains what just happened, so a brand-new member
+    // and a returning one land on the same confirmation.
+    const invited = inviteDestination(invite);
+    router.push(accountType === "venue_manager" ? "/venue/calendar" : invited ?? "/");
   };
 
   return (
@@ -118,6 +129,17 @@ export default function RegisterPage() {
         </a>
         <h1 className="text-[22px] font-extrabold tracking-[-0.01em]">Create an account</h1>
       </header>
+
+      {/* Arriving from a captain's link. The team was named on /join, so this
+          only has to reassure them the invite survived the detour. */}
+      {invite && (
+        <div className="bg-accent/10 border border-accent/30 rounded-btn px-4 py-3 mb-5">
+          <p className="text-sm font-semibold text-accent-ink">You&apos;re joining a team</p>
+          <p className="text-xs text-text-secondary mt-0.5">
+            Finish signing up as a player and you&apos;ll be in the squad straight away.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
@@ -291,7 +313,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-sm text-text-secondary">
           Already have an account?{" "}
-          <a href="/login" className="text-accent-ink font-medium">Sign In</a>
+          <a href={invite ? inviteAuthHref("/login", invite) : "/login"} className="text-accent-ink font-medium">Sign In</a>
         </p>
       </form>
       </div>

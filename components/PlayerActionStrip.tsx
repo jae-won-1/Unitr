@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import AvailabilityModal, { useAvailabilityPoll } from "@/components/AvailabilityModal";
-import { useMatchAvailability } from "@/components/MatchAvailabilityList";
+import { useEventAvailability } from "@/components/AvailabilityList";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 
 // The two things a captain actually asks of a squad player: answer the
@@ -13,9 +13,10 @@ import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 
 export default function PlayerActionStrip({ teamId, userId }: { teamId: string | null; userId: string }) {
   const { request, myAnswer, loading, reload } = useAvailabilityPoll(teamId, userId);
-  // Games that were matched without a poll still need an answer from this
-  // player, so the tile opens even when there's no poll running.
-  const { matches, awaiting, loading: matchesLoading, reload: reloadMatches } = useMatchAvailability(teamId, userId);
+  // Games the captain committed to without a poll — a match off the feed, a
+  // tournament entry — still need an answer from this player, so the tile opens
+  // even when there's no poll running.
+  const { events, awaiting, loading: eventsLoading, reload: reloadEvents } = useEventAvailability(teamId, userId);
   const { owedPence, reload: reloadDues } = useMyDues(teamId, userId);
   const { owedPence: feeOwedPence, reload: reloadFee } = useJoiningFee(teamId, userId);
   const [balancePence, setBalancePence] = useState<number | null>(null);
@@ -28,7 +29,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
       .then(({ data }) => setBalancePence(data?.balance_pence ?? 0));
   }, [teamId]);
 
-  const hasSomething = !!request || matches.length > 0;
+  const hasSomething = !!request || events.length > 0;
   const needsAnswer = (!!request && myAnswer === null) || awaiting > 0;
 
   return (
@@ -55,9 +56,9 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           {/* An unanswered fixture outranks the poll: it's a game that is
               definitely happening, and the captain is picking a squad from it. */}
           <p className="text-[11px] text-text-secondary mt-1 leading-tight">
-            {loading || matchesLoading ? "Checking…"
-              : awaiting > 0 ? `${awaiting} match${awaiting === 1 ? "" : "es"} need your reply`
-              : !request ? (matches.length > 0 ? "Replied to every match · tap to change" : "No open request")
+            {loading || eventsLoading ? "Checking…"
+              : awaiting > 0 ? `${awaiting} game${awaiting === 1 ? "" : "s"} need${awaiting === 1 ? "s" : ""} your reply`
+              : !request ? (events.length > 0 ? "Replied to every game · tap to change" : "No open request")
               : myAnswer === null ? "Captain is waiting on you"
               : myAnswer.length === 0 ? "You said none work · tap to change"
               : `${myAnswer.length} date${myAnswer.length === 1 ? "" : "s"} sent · tap to change`}
@@ -98,9 +99,9 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           myAnswer={myAnswer}
           userId={userId}
           teamId={teamId}
-          matches={matches}
-          onMatchChanged={reloadMatches}
-          onClose={() => { setShowAvailability(false); reload(); reloadMatches(); }}
+          events={events}
+          onEventChanged={reloadEvents}
+          onClose={() => { setShowAvailability(false); reload(); reloadEvents(); }}
           onSubmitted={() => reload()}
         />
       )}

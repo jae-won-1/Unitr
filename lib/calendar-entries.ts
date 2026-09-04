@@ -34,6 +34,10 @@ export type CalendarEntry = {
   badge: string | null;
   /** matches.id — present only for a confirmed friendly. Gates "Manage match". */
   matchId: string | null;
+  /** open_matches.id — present only for a tournament the team actually entered.
+   *  The other half of the availability answer: a tournament has no matches row,
+   *  so its confirmations hang off this instead (lib/event-availability.ts). */
+  openMatchId: string | null;
   /** Written back after a booking is turned into a post, to flip the CTA. */
   postId: string | null;
   resultVerified: boolean;
@@ -163,6 +167,7 @@ async function loadFriendlies(captainId: string): Promise<CalendarEntry[]> {
       pricePence: price != null ? Math.round(price * 100) : null,
       badge: "Confirmed",
       matchId: (m?.id as string) ?? null,
+      openMatchId: null,
       postId: d.postId,
       resultVerified: Boolean(m?.result_verified),
       ...base(d.date, d.time),
@@ -184,6 +189,9 @@ async function loadTournaments(teamId: string | null): Promise<CalendarEntry[]> 
     pricePence: null,
     badge: t.hosting ? "Hosting" : "Entered",
     matchId: null,
+    // Hosting a tournament isn't fielding a team in it — an organiser buys in
+    // separately — so only an entered one asks the squad for availability.
+    openMatchId: t.entered ? t.id : null,
     postId: null,
     resultVerified: false,
     ...base(t.date, t.time),
@@ -215,6 +223,7 @@ async function loadMyPosts(captainId: string): Promise<CalendarEntry[]> {
         ? (r.pitch_secured ? "Pitch secured · awaiting opponent" : "Awaiting opponent")
         : "Expired",
       matchId: null,
+      openMatchId: null,
       postId: r.id,
       resultVerified: false,
       ...base(r.match_date, r.match_time),
@@ -259,6 +268,7 @@ async function loadRingerGames(userId: string): Promise<CalendarEntry[]> {
       pricePence: s.amount_pence ?? null,
       badge: "Paid ✓",
       matchId: s.match_id,
+      openMatchId: null,
       postId: null,
       resultVerified: false,
       ...base(m.match_date, m.match_time),
@@ -295,6 +305,7 @@ async function loadBookings(userId: string): Promise<CalendarEntry[]> {
         : r.post_id ? "Posted"
         : r.payment_status === "paid" ? "Paid ✓" : "Payment pending",
       matchId: null,
+      openMatchId: null,
       postId: r.post_id ?? null,
       resultVerified: false,
       ...base(r.match_date, r.start_time),

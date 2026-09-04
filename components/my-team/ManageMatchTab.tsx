@@ -10,8 +10,11 @@
 // buttons right there (answering "am I in?" without opening anything) and a tap
 // through to /my-team/match/[matchId] for the real work.
 //
-// Tournaments appear here too but have no matches row, so they route to the
-// tournament page and carry no availability buttons.
+// Tournaments appear here too. They have no matches row, so the card itself
+// routes to the tournament page — but a tournament is one commitment and
+// several games, so an entered team also gets its own games listed underneath,
+// each a door into /my-team/tournament-match/[fixtureId]. Availability is asked
+// once for the whole day, against open_match_id, not once per game.
 //
 // The captain's own still-open posts get a section of their own, below the
 // fixtures. They deliberately don't occupy the two fixture slots: nobody has
@@ -25,6 +28,7 @@ import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, sortKey, fmtKickoff } from "@/lib/match-dates";
 import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
+import TournamentFixtureList from "@/components/TournamentFixtureList";
 
 export type TeamFixture = {
   postId: string;
@@ -35,6 +39,10 @@ export type TeamFixture = {
   pitch: string;
   kind: "match" | "tournament" | "open_post";
   title?: string;
+  /** Tournaments only: the team bought in rather than merely hosting it.
+   *  Organising isn't playing, so a hosted-only event asks the squad nothing
+   *  and has no games of "ours" to line up. */
+  entered?: boolean;
   /** Only set on open posts — "Awaiting opponent" / "Pitch secured · awaiting opponent". */
   badge?: string;
 };
@@ -128,17 +136,19 @@ export async function loadTeamFixtures(userId: string, teamId: string | null): P
     pitch: t.pitch,
     kind: "tournament",
     title: t.title,
+    entered: t.entered,
   }));
 
   return [...matchFixtures, ...tournamentFixtures, ...openPostFixtures];
 }
 
 function FixtureCard({
-  fixture, teamId, userId,
+  fixture, teamId, userId, isCaptain,
 }: {
   fixture: TeamFixture;
   teamId: string;
   userId: string;
+  isCaptain: boolean;
 }) {
   const href = fixture.kind === "tournament"
     ? `/play/tournament/${fixture.postId}`
@@ -178,6 +188,33 @@ function FixtureCard({
             size="sm"
           />
         </div>
+      )}
+
+      {/* A tournament is one card but several games. The answer above covers
+          the whole day; the list below is where each game's lineup lives.
+          Only for a team that entered — hosting one isn't playing in it. */}
+      {fixture.kind === "tournament" && (
+        <>
+          {fixture.entered && (
+            <div className="mt-3 pt-3 border-t border-border">
+              <p className="text-[11px] text-text-secondary mb-1.5">Can you make it?</p>
+              <AvailabilityButtons
+                openMatchId={fixture.postId}
+                playerId={userId}
+                teamId={teamId}
+                size="sm"
+              />
+            </div>
+          )}
+          <div className="mt-3 pt-3 border-t border-border">
+            <TournamentFixtureList
+              openMatchId={fixture.postId}
+              teamId={fixture.entered ? teamId : null}
+              isCaptain={isCaptain}
+              compact
+            />
+          </div>
+        </>
       )}
     </div>
   );
@@ -278,7 +315,7 @@ export default function ManageMatchTab({
       ) : (
         <div className="space-y-3">
           {fixtures.map((f) => (
-            <FixtureCard key={`${f.kind}:${f.postId}`} fixture={f} teamId={teamId} userId={userId} />
+            <FixtureCard key={`${f.kind}:${f.postId}`} fixture={f} teamId={teamId} userId={userId} isCaptain={isCaptain} />
           ))}
         </div>
       )}
@@ -292,7 +329,7 @@ export default function ManageMatchTab({
             </p>
           </div>
           {openPosts.map((f) => (
-            <FixtureCard key={`${f.kind}:${f.postId}`} fixture={f} teamId={teamId} userId={userId} />
+            <FixtureCard key={`${f.kind}:${f.postId}`} fixture={f} teamId={teamId} userId={userId} isCaptain={isCaptain} />
           ))}
         </div>
       )}

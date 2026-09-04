@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
+import { getCallerId, isTeamCaptain, forbidden, unauthorized } from "@/lib/api-auth";
+import { payVenue } from "@/lib/venue-payout";
 
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
@@ -21,15 +24,24 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // the same settle model used for matches (PAYMENT_PLAN §10).
 export async function POST(req: NextRequest) {
   try {
-    const { openMatchId, teamId, teamName, userId } = await req.json();
-    if (!openMatchId || !teamId || !userId) {
-      return NextResponse.json({ error: "Missing openMatchId, teamId or userId" }, { status: 400 });
+    // Entering a tournament spends the team pot, so the entrant is the signed-in
+    // caller, not whoever the body claims. A userId in the body is only an
+    // assertion, and teamId with no check let anyone empty any team's credit.
+    const userId = await getCallerId(req);
+    if (!userId) return unauthorized();
+
+    const { openMatchId, teamId, teamName } = await req.json();
+    if (!openMatchId || !teamId) {
+      return NextResponse.json({ error: "Missing openMatchId or teamId" }, { status: 400 });
+    }
+    if (!(await isTeamCaptain(userId, teamId))) {
+      return forbidden("Only the captain can enter the team into a tournament.");
     }
 
     // 1) Load the tournament listing.
     const { data: om } = await adminSupabase
       .from("open_matches")
-      .select("id, pitch_id, price_per_team_pence, max_teams, status, booking_id, title, organiser_team_id, organiser_admin_id")
+      .select("id, pitch_id, price_per_team_pence, max_teams, status, booking_id, title, match_date, start_time, organiser_team_id, organiser_admin_id")
       .eq("id", openMatchId)
       .maybeSingle();
     if (!om) return NextResponse.json({ error: "Tournament not found" }, { status: 404 });
@@ -143,22 +155,21 @@ export async function POST(req: NextRequest) {
     let transferError: string | null = null;
     if (buyIn > 0 && !om.organiser_team_id && !isAdminHosted && om.pitch_id) {
       try {
-        const transferRes = await fetch(new URL("/api/connect/venue-transfer", req.url), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pitchId: om.pitch_id,
-            teamId,
-            openMatchId,
-            amountPence: buyIn,
-          }),
+        // Direct call, not an HTTP hop: /api/connect/venue-transfer now demands
+        // a caller session and the server has no token of its own to present.
+        // The check that route performs was already made above — this team is
+        // entering, and the buy-in is what the listing charges.
+        const transfer = await payVenue({
+          pitchId: om.pitch_id,
+          teamId,
+          openMatchId,
+          amountPence: buyIn,
         });
-        const transferData = await transferRes.json().catch(() => ({}));
-        if (transferRes.ok) {
+        if (transfer.status === 200) {
           transferStatus = "paid";
         } else {
           transferStatus = "failed";
-          transferError = transferData.error ?? "Venue transfer failed";
+          transferError = (transfer.body.error as string) ?? "Venue transfer failed";
         }
       } catch (err) {
         transferStatus = "failed";
@@ -177,7 +188,45 @@ export async function POST(req: NextRequest) {
       await adminSupabase.from("tournament_invitations").update({ status: "accepted" }).eq("id", invite.id);
     }
 
-    // 7) Pre-create pending replenishments for the joining squad (best-effort — the
+    // 7) Ask the squad whether they can play it.
+    //    A tournament entry commits the team the same way an accepted challenge
+    //    does, and captains often enter one without running a poll first — so
+    //    the entry raises the same availability question on Home and the
+    //    Calendar, keyed off open_match_id since there is no matches row
+    //    (supabase_event_availability.sql). Where a poll DID propose this date,
+    //    its answers carry straight over. Best-effort throughout: the team is
+    //    already entered and paid, and a database missing the migration must not
+    //    fail the join.
+    try {
+      const squad = await squadPlayerIds(adminSupabase, teamId, userId);
+      if (squad.length > 0) {
+        // A team that left and re-entered still has its old rows, and the
+        // partial unique index would reject the whole insert over one of them.
+        const { data: already } = await adminSupabase
+          .from("match_confirmations").select("player_id")
+          .eq("open_match_id", openMatchId).in("player_id", squad);
+        const answered = new Set((already ?? []).map((r) => r.player_id as string));
+        const missing = squad.filter((pid) => !answered.has(pid));
+        if (missing.length > 0) {
+          await adminSupabase.from("match_confirmations").insert(
+            missing.map((pid) => ({
+              open_match_id: openMatchId, player_id: pid, team_id: teamId, status: "pending",
+            })),
+          );
+        }
+        await seedAvailabilityFromPoll(adminSupabase, {
+          teamId,
+          target: { openMatchId },
+          date: om.match_date,
+          time: om.start_time,
+          playerIds: squad,
+        });
+      }
+    } catch (err) {
+      console.error("tournaments/join availability seed failed:", err);
+    }
+
+    // 8) Pre-create pending replenishments for the joining squad (best-effort — the
     //    buy-in is already paid from credit; this just sets up who refills it).
     if (buyIn > 0 && om.booking_id) {
       const { data: members } = await adminSupabase

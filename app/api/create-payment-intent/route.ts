@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, calcSplit } from "@/lib/stripe";
+import { getCaller, callerCustomerId, unauthorized } from "@/lib/api-auth";
 
+// Open a card payment for the caller's own share of a pitch. The payer and the
+// Stripe customer come from the session, not the body — the amount is still the
+// caller's to choose, but it is only ever their own card being charged.
 export async function POST(req: NextRequest) {
   try {
-    const { pitchPricePerHour, playerCount, bookingId, playerId, amountPence, customerId, email } = await req.json();
+    const caller = await getCaller(req);
+    if (!caller) return unauthorized();
+
+    const { pitchPricePerHour, playerCount, bookingId, amountPence } = await req.json();
+    const playerId = caller.id;
+    const customerId = await callerCustomerId(caller.id);
+    const email = caller.email;
 
     // Credit-replenishment path passes an exact pre-computed amount (the player's
     // pitch share + fee). Individual path passes price + headcount to split here.
@@ -34,10 +44,17 @@ export async function POST(req: NextRequest) {
       currency: "gbp",
       customer,
       setup_future_usage: "off_session",
-      automatic_payment_methods: { enabled: true },
+      // allow_redirects "never" keeps the Payment Element to methods that
+      // finish in place (cards, wallets). Left on, Stripe offers whatever the
+      // LIVE account has enabled — Klarna, iDEAL, Bancontact — and those
+      // finish by sending the payer to the provider's own site. Every confirm
+      // in this app is confirmPayment({ redirect: "if_required" }) with no
+      // return_url, so a payer choosing one of those gets an error instead of
+      // a payment. Test mode hides this: fewer methods are enabled there.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       metadata: {
         bookingId: bookingId ?? "",
-        playerId: playerId ?? "",
+        playerId,
         pitchShare: perPlayer,
         unitrFee: unitrFee,
       },

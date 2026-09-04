@@ -3,26 +3,26 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import InviteLinkPanel from "@/components/my-team/InviteLinkPanel";
 
+// Team Settings is cut back to the joining fee for now. The team profile
+// fields (history, play style, photo) still live on `teams` and are still
+// rendered by /my-team/[teamId] — only the editors are gone from this page,
+// so nothing already saved is lost.
 type Team = {
   id: string;
   name: string;
   captain_id: string;
-  history: string | null;
-  play_style: string | null;
-  photo_url: string | null;
   joining_fee_pence?: number | null;
 };
 
 export default function TeamSettingsPage() {
   const { user } = useAuth();
   const [team, setTeam] = useState<Team | null | undefined>(undefined);
-  const [history, setHistory] = useState("");
-  const [playStyle, setPlayStyle] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
   const [joiningFee, setJoiningFee] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -33,9 +33,6 @@ export default function TeamSettingsPage() {
       .eq("captain_id", user.id).maybeSingle()
       .then(({ data }) => {
         setTeam(data ?? null);
-        setHistory(data?.history ?? "");
-        setPlayStyle(data?.play_style ?? "");
-        setPhotoUrl(data?.photo_url ?? "");
         const feePence = data?.joining_fee_pence ?? 0;
         setJoiningFee(feePence > 0 ? (feePence / 100).toFixed(2).replace(/\.00$/, "") : "");
       });
@@ -48,22 +45,21 @@ export default function TeamSettingsPage() {
     if (!team || !feeValid) return;
     setSaving(true);
     setSaved(false);
-    let { error } = await supabase.from("teams").update({
-      history: history || null,
-      play_style: playStyle || null,
-      photo_url: photoUrl || null,
+    setError(null);
+    const { error: saveErr } = await supabase.from("teams").update({
       joining_fee_pence: joiningFeePence,
     }).eq("id", team.id);
-    // Missing-migration guard: save the rest even if the fee column isn't there.
-    if (error && /joining_fee_pence/.test(error.message)) {
-      ({ error } = await supabase.from("teams").update({
-        history: history || null,
-        play_style: playStyle || null,
-        photo_url: photoUrl || null,
-      }).eq("id", team.id));
-    }
     setSaving(false);
-    setSaved(!error);
+    // The fee is the only thing this page saves now, so a missing column is a
+    // hard failure rather than something to save around — say so plainly
+    // instead of reporting a save that didn't happen.
+    if (saveErr) {
+      setError(/joining_fee_pence/.test(saveErr.message)
+        ? "Run supabase_joining_fees.sql in Supabase first — the fee column isn't there yet."
+        : "Couldn't save the joining fee. Please try again.");
+      return;
+    }
+    setSaved(true);
   };
 
   if (team === undefined) {
@@ -78,8 +74,6 @@ export default function TeamSettingsPage() {
     );
   }
 
-  const initials = team.name.split(" ").map((w) => w[0]).join("").slice(0, 2);
-
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
       <header className="flex items-center gap-3 mb-8">
@@ -90,54 +84,13 @@ export default function TeamSettingsPage() {
         </a>
         <div>
           <h1 className="text-xl font-extrabold">Team Settings</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Profile and joining fee for {team.name}</p>
+          <p className="text-xs text-text-secondary mt-0.5">Invite link and joining fee for {team.name}</p>
         </div>
       </header>
 
+      <InviteLinkPanel teamId={team.id} teamName={team.name} />
+
       <div className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Team Photo <span className="text-text-secondary font-normal">(image URL)</span></label>
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center overflow-hidden flex-shrink-0">
-              {photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photoUrl} alt={team.name} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-lg font-bold text-accent-ink">{initials}</span>
-              )}
-            </div>
-            <input
-              type="text"
-              value={photoUrl}
-              onChange={(e) => setPhotoUrl(e.target.value)}
-              placeholder="https://…"
-              className="flex-1 bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Play Style</label>
-          <input
-            type="text"
-            value={playStyle}
-            onChange={(e) => setPlayStyle(e.target.value)}
-            placeholder="e.g. High press, quick transitions"
-            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-text-secondary">Team History</label>
-          <textarea
-            rows={5}
-            value={history}
-            onChange={(e) => setHistory(e.target.value)}
-            placeholder="How the team started, honours, notable seasons…"
-            className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60 resize-none"
-          />
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-text-secondary">Joining fee</label>
           <div className="relative">
@@ -160,6 +113,10 @@ export default function TeamSettingsPage() {
           </p>
         </div>
 
+        {error && (
+          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-btn px-3 py-2.5">{error}</p>
+        )}
+
         <button
           onClick={handleSave}
           disabled={saving || !feeValid}
@@ -170,7 +127,7 @@ export default function TeamSettingsPage() {
               <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
               Saving…
             </>
-          ) : saved ? "Saved ✓" : "Save Team Settings"}
+          ) : saved ? "Saved ✓" : "Save Joining Fee"}
         </button>
       </div>
     </div>

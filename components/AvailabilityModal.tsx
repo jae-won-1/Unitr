@@ -3,19 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
-import MatchAvailabilityList, { type UpcomingMatch } from "@/components/MatchAvailabilityList";
+import AvailabilityList, { type UpcomingEvent } from "@/components/AvailabilityList";
 
 // Answering the captain's availability poll without leaving home. Same options,
 // same "unavailable for any of these" escape hatch, and the same
 // availability_responses upsert the My Team tab writes — this is a second
 // doorway onto one record, not a second record.
 //
-// It also carries the squad's already-confirmed fixtures, because plenty of
-// games never went through a poll (the captain matched straight off the feed)
-// and those still need an answer from every player. Two different records —
-// availability_responses for the poll, match_confirmations for the fixtures —
-// behind one "am I playing?" surface, which is the only question the player is
-// actually asking.
+// It also carries the squad's already-confirmed games — friendlies and
+// tournament entries alike — because plenty of them never went through a poll
+// (the captain matched straight off the feed, or entered a tournament on the
+// spot) and those still need an answer from every player. Two different
+// records — availability_responses for the poll, match_confirmations for the
+// fixtures — behind one "am I playing?" surface, which is the only question the
+// player is actually asking.
 
 export type DateOption = {
   id: string;
@@ -67,15 +68,15 @@ export function useAvailabilityPoll(teamId: string | null, userId: string | unde
 }
 
 export default function AvailabilityModal({
-  request, myAnswer, userId, teamId, matches = [], onMatchChanged, onClose, onSubmitted,
+  request, myAnswer, userId, teamId, events = [], onEventChanged, onClose, onSubmitted,
 }: {
   request: Request | null;
   myAnswer: string[] | null;
   userId: string;
   // Only needed to answer fixtures — match_confirmations rows are team-scoped.
   teamId?: string | null;
-  matches?: UpcomingMatch[];
-  onMatchChanged?: () => void;
+  events?: UpcomingEvent[];
+  onEventChanged?: () => void;
   onClose: () => void;
   onSubmitted: (ids: string[]) => void;
 }) {
@@ -86,7 +87,7 @@ export default function AvailabilityModal({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const showMatches = matches.length > 0 && !!teamId;
+  const showEvents = events.length > 0 && !!teamId;
 
   // Unpaid joining fee blocks voting — same rule AvailabilityButtons applies
   // to the fixture answers rendered further down this sheet.
@@ -106,7 +107,7 @@ export default function AvailabilityModal({
     // The full-screen confirmation is only right when the poll was the whole
     // job. With fixtures also on this sheet it would hide work still to do, so
     // there the save reports itself inline instead.
-    setDone(!showMatches);
+    setDone(!showEvents);
     setSaved(true);
     setSubmitting(false);
     onSubmitted(ids);
@@ -149,23 +150,23 @@ export default function AvailabilityModal({
               </div>
             )}
 
-            {showMatches && (
+            {showEvents && (
               <div className="mb-5">
                 <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
-                  Confirmed matches
+                  Confirmed games
                 </p>
-                <MatchAvailabilityList
-                  matches={matches}
+                <AvailabilityList
+                  events={events}
                   userId={userId}
                   teamId={teamId!}
-                  onChanged={onMatchChanged}
+                  onChanged={onEventChanged}
                 />
               </div>
             )}
 
             {request && (
             <>
-            {showMatches && (
+            {showEvents && (
               <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2">
                 Proposed dates
               </p>

@@ -1,24 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { getCallerId, forbidden, unauthorized } from "@/lib/api-auth";
 
+// Delete a team's live availability poll and every answer on it.
+//
+// The captain used to be identified by a captainId in the body, which the poll
+// row was then compared against — a check anyone could pass by sending the
+// captain's id, which is readable from any team row. The caller is taken from
+// their session token now, so the comparison means something.
 export async function DELETE(req: NextRequest) {
   try {
-    const { requestId, captainId } = await req.json();
+    const callerId = await getCallerId(req);
+    if (!callerId) return unauthorized();
 
-    if (!requestId || !captainId) {
+    const { requestId } = await req.json();
+    if (!requestId) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // Verify the requesting user is actually the captain of this poll
     const { data: poll } = await adminSupabase
       .from("availability_requests")
       .select("captain_id")
       .eq("id", requestId)
-      .single();
+      .maybeSingle();
 
-    if (!poll || poll.captain_id !== captainId) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 403 });
-    }
+    if (!poll) return NextResponse.json({ error: "Poll not found" }, { status: 404 });
+    if (poll.captain_id !== callerId) return forbidden("That poll belongs to another team.");
 
     await adminSupabase.from("availability_responses").delete().eq("request_id", requestId);
     await adminSupabase.from("availability_requests").delete().eq("id", requestId);

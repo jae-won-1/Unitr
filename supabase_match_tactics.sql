@@ -16,5 +16,7 @@ create table if not exists public.match_tactics (
 );
 
 alter table public.match_tactics enable row level security;
+drop policy if exists "Anyone can view match tactics" on public.match_tactics;
 create policy "Anyone can view match tactics" on public.match_tactics for select using (true);
+drop policy if exists "Anyone can manage match tactics" on public.match_tactics;
 create policy "Anyone can manage match tactics" on public.match_tactics for all using (true) with check (true);

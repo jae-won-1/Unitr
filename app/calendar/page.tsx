@@ -53,10 +53,12 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
   onOpen: (e: CalendarEntry) => void;
 }) {
   const style = KIND_STYLE[entry.kind];
-  // Only confirmed friendlies have a matches row to hang a confirmation off.
-  // Tournaments, bookings and ringer entries carry matchId: null.
+  // A confirmed friendly answers against its matches row, a tournament the team
+  // entered against its open_matches row. Bookings and ringer entries carry
+  // neither and ask nothing.
   const canRespond =
-    entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && teamId;
+    entry.isUpcoming && (entry.matchId || entry.openMatchId) &&
+    (entry.kind === "friendly" || entry.kind === "tournament") && viewerId && teamId;
 
   return (
     <div className={`bg-surface border border-border border-l-4 ${style.rule} shadow-card rounded-card px-4 py-3.5 ${entry.isUpcoming ? "" : "opacity-85"}`}>
@@ -91,7 +93,8 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
     {canRespond && (
       <div className="mt-3 pt-3 border-t border-border">
         <AvailabilityButtons
-          matchId={entry.matchId!}
+          matchId={entry.matchId}
+          openMatchId={entry.openMatchId}
           playerId={viewerId!}
           teamId={teamId!}
           size="sm"

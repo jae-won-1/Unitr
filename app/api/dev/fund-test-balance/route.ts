@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
+import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
+
+// A GET that authenticates its caller reads the request headers, which rules
+// out static rendering. Say so up front rather than letting the build discover
+// it by throwing inside the handler's try/catch.
+export const dynamic = "force-dynamic";
+
+// Admin-only, on top of the test-key gate: the finance page that calls this is
+// behind app/admin/layout.tsx, and that gate is client-side only.
+async function requireAdmin(req: NextRequest) {
+  const callerId = await getCallerId(req);
+  if (!callerId) return unauthorized();
+  if (!(await isAdmin(callerId))) return forbidden("Admins only.");
+  return null;
+}
 
 // TEST MODE ONLY — add funds to Unitr's platform balance so venue transfers
 // have something to draw from. Uses Stripe's `bypassPending` test card, whose
@@ -9,6 +24,8 @@ export async function POST(req: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
     return NextResponse.json({ error: "Test-mode only" }, { status: 403 });
   }
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
   try {
     const { amountPence } = await req.json().catch(() => ({ amountPence: 0 }));
     const amount = Math.round(amountPence || 20000); // default £200
@@ -40,10 +57,12 @@ export async function POST(req: NextRequest) {
 
 // Report the current platform balance (test-mode only) — used by the admin
 // finance page to show what's actually available for venue transfers.
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
     return NextResponse.json({ error: "Test-mode only" }, { status: 403 });
   }
+  const denied = await requireAdmin(req);
+  if (denied) return denied;
   try {
     const balance = await stripe.balance.retrieve();
     const gbp = balance.available.find((b) => b.currency === "gbp");

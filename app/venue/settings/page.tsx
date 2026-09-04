@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { TimePicker } from "@/components/DateTimePickers";
@@ -727,10 +728,7 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
         setAccountId(p.stripe_account_id ?? null);
       }
       try {
-        const res = await fetch("/api/connect/account-status", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pitchId: primaryId }),
-        });
+        const res = await authedPost("/api/connect/account-status", { pitchId: primaryId });
         const d = await res.json();
         if (!cancelled && res.ok) {
           setConnected(!!d.connected);
@@ -749,10 +747,7 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
     setConnecting(true);
     setError(null);
     try {
-      const res = await fetch("/api/connect/create-venue-account", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pitchId: primaryId }),
-      });
+      const res = await authedPost("/api/connect/create-venue-account", { pitchId: primaryId });
       const d = await res.json();
       if (!res.ok || !d.onboardingUrl) {
         setError(d.error ?? "Could not start onboarding.");

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { getCallerId, unauthorized } from "@/lib/api-auth";
 
 // Confirms a ringer into a match after their £5 card payment succeeded.
 //
@@ -11,9 +12,14 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // must be succeeded, for this request, and unused by an earlier signup.
 export async function POST(req: NextRequest) {
   try {
-    const { requestId, playerId, paymentIntentId, position } = await req.json();
-    if (!requestId || !playerId || !paymentIntentId) {
-      return NextResponse.json({ error: "Missing requestId, playerId or paymentIntentId" }, { status: 400 });
+    // Who joins is the caller, not the body. The PaymentIntent check below
+    // then ties the payment to that same person.
+    const playerId = await getCallerId(req);
+    if (!playerId) return unauthorized();
+
+    const { requestId, paymentIntentId, position } = await req.json();
+    if (!requestId || !paymentIntentId) {
+      return NextResponse.json({ error: "Missing requestId or paymentIntentId" }, { status: 400 });
     }
 
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);

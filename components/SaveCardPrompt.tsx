@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { authedGet } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 
 // "Save this card for next time?" — offered once, after a player's first
@@ -24,7 +25,7 @@ import { supabase } from "@/lib/supabase";
 // Resolves regardless of outcome; callers continue on either way.
 export async function saveCardFromIntent(userId: string, paymentIntentId: string): Promise<boolean> {
   try {
-    const res = await fetch(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
+    const res = await authedGet(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
     const data = await res.json();
     if (!data.paymentMethodId || !data.customerId) return false;
     await supabase.from("profiles").update({

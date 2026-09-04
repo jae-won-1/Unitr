@@ -78,6 +78,7 @@ export default function TournamentDetailPage() {
   const [roster, setRoster] = useState<RosterPlayer[]>([]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
+  const [myPlayingTeamId, setMyPlayingTeamId] = useState<string | null>(null);
   const [myTeamName, setMyTeamName] = useState<string | null>(null);
   const [inviteDiscountPence, setInviteDiscountPence] = useState(0);
   const [showEnter, setShowEnter] = useState(false);
@@ -164,6 +165,22 @@ export default function TournamentDetailPage() {
     if (!user) return;
     supabase.from("teams").select("id, name").eq("captain_id", user.id).maybeSingle()
       .then(({ data }) => { setMyTeamId(data?.id ?? null); setMyTeamName(data?.name ?? null); });
+  }, [user]);
+
+  // The squad the viewer plays for, captain or not. Distinct from myTeamId,
+  // which is deliberately captain-only because it gates buying in. This one
+  // only decides which fixtures in the schedule are "ours" — a player needs to
+  // walk into their own game and read the lineup as much as a captain does.
+  useEffect(() => {
+    if (!user) { setMyPlayingTeamId(null); return; }
+    const uid = user.id;
+    (async () => {
+      const { data: cap } = await supabase.from("teams").select("id").eq("captain_id", uid).maybeSingle();
+      if (cap?.id) { setMyPlayingTeamId(cap.id); return; }
+      const { data: mem } = await supabase.from("team_members")
+        .select("team_id").eq("player_id", uid).eq("status", "approved").maybeSingle();
+      setMyPlayingTeamId(mem?.team_id ?? null);
+    })();
   }, [user]);
 
   // Pending invitation for this team → discount off the buy-in.
@@ -532,6 +549,16 @@ export default function TournamentDetailPage() {
                         <button onClick={() => reshuffleReferee(fx)} className="ml-auto text-[11px] text-accent-ink font-semibold">Reshuffle</button>
                       )}
                     </div>
+                    {/* Our own game gets a door into it. The organiser owns the
+                        score and the referee here; the lineup and the match plan
+                        belong to each team privately, which is what that page is. */}
+                    {myPlayingTeamId
+                      && (fx.home_team_id === myPlayingTeamId || fx.away_team_id === myPlayingTeamId) && (
+                      <a href={`/my-team/tournament-match/${fx.id}`}
+                        className="block w-full mt-2 py-2 rounded-lg border border-border text-[11px] font-semibold text-text-secondary text-center">
+                        {myPlayingTeamId === myTeamId ? "Set lineup & tactics" : "View lineup & details"}
+                      </a>
+                    )}
                     {/* Organiser result entry — the only place scores are written. */}
                     {canManage && !played && (
                       <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">

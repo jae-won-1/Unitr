@@ -357,6 +357,7 @@ function NewUserHome() {
         <TeamsPanel />
 
         <section className="space-y-4">
+          <h3 className="font-bold">Find Matches</h3>
           <TeamlessFeedToggle />
           <RingerFeed showIntro={false} showDateDial />
         </section>
@@ -382,7 +383,7 @@ function NewUserHome() {
           raises the sign-up gate, not scrolling. */}
       <section className="space-y-4">
         <div>
-          <h3 className="font-bold">Matches</h3>
+          <h3 className="font-bold">Find Matches</h3>
           <p className="text-xs text-text-secondary mt-0.5">Teams near you looking for players</p>
         </div>
         <TeamlessFeedToggle note="Matches and tournaments are team entries — create an account and join a team to unlock them." />

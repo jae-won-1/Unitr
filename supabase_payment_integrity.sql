@@ -143,6 +143,7 @@ grant execute on function public.record_cash_credit(uuid, integer, uuid) to serv
 -- them go through the security-definer functions above.
 drop policy if exists "Anyone can upsert team credits" on public.team_credits;
 drop policy if exists "Anyone can view team credits"   on public.team_credits;
+drop policy if exists "Anyone can view team credits" on public.team_credits;
 create policy "Anyone can view team credits" on public.team_credits
   for select using (true);
 -- No insert/update/delete policy: RLS denies by default. security definer

@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { fmtKickoff } from "@/lib/match-dates";
+import TopUpModal from "@/components/TopUpModal";
 
 // The buy-in sheet for entering a tournament. Lived inside the old /play page;
 // it moved out when Play was split so both the Home feed and the tournament
@@ -45,6 +48,10 @@ export default function EnterTournamentPanel({
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transferFailed, setTransferFailed] = useState(false);
+  // Set when the buy-in is refused for want of credit, so the shortfall can be
+  // topped up right here rather than sending the captain off to My Team and back.
+  const [shortfall, setShortfall] = useState<{ shortfallPence: number; balancePence: number } | null>(null);
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   const buyIn = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
 
@@ -52,20 +59,26 @@ export default function EnterTournamentPanel({
     if (!user || !myTeamId) { setError("You need to be a team captain to enter a tournament."); return; }
     setSaving(true);
     setError(null);
+    setShortfall(null);
 
-    const res = await fetch("/api/tournaments/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ openMatchId: t.id, teamId: myTeamId, teamName: myTeamName, userId: user.id }),
+    const res = await authedPost("/api/tournaments/join", {
+      openMatchId: t.id, teamId: myTeamId, teamName: myTeamName,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setSaving(false);
-      setError(
-        data.error === "INSUFFICIENT_CREDIT"
-          ? `Your team needs £${(buyIn / 100).toFixed(2)} in available credit to enter. Top up team credit and try again.`
-          : (data.error ?? "Couldn't enter the tournament. Please try again.")
-      );
+      if (data.error === "INSUFFICIENT_CREDIT") {
+        const available = typeof data.available === "number" ? data.available : 0;
+        const shortPence = Math.max(0, buyIn - available);
+        // The top-up modal prices the new balance off the raw balance, so read
+        // the row rather than reusing `available` (which is net of holds).
+        const { data: credit } = await supabase
+          .from("team_credits").select("balance_pence").eq("team_id", myTeamId).maybeSingle();
+        setShortfall({ shortfallPence: shortPence, balancePence: credit?.balance_pence ?? available });
+        setError(`Your team needs to top up — entering costs £${(buyIn / 100).toFixed(2)} in available credit, £${(shortPence / 100).toFixed(2)} short.`);
+      } else {
+        setError(data.error ?? "Couldn't enter the tournament. Please try again.");
+      }
       return;
     }
 
@@ -139,7 +152,15 @@ export default function EnterTournamentPanel({
           each refill their share from the tournament page afterwards.
         </p>
 
-        {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+        {error && (shortfall ? (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5 mb-3 flex items-center gap-3">
+            <p className="text-[11px] text-yellow-600 flex-1">{error}</p>
+            <button onClick={() => setTopUpOpen(true)}
+              className="shrink-0 px-3 py-2 rounded-btn bg-accent text-white font-bold text-xs">Top up now</button>
+          </div>
+        ) : (
+          <p className="text-xs text-red-600 mb-3">{error}</p>
+        ))}
 
         <button onClick={handleJoin} disabled={saving || !myTeamId}
           className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
@@ -147,6 +168,21 @@ export default function EnterTournamentPanel({
         </button>
         {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only team captains can enter a tournament.</p>}
       </div>
+
+      {/* Top up mid-entry — this sheet stays mounted behind it so the captain
+          lands back on the buy-in with the new balance. */}
+      {topUpOpen && shortfall && myTeamId && user && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <TopUpModal
+            teamId={myTeamId}
+            userId={user.id}
+            currentPence={shortfall.balancePence}
+            suggestedPence={shortfall.shortfallPence}
+            onClose={() => setTopUpOpen(false)}
+            onSuccess={() => { setTopUpOpen(false); setShortfall(null); setError(null); }}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,9 @@ export type TournamentFixture = {
   format: string | null;
   /** True when this team organised it rather than entered it — gates "Manage". */
   hosting: boolean;
+  /** True when the team bought in (open_match_teams). Gates squad availability:
+   *  organising a tournament isn't the same as fielding a team in it. */
+  entered: boolean;
 };
 
 const COLUMNS = "id, title, match_date, start_time, pitch_name, venue_address, format, status";
@@ -53,6 +56,7 @@ export async function loadTournamentFixtures(
     : { data: [] as Row[] };
 
   const hostedIds = new Set((hosted ?? []).map((t) => t.id));
+  const enteredIdSet = new Set(enteredIds);
   const byId = new Map<string, TournamentFixture>();
   for (const t of [...((hosted ?? []) as Row[]), ...((entered ?? []) as Row[])]) {
     byId.set(t.id, {
@@ -64,6 +68,7 @@ export async function loadTournamentFixtures(
       address: t.venue_address,
       format: t.format,
       hosting: hostedIds.has(t.id),
+      entered: enteredIdSet.has(t.id),
     });
   }
 

@@ -334,10 +334,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setDueError(null);
     setLoadingIntent(true);
     setIntentError(null);
-    const res = await fetch("/api/create-credits-intent", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: feeOwedPence, teamId, playerId: userId, customerId: saveCard.customerId }),
-    });
+    const res = await authedPost("/api/create-credits-intent", { amountPence: feeOwedPence, teamId });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
     else { setIntentError(data.error ?? "Failed to set up payment."); setFeeTargeted(false); }
@@ -350,10 +347,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     setDueError(null);
     setLoadingIntent(true);
     setIntentError(null);
-    const res = await fetch("/api/create-credits-intent", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: due.remainingPence, teamId, playerId: userId, customerId: saveCard.customerId }),
-    });
+    const res = await authedPost("/api/create-credits-intent", { amountPence: due.remainingPence, teamId });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
     else { setIntentError(data.error ?? "Failed to set up payment."); setPayTarget(null); }
@@ -364,10 +358,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     if (!effectiveAmount || effectiveAmount < 1) return;
     setLoadingIntent(true);
     setIntentError(null);
-    const res = await fetch("/api/create-credits-intent", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: Math.round(effectiveAmount * 100), teamId, playerId: userId, customerId: saveCard.customerId }),
-    });
+    const res = await authedPost("/api/create-credits-intent", { amountPence: Math.round(effectiveAmount * 100), teamId });
     const data = await res.json();
     if (data.clientSecret) setClientSecret(data.clientSecret);
     else setIntentError(data.error ?? "Failed to set up payment.");

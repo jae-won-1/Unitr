@@ -169,10 +169,10 @@ function PaymentCollectionPanel({
       const [{ data: members }, { data: team }, { data: confs }, { data: statusRows }, { data: polls }] = await Promise.all([
         supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", teamId).eq("status", "approved"),
         supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle(),
-        // match_confirmations only exist for matched games.
-        target.kind === "match"
-          ? supabase.from("match_confirmations").select("player_id, status").eq("match_id", target.matchId).eq("team_id", teamId)
-          : Promise.resolve({ data: [] as { player_id: string; status: string }[] }),
+        // Both kinds answer availability now — a tournament entry against
+        // open_match_id (supabase_event_availability.sql). A database without
+        // that migration fails this one query and falls back to the poll below.
+        supabase.from("match_confirmations").select("player_id, status").eq(targetCol, targetId).eq("team_id", teamId),
         supabase.from("payment_collection_status").select("player_id, share_pence, received").eq(targetCol, targetId).eq("team_id", teamId),
         supabase.from("availability_requests").select("id, date_options").eq("team_id", teamId),
       ]);
@@ -186,31 +186,35 @@ function PaymentCollectionPanel({
       setRoster(rosterList);
       setRows((statusRows ?? []) as CollectRow[]);
 
-      // Who "played" = players who submitted availability for THIS match's date.
+      // Who "played" = who said they were available for THIS fixture. The
+      // fixture's own answers come first: they start as the poll's answer for
+      // this date (carried over at entry — lib/event-availability.ts) and then
+      // track every change made after it, right up to kickoff.
+      const participants = new Set<string>();
+      for (const c of (confs ?? []).filter((c) => c.status === "confirmed")) participants.add(c.player_id);
+
+      // Nobody answered the fixture itself — fall back to the poll.
       // Find the poll whose date_options include an entry matching match_date,
       // then collect the players who marked that option as available.
-      const participants = new Set<string>();
       type Opt = { id: string; date: string };
-      const pollList = (polls ?? []) as { id: string; date_options: Opt[] }[];
-      let matchedPoll: { id: string; optionIds: string[] } | null = null;
-      for (const poll of pollList) {
-        const optionIds = (poll.date_options ?? [])
-          .filter((o) => parseOptionDate(o.date) === date)
-          .map((o) => o.id);
-        if (optionIds.length > 0) { matchedPoll = { id: poll.id, optionIds }; break; }
-      }
-      if (matchedPoll) {
-        const { data: resps } = await supabase.from("availability_responses")
-          .select("player_id, available_date_ids").eq("request_id", matchedPoll.id);
-        for (const r of resps ?? []) {
-          if ((r.available_date_ids ?? []).some((id: string) => matchedPoll!.optionIds.includes(id))) {
-            participants.add(r.player_id as string);
+      if (participants.size === 0) {
+        const pollList = (polls ?? []) as { id: string; date_options: Opt[] }[];
+        let matchedPoll: { id: string; optionIds: string[] } | null = null;
+        for (const poll of pollList) {
+          const optionIds = (poll.date_options ?? [])
+            .filter((o) => parseOptionDate(o.date) === date)
+            .map((o) => o.id);
+          if (optionIds.length > 0) { matchedPoll = { id: poll.id, optionIds }; break; }
+        }
+        if (matchedPoll) {
+          const { data: resps } = await supabase.from("availability_responses")
+            .select("player_id, available_date_ids").eq("request_id", matchedPoll.id);
+          for (const r of resps ?? []) {
+            if ((r.available_date_ids ?? []).some((id: string) => matchedPoll!.optionIds.includes(id))) {
+              participants.add(r.player_id as string);
+            }
           }
         }
-      }
-      // Fall back to confirmed roster if no availability poll matched this date.
-      if (participants.size === 0) {
-        for (const c of (confs ?? []).filter((c) => c.status === "confirmed")) participants.add(c.player_id);
       }
       // A tournament entry is bought by the team as a whole rather than by a
       // confirmed line-up, so with nothing else to go on the whole squad

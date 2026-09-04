@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { getCaller, unauthorized } from "@/lib/api-auth";
 
 // Card payment for a ringer spot. The price is a flat fee paid to Unitr and
 // is read from the request row server-side — never from the client — so the
@@ -8,9 +9,17 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // isn't asked for card details for a spot that has just gone.
 export async function POST(req: NextRequest) {
   try {
-    const { requestId, playerId, email } = await req.json();
-    if (!requestId || !playerId) {
-      return NextResponse.json({ error: "Missing requestId or playerId" }, { status: 400 });
+    // The ringer paying is the caller — a playerId in the body would let
+    // someone open a spot in another player's name and, worse, reuse their
+    // saved Stripe customer.
+    const caller = await getCaller(req);
+    if (!caller) return unauthorized();
+    const playerId = caller.id;
+    const email = caller.email;
+
+    const { requestId } = await req.json();
+    if (!requestId) {
+      return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
     const { data: request } = await adminSupabase
@@ -57,7 +66,14 @@ export async function POST(req: NextRequest) {
       customer,
       setup_future_usage: "off_session",
       receipt_email: email ?? undefined,
-      automatic_payment_methods: { enabled: true },
+      // allow_redirects "never" keeps the Payment Element to methods that
+      // finish in place (cards, wallets). Left on, Stripe offers whatever the
+      // LIVE account has enabled — Klarna, iDEAL, Bancontact — and those
+      // finish by sending the payer to the provider's own site. Every confirm
+      // in this app is confirmPayment({ redirect: "if_required" }) with no
+      // return_url, so a payer choosing one of those gets an error instead of
+      // a payment. Test mode hides this: fewer methods are enabled there.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
       metadata: {
         type: "ringer_fee",
         requestId,

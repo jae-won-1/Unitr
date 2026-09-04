@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedDelete } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
@@ -78,11 +79,7 @@ export default function AvailabilityPollForm({
       .from("availability_requests").select("id").eq("team_id", teamId)
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (existing) {
-      await fetch("/api/availability/delete", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: existing.id, captainId }),
-      });
+      await authedDelete("/api/availability/delete", { requestId: existing.id });
     }
 
     const date_options = filled.map((r) => parseDateOption(r.date, r.time, r.location));

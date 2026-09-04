@@ -164,9 +164,9 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, customerId, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
   pitch: Pitch; date: string; time: string;
-  isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null; customerId: string | null;
+  isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
   working: boolean; error: string | null;
   onCancel: () => void;
   onPayCredit: () => void;
@@ -191,15 +191,12 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
   useEffect(() => {
     if (method !== "card" || showSavedCard || clientSecret || loadingSecret) return;
     setLoadingSecret(true);
-    fetch("/api/create-payment-intent", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountPence: cardTotalPence, customerId }),
-    })
+    authedPost("/api/create-payment-intent", { amountPence: cardTotalPence })
       .then((r) => r.json())
       .then((d) => { if (d.clientSecret) setClientSecret(d.clientSecret); else onError(d.error ?? "Could not start card payment."); })
       .catch(() => onError("Could not reach the payment service."))
       .finally(() => setLoadingSecret(false));
-  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, customerId, onError]);
+  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, onError]);
 
   const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
 
@@ -556,9 +553,8 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
     // ── Collect payment ──
     if (method === "credit") {
       if (!team) { setBooking(false); setError("Only team captains can pay with credit."); return; }
-      const res = await fetch("/api/book/pay-credit", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: team.id, feePence: pitchFeePence + unitrFeePence, bookingId: bookingRow.id }),
+      const res = await authedPost("/api/book/pay-credit", {
+        teamId: team.id, feePence: pitchFeePence + unitrFeePence, bookingId: bookingRow.id,
       }).catch(() => null);
       const d = res ? await res.json().catch(() => null) : null;
       if (!res || !res.ok || !d?.ok) {
@@ -587,15 +583,11 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
     // paid booking produces exactly one venue_transfers row so in-app payments
     // reconcile against real payouts. Best-effort: an unconnected venue or empty
     // test balance is recorded as a failed transfer and must not block booking.
-    fetch("/api/connect/venue-transfer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pitchId: pitch.id,
-        bookingId: bookingRow.id,
-        teamId: team?.id ?? null,
-        amountPence: pitchFeePence,
-      }),
+    authedPost("/api/connect/venue-transfer", {
+      pitchId: pitch.id,
+      bookingId: bookingRow.id,
+      teamId: team?.id ?? null,
+      amountPence: pitchFeePence,
     }).catch(() => {});
 
     // If the captain came from "lock in a pitch first", their intent was to post
@@ -860,7 +852,6 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           isCaptain={isCaptain}
           teamCreditPence={teamCreditPence}
           savedCard={savedCard}
-          customerId={saveCard.customerId}
           working={booking}
           error={error}
           onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}

@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import TopUpModal from "@/components/TopUpModal";
+import { seedAvailabilityFromPoll } from "@/lib/event-availability";
 
 // The challenger's side of a match post: pick one of the poster's pitch
 // options, confirm, and both teams are debited their half of the fee (or, for
@@ -59,6 +62,11 @@ export default function ChallengePanel({
   const [pitchAvail, setPitchAvail] = useState<Record<string, boolean>>({});
   const [checkingAvail, setCheckingAvail] = useState(true);
   const [slotTakenError, setSlotTakenError] = useState<string | null>(null);
+  // Set when the challenger's own credit is what's blocking the join, so the
+  // shortfall can be topped up here instead of abandoning the challenge. Only
+  // ever the viewer's own team — a poster's shortfall isn't theirs to fix.
+  const [shortfall, setShortfall] = useState<{ teamId: string; shortfallPence: number; balancePence: number } | null>(null);
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   // Check which pitch options are still available for this date/time
   useEffect(() => {
@@ -98,6 +106,7 @@ export default function ChallengePanel({
     if (!selectedPitch || !user) return;
     setSaving(true);
     setSlotTakenError(null);
+    setShortfall(null);
 
     // Guard: check post is still open (race condition — someone else may have just taken it)
     const { data: current } = await supabase
@@ -132,8 +141,13 @@ export default function ChallengePanel({
       const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
       if (chalAvail < challengerHalfPence) {
         setSaving(false);
+        setShortfall({
+          teamId: team.id,
+          shortfallPence: challengerHalfPence - chalAvail,
+          balancePence: chalCr?.balance_pence ?? 0,
+        });
         setSlotTakenError(
-          `Your team needs £${(challengerHalfPence / 100).toFixed(2)} in available credit to cover your half of this pitch. Top up team credit and try again.`
+          `Your team needs to top up — £${(challengerHalfPence / 100).toFixed(2)} of available credit covers your half of this pitch, £${((challengerHalfPence - chalAvail) / 100).toFixed(2)} short.`
         );
         return;
       }
@@ -157,8 +171,13 @@ export default function ChallengePanel({
       const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
       if (chalAvail < challengerHalfPence) {
         setSaving(false);
+        setShortfall({
+          teamId: team.id,
+          shortfallPence: challengerHalfPence - chalAvail,
+          balancePence: chalCr?.balance_pence ?? 0,
+        });
         setSlotTakenError(
-          `Your team needs £${(challengerHalfPence / 100).toFixed(2)} in available credit to cover your half of this secured pitch. Top up team credit and try again.`
+          `Your team needs to top up — £${(challengerHalfPence / 100).toFixed(2)} of available credit covers your half of this secured pitch, £${((challengerHalfPence - chalAvail) / 100).toFixed(2)} short.`
         );
         return;
       }
@@ -269,6 +288,20 @@ export default function ChallengePanel({
           await supabase.from("match_confirmations").insert(
             allPlayers.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
           );
+
+          // If either captain ran a poll that proposed this exact date, it
+          // already asked the squad this question — carry the answers over
+          // rather than making everyone reply twice. Per team, since each side
+          // answered its own poll.
+          for (const squadTeamId of [post.team_id, team.id]) {
+            await seedAvailabilityFromPoll(supabase, {
+              teamId: squadTeamId,
+              target: { matchId: matchRecord.id },
+              date: post.match_date,
+              time: pitchTime,
+              playerIds: allPlayers.filter((p) => p.team_id === squadTeamId).map((p) => p.player_id),
+            });
+          }
         }
 
         // ── Secure the pitch with team credit (credit/individual modes — PAYMENT_PLAN §10) ──
@@ -324,16 +357,12 @@ export default function ChallengePanel({
         // test balance must not block match confirmation. Records a
         // venue_transfers row either way so credit↔cash can be reconciled.
         if (pitch?.id) {
-          fetch("/api/connect/venue-transfer", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pitchId: pitch.id,
-              bookingId: pitchBookingId,
-              matchId: matchRecord.id,
-              teamId: post.team_id,
-              amountPence: feePence,
-            }),
+          authedPost("/api/connect/venue-transfer", {
+            pitchId: pitch.id,
+            bookingId: pitchBookingId,
+            matchId: matchRecord.id,
+            teamId: post.team_id,
+            amountPence: feePence,
           }).catch(() => {});
         }
       }
@@ -436,9 +465,30 @@ export default function ChallengePanel({
             Choose from the posting team&apos;s preferred pitches for {post.date}.
           </p>
 
-          {slotTakenError && (
+          {slotTakenError && (shortfall ? (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2.5 mb-3 flex items-center gap-3">
+              <p className="text-[11px] text-yellow-600 flex-1">{slotTakenError}</p>
+              <button onClick={() => setTopUpOpen(true)}
+                className="shrink-0 px-3 py-2 rounded-btn bg-accent text-white font-bold text-xs">Top up now</button>
+            </div>
+          ) : (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5 mb-3">
               <p className="text-xs text-red-600">{slotTakenError}</p>
+            </div>
+          ))}
+
+          {/* Top up mid-challenge — this panel stays mounted behind it so the
+              captain lands back on the pitch list with the new balance. */}
+          {topUpOpen && shortfall && user && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <TopUpModal
+                teamId={shortfall.teamId}
+                userId={user.id}
+                currentPence={shortfall.balancePence}
+                suggestedPence={shortfall.shortfallPence}
+                onClose={() => setTopUpOpen(false)}
+                onSuccess={() => { setTopUpOpen(false); setShortfall(null); setSlotTakenError(null); }}
+              />
             </div>
           )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authedDelete } from "@/lib/authed-fetch";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -145,11 +146,7 @@ export default function CreateMatchPage() {
       .then(async ({ data: req }) => {
         if (!req) { setAvailabilityRequest(null); return; }
         if (isPollExpired(req.date_options)) {
-          await fetch("/api/availability/delete", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ requestId: req.id, captainId: user.id }),
-          });
+          await authedDelete("/api/availability/delete", { requestId: req.id });
           setAvailabilityRequest(null);
           return;
         }

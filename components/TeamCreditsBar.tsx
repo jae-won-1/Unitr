@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import SettlePaymentsModal from "@/components/SettlePaymentsModal";
 import BottomSheet from "@/components/BottomSheet";
+import CashOutModal from "@/components/CashOutModal";
 
 // The team's money bar: credit balance and transaction log, the player's own
 // top-up / settle-up popup, and — for captains — the payment status of every
@@ -41,6 +42,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showCashOut, setShowCashOut] = useState(false);
   const [logTab, setLogTab] = useState<"deposits" | "bookings" | "reimbursed">("deposits");
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [bookingsExpanded, setBookingsExpanded] = useState(false);
@@ -697,8 +699,28 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                 );
               })()}
             </div>
+
+            {/* Money back out. Sits under the log rather than in the action
+                row on Home: refunding is rare and deliberate, and a captain
+                should have to open the ledger and look at it first. */}
+            {role === "captain" && credits > 0 && (
+              <div className="pt-2 border-t border-border flex-shrink-0">
+                <button onClick={() => { setShowLog(false); setShowCashOut(true); }}
+                  className="w-full py-2.5 rounded-xl border border-border text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors">
+                  Refund leftover credit to players&rsquo; cards
+                </button>
+              </div>
+            )}
           </>
         </BottomSheet>
+      )}
+
+      {showCashOut && teamId && (
+        <CashOutModal
+          teamId={teamId}
+          onClose={() => setShowCashOut(false)}
+          onDone={(balancePence) => setCredits(balancePence / 100)}
+        />
       )}
 
       {/* Collect Payment modal — captain only. Drill-down: recent matches with

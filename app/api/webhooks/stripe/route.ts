@@ -81,6 +81,65 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      // A refund — ours from /api/credit/refund, or one made by hand in the
+      // Stripe dashboard. Either way the credit that payment granted has to
+      // come back off the team, or the ledger says a team holds money the
+      // bank has already returned.
+      //
+      // refund_credit is idempotent on the refund id, so our own route having
+      // debited it already makes this a no-op. That is deliberate: the route
+      // debits for an immediate answer, this is the safety net for when it
+      // couldn't, and for refunds the app never saw.
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        const piId = typeof charge.payment_intent === "string"
+          ? charge.payment_intent
+          : charge.payment_intent?.id;
+        if (!piId) break;
+
+        // The event's own refunds list can be truncated, so ask for the set.
+        const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
+
+        for (const refund of refunds.data) {
+          if (refund.status !== "succeeded") continue;
+
+          // Which team's credit did this payment create? The deposit row the
+          // webhook (or settle-match) wrote is the record of that — safer
+          // than the PaymentIntent metadata, which a ringer fee or a card
+          // setup wouldn't have filled in the same way.
+          const { data: deposit } = await adminSupabase
+            .from("team_credit_transactions")
+            .select("team_id, player_id, amount_pence")
+            .eq("stripe_payment_intent_id", piId)
+            .maybeSingle();
+          if (!deposit) continue;   // a payment that never became team credit
+
+          // Never reverse more credit than the payment granted: settle-match
+          // charges the share plus the 5% fee but only credits the share, so
+          // a full refund of that charge exceeds the credit it created.
+          const amount = Math.min(refund.amount, deposit.amount_pence as number);
+          if (amount <= 0) continue;
+
+          const { error } = await adminSupabase.rpc("refund_credit", {
+            p_team_id: deposit.team_id,
+            p_amount_pence: amount,
+            p_player_id: deposit.player_id,
+            p_stripe_refund_id: refund.id,
+            p_payment_intent_id: piId,
+            // The money is already back on the card. If the team has spent
+            // the credit since, the balance goes negative and they owe it —
+            // see supabase_refunds.sql.
+            p_allow_negative: true,
+          });
+          if (error) {
+            console.error(`stripe-webhook: refund reversal failed for ${refund.id}:`, error.message);
+            return NextResponse.json({ error: "Could not apply refund" }, { status: 500 });
+          }
+          console.log(`stripe-webhook: reversed ${amount}p from team ${deposit.team_id} (${refund.id})`);
+        }
+        break;
+      }
+
       case "payment_intent.payment_failed": {
         const pi = event.data.object as Stripe.PaymentIntent;
         console.warn(`stripe-webhook: payment failed ${pi.id}: ${pi.last_payment_error?.message ?? "unknown"}`);

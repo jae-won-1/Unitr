@@ -8,6 +8,7 @@
 // Reachable at /admin/finance; app/admin/layout.tsx gates it to admin accounts.
 
 import { useEffect, useState } from "react";
+import { authedGet, authedPost } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 
 const CREDIT_LABELS: Record<string, string> = {
@@ -40,7 +41,7 @@ export default function AdminFinancePage() {
 
   // Test-mode Stripe platform balance — what venue transfers actually draw from.
   const loadBalance = () =>
-    fetch("/api/dev/fund-test-balance")
+    authedGet("/api/dev/fund-test-balance")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d && !d.error) setStripeBalance(d); })
       .catch(() => {});
@@ -48,10 +49,7 @@ export default function AdminFinancePage() {
   const handleFund = async () => {
     setFunding(true);
     try {
-      const res = await fetch("/api/dev/fund-test-balance", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountPence: 20000 }),
-      });
+      const res = await authedPost("/api/dev/fund-test-balance", { amountPence: 20000 });
       const d = await res.json();
       if (res.ok) setStripeBalance((prev) => ({ availablePence: d.availablePence, pendingPence: prev?.pendingPence ?? 0 }));
     } finally {

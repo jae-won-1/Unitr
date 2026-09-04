@@ -13,5 +13,7 @@ drop policy if exists "Joiner can leave" on public.open_match_teams;
 drop policy if exists "Anyone can join open matches" on public.open_match_teams;
 drop policy if exists "Anyone can leave open matches" on public.open_match_teams;
 
+drop policy if exists "Anyone can join open matches" on public.open_match_teams;
 create policy "Anyone can join open matches" on public.open_match_teams for insert with check (true);
+drop policy if exists "Anyone can leave open matches" on public.open_match_teams;
 create policy "Anyone can leave open matches" on public.open_match_teams for delete using (true);

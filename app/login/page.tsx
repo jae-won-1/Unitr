@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,6 +11,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ?invite=<code> means they came from a captain's link and this sign-in is
+  // a step on the way into a squad. Read after mount rather than with
+  // useSearchParams, which would force a Suspense boundary around the form.
+  const [invite, setInvite] = useState<string | null>(null);
+  useEffect(() => { setInvite(inviteFromLocation()); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,17 +31,22 @@ export default function LoginPage() {
       return;
     }
 
+    // An invite outranks the default landing page, but not the venue portal —
+    // a venue account can't join a squad, and /join says so rather than
+    // silently dropping them somewhere they don't belong.
+    const invited = inviteDestination(invite);
+
     // Redirect venue managers to their portal
     if (data.user) {
       const { data: profile } = await supabase
         .from("profiles").select("account_type").eq("id", data.user.id).maybeSingle();
       setLoading(false);
-      router.push(profile?.account_type === "venue_manager" ? "/venue/calendar" : "/");
+      router.push(profile?.account_type === "venue_manager" ? "/venue/calendar" : invited ?? "/");
       return;
     }
 
     setLoading(false);
-    router.push("/");
+    router.push(invited ?? "/");
   };
 
   return (
@@ -113,7 +125,7 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-text-secondary">
           Don&apos;t have an account?{" "}
-          <a href="/register" className="text-accent-ink font-medium">Create one</a>
+          <a href={invite ? inviteAuthHref("/register", invite) : "/register"} className="text-accent-ink font-medium">Create one</a>
         </p>
       </form>
       </div>

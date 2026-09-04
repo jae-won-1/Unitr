@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
 import { useRole } from "@/contexts/RoleContext";
@@ -45,10 +46,7 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
 
     let brand: string | null = null, last4: string | null = null;
     try {
-      const res = await fetch("/api/payment-method", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentMethodId: pmId }),
-      });
+      const res = await authedPost("/api/payment-method", { paymentMethodId: pmId });
       const d = await res.json();
       brand = d.brand ?? null; last4 = d.last4 ?? null;
     } catch { /* brand/last4 are cosmetic — saving the card still succeeds */ }
@@ -111,10 +109,7 @@ function PaymentMethodSection() {
     if (!user) return;
     setStarting(true); setErr(null);
     try {
-      const res = await fetch("/api/create-setup-intent", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId, email: user.email }),
-      });
+      const res = await authedPost("/api/create-setup-intent", {});
       const d = await res.json();
       if (d.clientSecret) { setSetupSecret(d.clientSecret); setCustomerId(d.customerId); }
       else setErr(d.error ?? "Could not start card setup. Check Stripe keys in .env.local");

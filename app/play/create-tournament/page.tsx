@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import BookPitchPanel from "@/components/BookPitchPanel";
+import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 
 // Captain-hosted tournament creation.
 //   1. The captain books & pays for a multi-hour pitch block upfront from team
@@ -137,9 +139,8 @@ export default function CreateTournamentPage() {
     if (bookErr || !booking) { setSaving(false); setError("Couldn't reserve the pitch. Please try again."); return; }
 
     // 3) Pay the pitch from team credit (fee + 5%). Roll back the booking on failure.
-    const payRes = await fetch("/api/book/pay-credit", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: team.id, feePence: totalPence, bookingId: booking.id }),
+    const payRes = await authedPost("/api/book/pay-credit", {
+      teamId: team.id, feePence: totalPence, bookingId: booking.id,
     }).catch(() => null);
     const payData = payRes ? await payRes.json().catch(() => null) : null;
     if (!payRes || !payRes.ok || !payData?.ok) {
@@ -188,10 +189,27 @@ export default function CreateTournamentPage() {
       payment_status: "paid",
     });
 
+    // 5b) Ask the squad if they can play it. Hosting is still entering: the
+    //     organiser fields a team, so the entry raises the same availability
+    //     question on Home and the Calendar that any other entry does. A poll
+    //     that proposed this date has already answered it for whoever voted.
+    const squad = await squadPlayerIds(supabase, team.id, user.id);
+    if (squad.length > 0) {
+      await supabase.from("match_confirmations").insert(squad.map((pid) => ({
+        open_match_id: om.id, player_id: pid, team_id: team.id, status: "pending",
+      })));
+      await seedAvailabilityFromPoll(supabase, {
+        teamId: team.id,
+        target: { openMatchId: om.id },
+        date,
+        time: startTime,
+        playerIds: squad,
+      });
+    }
+
     // 6) Cash side: pay the venue the pitch fee (Stripe Connect, test mode).
-    fetch("/api/connect/venue-transfer", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pitchId: pitch.id, bookingId: booking.id, teamId: team.id, openMatchId: om.id, amountPence: pitchFeePence }),
+    authedPost("/api/connect/venue-transfer", {
+      pitchId: pitch.id, bookingId: booking.id, teamId: team.id, openMatchId: om.id, amountPence: pitchFeePence,
     }).catch(() => {});
 
     setSaving(false);

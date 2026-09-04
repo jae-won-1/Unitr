@@ -272,6 +272,17 @@ function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean })
       </div>
       {isCaptain && (
         <div className="flex gap-2 mt-3">
+          {/* Inviting players is the thing a new captain came here to do, so it
+              gets the filled button and its own row. The link itself lives in
+              Team Settings alongside the joining fee — the two questions a
+              captain answers about letting someone in. */}
+          <a href="/my-team/settings#invite" className="w-full py-2.5 rounded-btn bg-accent text-white text-xs font-bold text-center">
+            Invite Players
+          </a>
+        </div>
+      )}
+      {isCaptain && (
+        <div className="flex gap-2 mt-2">
           <a href="/my-team/settings" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
             Team Settings
           </a>

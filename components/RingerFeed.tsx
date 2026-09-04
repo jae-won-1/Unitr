@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -282,10 +283,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
     setError(null);
     setStarting(true);
     try {
-      const res = await fetch("/api/ringer/create-intent", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: post.id, playerId: user.id, email: user.email }),
-      });
+      const res = await authedPost("/api/ringer/create-intent", { requestId: post.id });
       const data = await res.json();
       if (data.clientSecret) setClientSecret(data.clientSecret);
       else setError(data.error ?? "Couldn't start the payment.");
@@ -298,10 +296,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
   const confirmJoin = async (paymentIntentId: string) => {
     if (!target || !user) return;
     try {
-      const res = await fetch("/api/ringer/join", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: target.id, playerId: user.id, paymentIntentId }),
-      });
+      const res = await authedPost("/api/ringer/join", { requestId: target.id, paymentIntentId });
       const data = await res.json();
       if (!data.ok) { setError(data.error ?? "Payment went through but the join failed."); return; }
       if (data.squadWarning) setError(data.squadWarning);

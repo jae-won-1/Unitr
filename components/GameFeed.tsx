@@ -574,6 +574,8 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
 
   return (
     <section className="space-y-4">
+      <h3 className="font-bold">Find Matches</h3>
+
       <GameTypeSelect value={tab} onChange={setTab} />
 
       <DateDial value={dateKey} onChange={setDateKey} counts={dialCounts} />

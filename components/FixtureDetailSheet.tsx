@@ -5,15 +5,17 @@ import { supabase } from "@/lib/supabase";
 import { KIND_LABEL, KIND_STYLE, type CalendarEntry } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
+import TournamentFixtureList from "@/components/TournamentFixtureList";
 
 // What opens when you tap anything on the Calendar. Basic detail for everyone;
 // the management CTA appears only for the person entitled to it.
 //
 // Nothing here re-implements a management screen — /my-team/match/[matchId] is
-// already a full manage surface (info / attendance / lineup / tactics)
-// and /play/tournament/[id] owns schedules and referees. This sheet is the door
-// to them, plus the one action that had nowhere else to live once the Play page
-// went away: turning a direct pitch booking into a secured match post.
+// already a full manage surface (info / attendance / lineup / tactics),
+// /my-team/tournament-match/[fixtureId] is the same surface for one game inside
+// a tournament, and /play/tournament/[id] owns schedules and referees. This
+// sheet is the door to them, plus the one action that had nowhere else to live
+// once the Play page went away: turning a booking into a secured match post.
 
 export type ViewerTeam = { id: string; name: string; location: string } | null;
 
@@ -199,13 +201,17 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
             ))}
           </div>
 
-          {/* Availability, for anyone in the squad. Only confirmed friendlies
-              have a matches row to record it against. */}
-          {entry.isUpcoming && entry.kind === "friendly" && entry.matchId && viewerId && viewerTeamId && (
+          {/* Availability, for anyone in the squad. A friendly records it
+              against its matches row, an entered tournament against its
+              open_matches row; nothing else has a record to write to. */}
+          {entry.isUpcoming && (entry.matchId || entry.openMatchId)
+            && (entry.kind === "friendly" || entry.kind === "tournament")
+            && viewerId && viewerTeamId && (
             <div className="bg-surface border border-border rounded-btn p-4">
               <p className="text-xs text-text-secondary mb-2">Your availability</p>
               <AvailabilityButtons
                 matchId={entry.matchId}
+                openMatchId={entry.openMatchId}
                 playerId={viewerId}
                 teamId={viewerTeamId}
                 onChanged={onChanged}
@@ -241,12 +247,24 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
           )}
 
           {entry.kind === "tournament" && (
-            <a href={`/play/tournament/${entry.id}`}
-              className={`block w-full py-3 rounded-xl font-bold text-sm text-center ${
-                isCaptain ? "bg-accent text-white" : "border border-border text-text-secondary font-semibold"
-              }`}>
-              {isCaptain ? "Manage schedule & referees" : "View schedule & referees"}
-            </a>
+            <div className="space-y-3">
+              {/* The tournament is one commitment; the games inside it are
+                  several, and each has its own lineup to set or read. Only for
+                  a team that entered — openMatchId is exactly that test. */}
+              {entry.openMatchId && (
+                <TournamentFixtureList
+                  openMatchId={entry.openMatchId}
+                  teamId={viewerTeamId}
+                  isCaptain={isCaptain}
+                />
+              )}
+              <a href={`/play/tournament/${entry.id}`}
+                className={`block w-full py-3 rounded-xl font-bold text-sm text-center ${
+                  isCaptain ? "bg-accent text-white" : "border border-border text-text-secondary font-semibold"
+                }`}>
+                {isCaptain ? "Manage schedule & referees" : "View schedule & referees"}
+              </a>
+            </div>
           )}
 
           {entry.kind === "my_post" && (

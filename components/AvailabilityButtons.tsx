@@ -14,24 +14,27 @@
 // handleConfirmAttendance on the manage-match page was dead code with nothing
 // calling it. This component is that button, finally rendered.
 //
-// FRIENDLIES ONLY. Tournaments, pitch bookings and ringer entries have no
-// matches row to hang a confirmation off, so callers pass no matchId and get
-// nothing back.
+// FRIENDLIES AND TOURNAMENTS. A tournament entry has no matches row, so it
+// answers against open_match_id instead (supabase_event_availability.sql);
+// callers pass whichever of the two they have. Pitch bookings and ringer
+// entries have neither and get nothing back.
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
 import { fmtFee, getJoiningFeeStatus } from "@/lib/joining-fee";
+import { readMyStatus, writeMyStatus, type ConfirmStatus } from "@/lib/event-availability";
 
-export type ConfirmStatus = "confirmed" | "declined" | "pending";
+export type { ConfirmStatus };
 
 export function AvailabilityButtons({
   matchId,
+  openMatchId,
   playerId,
   teamId,
   size = "md",
   onChanged,
 }: {
-  matchId: string;
+  matchId?: string | null;
+  openMatchId?: string | null;
   playerId: string;
   teamId: string;
   size?: "sm" | "md";
@@ -48,23 +51,18 @@ export function AvailabilityButtons({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [{ data, error }, fee] = await Promise.all([
-        supabase
-          .from("match_confirmations")
-          .select("status")
-          .eq("match_id", matchId)
-          .eq("player_id", playerId)
-          .maybeSingle(),
+      const [current, fee] = await Promise.all([
+        readMyStatus({ matchId, openMatchId }, playerId),
         getJoiningFeeStatus(teamId, playerId),
       ]);
       if (cancelled) return;
-      if (error) setError(true);
-      else setStatus((data?.status as ConfirmStatus) ?? "pending");
+      if (current === null) setError(true);
+      else setStatus(current);
       setFeeOwedPence(fee.owedPence);
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [matchId, playerId, teamId]);
+  }, [matchId, openMatchId, playerId, teamId]);
 
   async function set(next: ConfirmStatus) {
     if (busy) return;
@@ -75,15 +73,10 @@ export function AvailabilityButtons({
     setStatus(target);          // optimistic — the tap should feel instant
     setBusy(true);
 
-    const { error } = await supabase
-      .from("match_confirmations")
-      .upsert(
-        { match_id: matchId, player_id: playerId, team_id: teamId, status: target },
-        { onConflict: "match_id,player_id" },
-      );
+    const ok = await writeMyStatus({ matchId, openMatchId }, { playerId, teamId, status: target });
 
     setBusy(false);
-    if (error) {
+    if (!ok) {
       setStatus(previous);      // revert rather than show a lie
       setError(true);
       return;

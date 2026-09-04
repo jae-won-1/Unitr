@@ -98,7 +98,8 @@ Three variants keyed off role, all sharing the same skeleton: quick-nav row → 
 - **player** — `PlayerActionStrip` (what the captain needs from you), **next fixture only**,
   then `GameFeed` where the action is "Suggest to team" rather than entering directly.
 - **captain** — join-request strip, `SuggestionsStrip` (squad suggestions to review),
-  `TeamCreditsBar`, `PollStatusTile` (availability poll progress), next fixture with a
+  `TeamCreditsBar`, `PollStatusTile` (poll progress **and** availability for games already
+  committed to), next fixture with a
   "Manage match" CTA, then `GameFeed` with real actions (Challenge / Enter) and the captain's
   own live post pinned above.
 
@@ -118,11 +119,16 @@ type on each date; picking a date scopes both sections to it.
 Tapping any entry opens `components/FixtureDetailSheet.tsx` — basic detail for everyone, plus
 the management CTA the viewer is entitled to: **Manage match** → `/my-team/match/[matchId]`,
 **Submit result**, **Manage tournament**, **Edit / Take down post**, or **Turn into Match
-Post** on a booking.
+Post** on a booking. A tournament entry also lists the team's own games in it, each opening
+`/my-team/tournament-match/[fixtureId]`.
 
 `lib/calendar-entries.ts` merges five sources into one `CalendarEntry` shape: confirmed
 friendlies (`match_posts` + `challenges` + `matches`), tournaments (`open_matches`), the
 captain's still-open posts, ringer games the viewer paid into, and direct pitch bookings.
+
+Upcoming friendlies and **entered tournaments** carry Available / Unavailable buttons on the
+card and in the sheet — see Availability below. A tournament the team only *hosts* doesn't:
+organising isn't entering, and an organiser buys into its own tournament like anyone else.
 
 ### My Team (`app/my-team/page.tsx`)
 
@@ -133,12 +139,53 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/players` | Squad list → individual profiles |
 | `/my-team/transfer` | Transfer Market — two-sided player/team discovery, offers, join requests, friend requests |
 | `/my-team/tactics` | Team default formation + tactics board |
-| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee (was `/my-team/team-profile`) |
+| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee, invite link (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
 | `/my-team/history` | **Settle Payments** — per-fixture payment collection, not a results archive |
 | `/my-team/match/[matchId]` | Manage Match — overview / squad / payment / tactics / result tabs, plus ringer requests |
 | `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad |
+| `/my-team/tournament-match/[fixtureId]` | Manage Tournament Fixture — the same info / attendance / lineup / tactics surface for one game inside a tournament |
+
+#### Tournament fixtures
+
+A tournament is **one commitment but several games**. The commitment is the `open_matches`
+row — one buy-in, one Calendar entry, one availability answer. The games are
+`tournament_matches` rows, drawn up by the organiser on `/play/tournament/[id]`.
+
+`/my-team/tournament-match/[fixtureId]` is the per-game surface, deliberately the same shape
+as `/my-team/match/[matchId]`: the captain picks a formation and lineup, everyone else reads
+it, and both see the kickoff slot, referee and score. Two things it does **not** duplicate:
+
+- **Availability is per tournament, not per fixture.** The squad answers once for the day
+  against `open_match_id`; the page shows that tally and lets the viewer change their own
+  answer, but never asks a second question.
+- **Results belong to the organiser.** Scores go in on `/play/tournament/[id]` and nowhere
+  else, so there's no Submit Result here — only the score once it exists.
+
+Reached from all three places a friendly's manage page is: the tournament's schedule rows,
+the Calendar (`FixtureDetailSheet` lists the team's own games under the tournament entry),
+and My Team's Manage Match tab — all through `components/TournamentFixtureList.tsx`.
+`lib/tournament-match.ts` is the only place a fixture, its team-side test, or its saved plan
+is read or written.
+
+#### Invite links
+
+A captain's team has one invite link, `/join/<code>`, minted on first view of Team Settings
+and rotatable from there. Opening it **joins the squad directly** — no join request to
+approve, because handing over the link *is* the approval. The code is a bearer token, which
+is why it's a secret rather than the team uuid and why resetting exists.
+
+`app/join/[code]/page.tsx` serves two arrivals from the same URL: signed out gets a team
+preview plus Create account / Sign in (the code rides on `?invite=`, with a localStorage
+backstop for an email-confirmation round trip); signed in redeems on mount and the page is
+the receipt. Auth pages never join — they redirect back to `/join/<code>`, so one screen
+decides what an invite means.
+
+A link join writes the same approved `team_members` row the Approve button writes, so the
+joining-fee snapshot and welcome DM fire unchanged — the new member still owes the fee.
+Refused cases (captains, players already in a squad, venue accounts) are plain sentences,
+not errors; one approved membership per player is an invariant `RoleContext` depends on.
 
 ### Book (`app/book/page.tsx`)
 
@@ -162,6 +209,41 @@ any player route.
 ### Admin
 
 `/admin/finance` — reconciliation view over the credit ledger and Stripe transfers.
+
+## Availability
+
+Two records, one question — "am I playing?". `lib/event-availability.ts` is the only place
+that reads or writes either.
+
+- **The poll** (`availability_requests` / `availability_responses`) asks which of several
+  **proposed** dates a player could make. A captain creates one from `PollStatusTile` or
+  `/my-team/collect-availability`. A team has exactly one live poll; posting new dates
+  replaces it.
+- **The fixture answer** (`match_confirmations`, status `confirmed | declined | pending`)
+  is per game and stays editable up to kickoff. A friendly keys off `match_id`, a tournament
+  entry off `open_match_id` (`supabase_event_availability.sql`) — a tournament has no
+  `matches` row.
+
+**The poll is optional.** A captain who takes a match off the feed or enters a tournament
+outright never runs one, so committing the team is what raises the question:
+
+- Accepting a challenge writes a pending row per squad member on both sides
+  (`ChallengePanel`).
+- Entering a tournament does the same (`/api/tournaments/join`), as does creating one and
+  entering your own team (`/play/create-tournament`).
+- Both then call `seedAvailabilityFromPoll`: if a live poll proposed **that same date**, its
+  answers carry straight over — a yes becomes Available, an answer that skipped the date
+  becomes Unavailable, a non-reply stays pending. Nobody is asked the same question twice.
+
+Everyone in the squad sees the same list, wherever they are: `AvailabilityList` on Home
+(inside `PlayerActionStrip` for players, `PollStatusTile` for the captain, who is a squad
+member too), and `AvailabilityButtons` on each Calendar card and in `FixtureDetailSheet`.
+The captain's copy carries the squad's tally per game (`loadSquadAnswerCounts`), and
+`/my-team/tournament-match/[fixtureId]` shows the same tally as a named list when the captain
+is picking a lineup for one of the tournament's games.
+
+Settle Payments reads the fixture's own answers first and falls back to the poll only when
+nobody answered the fixture (`SettlePaymentsModal`).
 
 ## Payment model
 
@@ -192,6 +274,16 @@ Variants:
   their shares afterwards. Invitations can carry a per-team discount.
 - **Ringers** — a guest pays Unitr a **flat £5 by card**. It never touches team credit or the
   pitch split, and a ringer is excluded from settlement via `match_confirmations.is_ringer`.
+- **Refunds** — money can go back out, two ways, both through `refund_credit`
+  (`supabase_refunds.sql`), idempotent on the Stripe refund id. **Cash-out**:
+  `/api/credit/refund` + `CashOutModal` hands leftover team credit back to the cards
+  that funded it — an equal amount each, capped at what that player personally paid,
+  with the remainder re-shared (`allocateEqually` in `lib/team-refunds.ts`). Cash the
+  captain recorded by hand has no card behind it and stays in the balance. **Reversal**:
+  `charge.refunded` at the webhook takes back the credit any refunded payment granted,
+  including one made by hand in the Stripe dashboard — this one is allowed to drive the
+  balance negative, because the money has already gone and the team owes it. Joining-fee
+  `paid` figures are deliberately never reversed.
 - **Joining fees** — a captain can set a one-off fee (`teams.joining_fee_pence`) asked of each
   new member. It is not a separate pot: paying it is a top-up into team credit. The fee owed is
   snapshotted onto `team_members.joining_fee_due_pence` at approval (trigger), and
@@ -222,10 +314,14 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_open_matches.sql`, `supabase_tournament_*.sql` | Tournaments, schedules, referees, invitations, notifications |
 | `supabase_ringers.sql` | `ringer_requests`, `ringer_signups`, `is_ringer` |
 | `supabase_transfer_market.sql` | `player_offers`, `friend_requests` |
+| `supabase_refunds.sql` | `refund_credit`, `team_card_contributions`, refund columns on the ledger; run after `supabase_joining_fees.sql` |
 | `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
+| `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |
+| `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
+| `supabase_tournament_match_tactics.sql` | `match_tactics.tournament_match_id` — a lineup targets a friendly **or** a tournament fixture; run after `supabase_match_tactics.sql` and `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
 
 ## Conventions worth knowing
@@ -245,6 +341,24 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.
+- **PaymentIntents pin `allow_redirects: "never"`.** Every confirm in the app is
+  `confirmPayment({ redirect: "if_required" })` with no `return_url`, so a redirect-based
+  method (Klarna, iDEAL) would error instead of paying. Test mode hides this — a live
+  account offers whatever is enabled on it.
+- **Every API route authenticates its caller.** RLS is `using (true)` and the anon key is
+  public, so the API routes are where authorisation actually happens. A route identifies the
+  caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the
+  `Authorization` header — never an id from the body) and checks entitlement with
+  `isTeamCaptain`, `isTeamMember`, `ownsPitch` or `isAdmin` from the same file. The browser
+  side is `authedPost` / `authedDelete` / `authedGet` in `lib/authed-fetch.ts` — a plain
+  `fetch("/api/…")` from a component is a bug, it will 401.
+- **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
+  the amount all come from the session and the database. `/api/connect/venue-transfer` is the
+  sharp end: it moves real money out of the platform balance, so it caps every transfer at
+  `payoutCeilingPence` — what the referenced booking or tournament actually costs — and
+  refuses callers with no stake in the fixture. The transfer itself lives in
+  `lib/venue-payout.ts` so `/api/tournaments/join` can pay a venue by calling the function
+  rather than forging an HTTP request to a route that now demands a session.
 
 ## Technical areas still requiring real expertise
 

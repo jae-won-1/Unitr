@@ -5,7 +5,10 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-password"];
+// /join is on this list for the same reason the auth screens are: it is an
+// entry point, often the first Unitr screen someone ever sees, and it carries
+// the wordmark itself rather than the app chrome.
+const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/join"];
 
 export default function TopBar() {
   const pathname = usePathname();

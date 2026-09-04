@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
@@ -91,15 +92,12 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
     setError(null);
     setLoadingSecret(true);
     try {
-      const res = await fetch("/api/create-credits-intent", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amountPence: Math.round(effectiveAmount * 100),
-          teamId,
-          playerId: userId,   // rides along in the PaymentIntent metadata so the
-                              // webhook can attribute the deposit in the ledger
-          customerId: saveCard.customerId,
-        }),
+      // The payer and their Stripe customer are read from the session on the
+      // server — it stamps playerId into the PaymentIntent metadata so the
+      // webhook can attribute the deposit in the ledger.
+      const res = await authedPost("/api/create-credits-intent", {
+        amountPence: Math.round(effectiveAmount * 100),
+        teamId,
       });
       const data = await res.json();
       if (data.clientSecret) setClientSecret(data.clientSecret);
