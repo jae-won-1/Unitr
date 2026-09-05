@@ -12,6 +12,7 @@ import TopUpModal from "@/components/TopUpModal";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { loadLedTeam } from "@/lib/team-leadership";
 import { authedPost } from "@/lib/authed-fetch";
+import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL, UNITR_FEE_RATE } from "@/lib/unitr-fee";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -177,7 +178,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
   onTopUp: (shortfallPence: number) => void;
 }) {
   const pitchFeePence = Math.round(pitch.price_per_hour * 100);
-  const unitrFeePence = Math.round(pitchFeePence * 0.05);
+  const unitrFeePence = feeOn(pitchFeePence);
   const cardTotalPence = pitchFeePence + unitrFeePence;
   const creditOk = isCaptain && teamCreditPence !== null && teamCreditPence >= cardTotalPence;
   const shortfallPence = Math.max(0, cardTotalPence - (teamCreditPence ?? 0));
@@ -212,7 +213,9 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
         <div className="bg-surface border border-border rounded-btn p-3 mb-4 space-y-1.5 text-xs">
           <div className="flex justify-between"><span className="text-text-secondary">When</span><span className="font-semibold">{fmtDate(date)} · {time}–{endTime}</span></div>
           <div className="flex justify-between"><span className="text-text-secondary">Pitch hire (1hr)</span><span className="font-semibold">£{(pitchFeePence / 100).toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-text-secondary">Unitr fee (5%)</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
+          {UNITR_FEE_ENABLED && (
+            <div className="flex justify-between"><span className="text-text-secondary">Unitr fee ({UNITR_FEE_LABEL})</span><span className="font-semibold">£{(unitrFeePence / 100).toFixed(2)}</span></div>
+          )}
           <div className="flex justify-between border-t border-border pt-1.5 mt-1.5">
             <span className="font-semibold">Total</span>
             <span className="font-bold text-accent-ink">£{(cardTotalPence / 100).toFixed(2)}</span>
@@ -317,7 +320,7 @@ function BookingConfirmed({ pitch, date, time, posted, onDone }: {
         <p className="text-xs text-text-secondary mb-1">{pitch.address}</p>
         <p className="text-xs text-accent-ink font-medium mb-4">{fmtDate(date)} · {time}</p>
         <div className="bg-surface border border-border rounded-btn p-3 mb-5 text-left space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-text-secondary">Total (inc. 5% fee)</span><span className="font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-text-secondary">Total{UNITR_FEE_ENABLED ? ` (inc. ${UNITR_FEE_LABEL} fee)` : ""}</span><span className="font-bold text-accent-ink">£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE)).toFixed(2)}</span></div>
           <p className="text-[10px] text-text-secondary">
             {posted
               ? "Your pitch is secured and the match is live in the Play feed — any team can join straight away."
@@ -530,7 +533,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
     const h = Number(time.split(":")[0]);
     const endTime = `${String(Math.min(h + 1, 23)).padStart(2, "0")}:00`;
     const pitchFeePence = Math.round(pitch.price_per_hour * 100);   // what the venue receives
-    const unitrFeePence = Math.round(pitchFeePence * 0.05);
+    const unitrFeePence = feeOn(pitchFeePence);
 
     const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
       pitch_id: pitch.id,
@@ -776,7 +779,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                   <div className="flex items-start justify-between mb-1">
                     <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                     <div className="text-right flex-shrink-0">
-                      <span className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05).toFixed(2)}</span>
+                      <span className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE)).toFixed(2)}</span>
                       <p className="text-[10px] text-text-secondary">per hour</p>
                     </div>
                   </div>

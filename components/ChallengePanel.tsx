@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import TopUpModal from "@/components/TopUpModal";
 import { seedAvailabilityFromPoll } from "@/lib/event-availability";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { feeOn, UNITR_FEE_RATE } from "@/lib/unitr-fee";
 
 // The challenger's side of a match post: pick one of the poster's pitch
 // options, confirm, and both teams are debited their half of the fee (or, for
@@ -230,7 +231,7 @@ export default function ChallengePanel({
         booker_name: `${post.team} vs ${team.name}`,
         player_count: 22,
         per_player_pence: perPlayerPence,
-        unitr_fee_pence: Math.round(perPlayerPence * 0.05),
+        unitr_fee_pence: feeOn(perPlayerPence),
       }).eq("id", post.securedBookingId);
       pitchBookingId = post.securedBookingId;
     } else if (pitch?.id) {
@@ -250,7 +251,7 @@ export default function ChallengePanel({
         total_price_pence: pitch.price * 100,
         player_count: 22,
         per_player_pence: perPlayerPence,
-        unitr_fee_pence: Math.round(perPlayerPence * 0.05),
+        unitr_fee_pence: feeOn(perPlayerPence),
         status: "confirmed",
       }).select("id").single();
       if (bookingErr) console.error("pitch_bookings insert failed:", bookingErr.message, bookingErr.details);
@@ -547,7 +548,7 @@ export default function ChallengePanel({
                 </p>
               ) : (
                 <p>
-                  £{(((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 2) * 1.05).toFixed(2)} charged from the team credit when you send challenge.
+                  £{(((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 2) * (1 + UNITR_FEE_RATE)).toFixed(2)} charged from the team credit when you send challenge.
                 </p>
               )}
             </div>

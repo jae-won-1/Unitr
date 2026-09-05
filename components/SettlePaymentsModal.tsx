@@ -8,6 +8,7 @@ import { outcomeOf, OUTCOME_TEXT } from "@/lib/match-results";
 import { fmtFee } from "@/lib/joining-fee";
 import BottomSheet from "@/components/BottomSheet";
 import { loadLeadership } from "@/lib/team-leadership";
+import { withFee } from "@/lib/unitr-fee";
 
 // Settle Payments — per-fixture payment collection for the captain.
 //
@@ -161,7 +162,7 @@ function PaymentCollectionPanel({
   const targetId = target.kind === "match" ? target.matchId : target.openMatchId;
   const isTournament = target.kind === "tournament";
 
-  const totalWithFee = Math.round(teamPoolPence * 1.05);
+  const totalWithFee = withFee(teamPoolPence);
 
   useEffect(() => {
     async function load() {

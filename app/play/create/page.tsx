@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import BookPitchPanel from "@/components/BookPitchPanel";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { UNITR_FEE_RATE } from "@/lib/unitr-fee";
 
 type ConfirmedDate = {
   id: string;
@@ -591,7 +592,7 @@ export default function CreateMatchPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{p.name}</p>
                       <p className="text-xs text-text-secondary">
-                        {p.format} · £{((p.price / 2) * 1.05).toFixed(2)}/hr each{pitchTime ? ` · ${pitchTime}` : ""}
+                        {p.format} · £{((p.price / 2) * (1 + UNITR_FEE_RATE)).toFixed(2)}/hr each{pitchTime ? ` · ${pitchTime}` : ""}
                       </p>
                     </div>
                     {isAlt ? (

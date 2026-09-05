@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { feeOn } from "@/lib/unitr-fee";
 
 // Server-side only — do not import in client components
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -9,7 +10,7 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export function calcSplit(pitchPricePerHour: number, playerCount: number) {
   const pitchTotal = pitchPricePerHour * 100; // pence
   const perPlayer = Math.round(pitchTotal / playerCount);
-  const unitrFee = Math.round(perPlayer * 0.05); // 5%
+  const unitrFee = feeOn(perPlayer);
   const totalPerPlayer = perPlayer + unitrFee;
   return { pitchTotal, perPlayer, unitrFee, totalPerPlayer };
 }

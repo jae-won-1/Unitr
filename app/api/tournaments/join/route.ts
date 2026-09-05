@@ -3,6 +3,7 @@ import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue } from "@/lib/venue-payout";
+import { feeOn } from "@/lib/unitr-fee";
 
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
@@ -239,7 +240,7 @@ export async function POST(req: NextRequest) {
       );
       if (playerIds.length > 0) {
         const share = Math.floor(buyIn / playerIds.length);
-        const fee = Math.round(share * 0.05);
+        const fee = feeOn(share);
         const rows = playerIds.map((pid) => ({
           booking_id: om.booking_id,
           player_id: pid,

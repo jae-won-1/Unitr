@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import BookPitchPanel from "@/components/BookPitchPanel";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL } from "@/lib/unitr-fee";
 
 // Captain-hosted tournament creation.
 //   1. The captain books & pays for a multi-hour pitch block upfront from team
@@ -91,7 +92,7 @@ export default function CreateTournamentPage() {
   const endTime = startTime ? addHours(startTime, hours) : "";
 
   const pitchFeePence = pitch ? pitch.price_per_hour * 100 * hours : 0;
-  const unitrFeePence = Math.round(pitchFeePence * 0.05);
+  const unitrFeePence = feeOn(pitchFeePence);
   const totalPence = pitchFeePence + unitrFeePence;
   const creditShort = creditPence !== null && creditPence < totalPence;
 
@@ -349,7 +350,9 @@ export default function CreateTournamentPage() {
           {pitch && (
             <section className="bg-surface border border-border shadow-card rounded-card p-4 text-sm space-y-1.5">
               <div className="flex justify-between text-text-secondary"><span>Pitch hire ({hours}h × £{pitch.price_per_hour})</span><span className="font-semibold text-text-primary">£{(pitchFeePence / 100).toFixed(2)}</span></div>
-              <div className="flex justify-between text-text-secondary"><span>Unitr fee (5%)</span><span className="font-semibold text-text-primary">£{(unitrFeePence / 100).toFixed(2)}</span></div>
+              {UNITR_FEE_ENABLED && (
+                <div className="flex justify-between text-text-secondary"><span>Unitr fee ({UNITR_FEE_LABEL})</span><span className="font-semibold text-text-primary">£{(unitrFeePence / 100).toFixed(2)}</span></div>
+              )}
               <div className="flex justify-between border-t border-border pt-1.5 mt-1.5"><span className="font-semibold">Paid now from team credit</span><span className="font-bold text-accent-ink">£{(totalPence / 100).toFixed(2)}</span></div>
               <p className="text-[11px] text-text-secondary pt-1">Each of the other {Math.max(0, Number(maxTeams) - 1)} teams pays £{Number(buyIn || 0).toFixed(2)} to join — reimbursed straight to your team credit.</p>
             </section>

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
+import { UNITR_FEE_RATE } from "@/lib/unitr-fee";
 
 // Fix default marker icons broken by webpack
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -91,7 +92,7 @@ export default function PitchMap({
               <div style={{ minWidth: 160 }}>
                 <p style={{ fontWeight: 700, marginBottom: 2 }}>{pitch.name}</p>
                 <p style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>{pitch.address}</p>
-                <p style={{ fontWeight: 700, color: unaffordable ? "#f87171" : "#00c853" }}>£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
+                <p style={{ fontWeight: 700, color: unaffordable ? "#f87171" : "#00c853" }}>£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE) / 2).toFixed(2)}/hr</p>
                 <p style={{ fontSize: 11, color: "#888" }}>{pitch.formats.join(", ")} · ⭐ {pitch.rating}</p>
                 {unaffordable && <p style={{ fontSize: 11, color: "#f87171", marginTop: 4 }}>Insufficient team credits</p>}
               </div>

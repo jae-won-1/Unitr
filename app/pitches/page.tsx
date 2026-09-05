@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { pitchFormatFor } from "@/lib/formations";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { UNITR_FEE_ENABLED, UNITR_FEE_LABEL, UNITR_FEE_RATE } from "@/lib/unitr-fee";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -96,7 +97,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>(FALLBACK_SLOTS);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const perPlayer = (pitch.price_per_hour * 1.05 / 22).toFixed(2);
+  const perPlayer = (pitch.price_per_hour * (1 + UNITR_FEE_RATE) / 22).toFixed(2);
 
   // Generate next 14 days
   const days = Array.from({ length: 14 }, (_, i) => {
@@ -162,7 +163,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
+              <p className="text-lg font-bold text-accent-ink">£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE) / 2).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-1">✕ close</button>
             </div>
           </div>
@@ -204,8 +205,10 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
             <div className="space-y-1 text-xs text-text-secondary">
               <div className="flex justify-between"><span>Pitch hire (1hr)</span><span className="font-semibold text-text-primary">£{pitch.price_per_hour}</span></div>
               <div className="flex justify-between"><span>Split across 22 players (both teams)</span><span className="font-semibold text-text-primary">£{perPlayer}/player</span></div>
-              <div className="flex justify-between"><span>Unitr fee (5%)</span><span className="font-semibold text-text-primary">£{(Number(perPlayer) * 0.05).toFixed(2)}/player</span></div>
-              <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold text-text-primary">Total per player</span><span className="font-bold text-accent-ink">£{(Number(perPlayer) * 1.05).toFixed(2)}</span></div>
+              {UNITR_FEE_ENABLED && (
+                <div className="flex justify-between"><span>Unitr fee ({UNITR_FEE_LABEL})</span><span className="font-semibold text-text-primary">£{(Number(perPlayer) * UNITR_FEE_RATE).toFixed(2)}/player</span></div>
+              )}
+              <div className="flex justify-between border-t border-border pt-1 mt-1"><span className="font-semibold text-text-primary">Total per player</span><span className="font-bold text-accent-ink">£{(Number(perPlayer) * (1 + UNITR_FEE_RATE)).toFixed(2)}</span></div>
             </div>
           </div>
 
@@ -224,7 +227,7 @@ function BookingPanel({ pitch, onClose, onBook }: { pitch: Pitch; onClose: () =>
 
 // ── Booking Confirmed ─────────────────────────────────────────
 function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: string; time: string; onDone: () => void }) {
-  const perPlayer = (pitch.price_per_hour / 22 * 1.05).toFixed(2);
+  const perPlayer = (pitch.price_per_hour / 22 * (1 + UNITR_FEE_RATE)).toFixed(2);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim px-4">
       <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
@@ -357,7 +360,7 @@ function PitchAvailabilityPanel({
               <p className="text-xs text-text-secondary">{pitch.address}</p>
             </div>
             <div className="text-right ml-3 flex-shrink-0">
-              <p className="text-base font-bold text-accent-ink">£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}/hr</p>
+              <p className="text-base font-bold text-accent-ink">£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE) / 2).toFixed(2)}/hr</p>
               <button onClick={onClose} className="text-xs text-text-secondary mt-0.5">✕ close</button>
             </div>
           </div>
@@ -832,7 +835,7 @@ function PitchesContent() {
                       <div className="flex items-start justify-between mb-1">
                         <p className="font-semibold text-sm pr-8">{pitch.name}</p>
                         <div className="text-right flex-shrink-0">
-                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-600" : "text-accent-ink"}`}>£{(pitch.price_per_hour * 1.05 / 2).toFixed(2)}</span>
+                          <span className={`text-lg font-bold ${selectMode && !isAffordable(pitch) ? "text-red-600" : "text-accent-ink"}`}>£{(pitch.price_per_hour * (1 + UNITR_FEE_RATE) / 2).toFixed(2)}</span>
                           <p className="text-[10px] text-text-secondary">per hour</p>
                         </div>
                       </div>
@@ -854,7 +857,7 @@ function PitchesContent() {
                         ))}
                       </div>
                       <p className="text-xs text-text-secondary mb-3">
-                        ≈ <span className="font-semibold text-accent-ink">£{(pitch.price_per_hour / 22 * 1.05).toFixed(2)}/player</span> inc. 5% Unitr fee
+                        ≈ <span className="font-semibold text-accent-ink">£{(pitch.price_per_hour / 22 * (1 + UNITR_FEE_RATE)).toFixed(2)}/player</span>{UNITR_FEE_ENABLED ? ` inc. ${UNITR_FEE_LABEL} Unitr fee` : ""}
                       </p>
 
                       {/* Slot availability for captain's posting dates */}

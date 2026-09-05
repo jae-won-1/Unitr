@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { saveCardFromIntent } from "@/components/SaveCardPrompt";
 import { authedPost } from "@/lib/authed-fetch";
+import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL } from "@/lib/unitr-fee";
+import TestModeNote from "@/components/TestModeNote";
 
 type MatchInfo = {
   opponent: string;
@@ -18,7 +20,7 @@ type MatchInfo = {
   mode: "credit" | "individual";
   // Exact amounts for THIS player, in pence.
   sharePence: number;   // pitch share (credit mode → refills team credit)
-  feePence: number;     // 5% Unitr fee
+  feePence: number;     // the Unitr fee portion — see lib/unitr-fee.ts
   totalPence: number;   // charged to card
   paymentId: string | null;   // pre-created player_payments row (credit mode)
   bookingId: string | null;   // pitch_bookings row
@@ -108,10 +110,12 @@ function PaySavedCard({
           </span>
           <span className="font-semibold">£{share.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-text-secondary">Unitr platform fee (5%)</span>
-          <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
-        </div>
+        {UNITR_FEE_ENABLED && (
+          <div className="flex justify-between text-xs">
+            <span className="text-text-secondary">Unitr platform fee ({UNITR_FEE_LABEL})</span>
+            <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-border pt-2 mt-1">
           <span className="text-sm font-bold">Your total</span>
           <span className="text-sm font-bold text-accent-ink">£{total.toFixed(2)}</span>
@@ -217,10 +221,12 @@ function CheckoutForm({
           </span>
           <span className="font-semibold">£{share.toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-text-secondary">Unitr platform fee (5%)</span>
-          <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
-        </div>
+        {UNITR_FEE_ENABLED && (
+          <div className="flex justify-between text-xs">
+            <span className="text-text-secondary">Unitr platform fee ({UNITR_FEE_LABEL})</span>
+            <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-border pt-2 mt-1">
           <span className="text-sm font-bold">Your total</span>
           <span className="text-sm font-bold text-accent-ink">£{total.toFixed(2)}</span>
@@ -256,13 +262,7 @@ function CheckoutForm({
         </div>
       )}
 
-      {/* Test card hint */}
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
-        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
-        <p className="text-[11px] text-blue-200 leading-relaxed">
-          Use card <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any 3-digit CVC
-        </p>
-      </div>
+      <TestModeNote />
 
       {payError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
@@ -325,7 +325,7 @@ function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
       <div className="bg-surface border border-border shadow-card rounded-card px-6 py-4 mb-6 w-full max-w-xs">
         <p className="text-xs text-text-secondary mb-1">Amount paid</p>
         <p className="text-2xl font-extrabold text-accent-ink">£{total.toFixed(2)}</p>
-        <p className="text-[10px] text-text-secondary mt-1">inc. 5% Unitr fee</p>
+        {UNITR_FEE_ENABLED && <p className="text-[10px] text-text-secondary mt-1">inc. {UNITR_FEE_LABEL} Unitr fee</p>}
       </div>
       <a href="/my-team" className="px-8 py-3 rounded-btn bg-accent text-white font-bold text-sm">
         Back to My Team
@@ -466,7 +466,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       } else {
         // Individual mode: split the pitch fee across all players.
         sharePence = Math.round((pitchPrice * 100) / playerCount);
-        feePence = Math.round(sharePence * 0.05);
+        feePence = feeOn(sharePence);
         totalPence = sharePence + feePence;
       }
 

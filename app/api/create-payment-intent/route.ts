@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, calcSplit } from "@/lib/stripe";
+import { feeWithin } from "@/lib/unitr-fee";
 import { getCaller, callerCustomerId, unauthorized } from "@/lib/api-auth";
 
 // Open a card payment for the caller's own share of a pitch. The payer and the
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     let perPlayer: number, unitrFee: number, totalPerPlayer: number;
     if (amountPence && amountPence > 0) {
       totalPerPlayer = Math.round(amountPence);
-      unitrFee = Math.round(totalPerPlayer - totalPerPlayer / 1.05);
+      unitrFee = feeWithin(totalPerPlayer);
       perPlayer = totalPerPlayer - unitrFee;
     } else if (pitchPricePerHour && playerCount) {
       ({ totalPerPlayer, perPlayer, unitrFee } = calcSplit(pitchPricePerHour, playerCount));
