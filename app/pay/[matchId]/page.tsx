@@ -9,7 +9,7 @@ import { saveCardFromIntent } from "@/components/SaveCardPrompt";
 import { authedPost } from "@/lib/authed-fetch";
 import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL } from "@/lib/unitr-fee";
 import TestModeNote from "@/components/TestModeNote";
-import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
+import { confirmCardPayment } from "@/lib/confirm-payment";
 
 type MatchInfo = {
   opponent: string;
@@ -187,31 +187,24 @@ function CheckoutForm({
     setPaying(true);
     setPayError(null);
 
-    // Kept as "credit" rather than "booking" deliberately: the webhook is what
-    // moves the money (see /api/webhooks/stripe), so a payer whose tab dies
-    // still gets credited. What recordPaymentSuccess would have done is mark
-    // the player_payments row paid — bookkeeping the captain can correct from
+    // "credit" rather than "booking" deliberately: the webhook is what moves
+    // the money (see /api/webhooks/stripe), so a payer whose tab dies still
+    // gets credited. What recordPaymentSuccess would have done is mark the
+    // player_payments row paid — bookkeeping the captain can correct from
     // Settle Payments, and not worth telling the payer their money is at risk.
-    rememberPendingPayment({
-      clientSecret, kind: "credit", amountPence: matchInfo.totalPence,
+    const { error, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret, kind: "credit",
+      amountPence: matchInfo.totalPence,
       label: `Match payment — vs ${matchInfo.opponent}`,
     });
 
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: paymentReturnUrl() },
-    });
-
     if (error) {
-      clearPendingPayment();
       setPayError(error.message ?? "Payment failed. Please try again.");
       setPaying(false);
       return;
     }
 
-    if (paymentIntent?.status === "succeeded") {
-      clearPendingPayment();
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
       await recordPaymentSuccess(matchInfo, matchId, user.id, paymentIntent.id);
       onSuccess(paymentIntent.id);
     } else {

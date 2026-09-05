@@ -13,7 +13,7 @@ import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { loadLedTeam } from "@/lib/team-leadership";
 import { authedPost } from "@/lib/authed-fetch";
 import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL, UNITR_FEE_RATE } from "@/lib/unitr-fee";
-import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
+import { confirmCardPayment } from "@/lib/confirm-payment";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -94,17 +94,12 @@ function CardBookingForm({ totalPence, clientSecret, working, onPaid, onError }:
     // after this resolves. If the tab dies mid-3DS the charge can be recovered
     // but that write cannot, so ResumePaymentBanner says exactly that instead
     // of reporting a booking that doesn't exist.
-    rememberPendingPayment({
-      clientSecret, kind: "booking", amountPence: totalPence, label: "Pitch booking",
+    const { error, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret, kind: "booking",
+      amountPence: totalPence, label: "Pitch booking",
     });
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: paymentReturnUrl() },
-    });
-    if (error) { clearPendingPayment(); onError(error.message ?? "Payment failed. Please try again."); setPaying(false); return; }
-    if (paymentIntent?.status === "succeeded") {
-      clearPendingPayment();
+    if (error) { onError(error.message ?? "Payment failed. Please try again."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
       onPaid(paymentIntent.id);
       // parent takes over (books + closes); keep the button disabled meanwhile
     } else {

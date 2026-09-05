@@ -9,7 +9,7 @@ import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 import TestModeNote from "@/components/TestModeNote";
-import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
+import { confirmCardPayment } from "@/lib/confirm-payment";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -161,21 +161,12 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSec
     if (!stripe || !elements) return;
     setPaying(true);
     setPayError(null);
-    // See lib/pending-payment.ts — this has to outlive the tab, because 3D
-    // Secure on mobile sends the payer into their banking app and the browser
-    // is free to evict us while they're gone.
-    rememberPendingPayment({
-      clientSecret, kind: "credit", amountPence: Math.round(amount * 100),
-      label: "Team credit top-up",
+    const { error, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret, kind: "credit",
+      amountPence: Math.round(amount * 100), label: "Team credit top-up",
     });
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: paymentReturnUrl() },
-    });
-    if (error) { clearPendingPayment(); setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
-    if (paymentIntent?.status === "succeeded") {
-      clearPendingPayment();
+    if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
       if (!skipDuesApply) await applyTopUp(userId, Math.round(amount * 100), targetPcsId);
       // Credit lands via the Stripe webhook — wait for it rather than assuming.
       const settled = await waitForCredit(teamId, Math.round(currentCredits * 100));

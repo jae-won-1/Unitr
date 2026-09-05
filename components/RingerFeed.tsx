@@ -11,7 +11,7 @@ import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import TestModeNote from "@/components/TestModeNote";
-import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
+import { confirmCardPayment } from "@/lib/confirm-payment";
 import { loadLeadership } from "@/lib/team-leadership";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
@@ -139,18 +139,12 @@ function RingerCheckoutForm({ post, clientSecret, onPaid, onCancel }: {
     setError(null);
     // "booking": the signup row is written after this resolves, so a recovered
     // charge is not a recovered spot in the game.
-    rememberPendingPayment({
-      clientSecret, kind: "booking", amountPence: post.pricePence ?? 500,
-      label: "Ringer spot",
+    const { error: payError, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret, kind: "booking",
+      amountPence: post.pricePence ?? 500, label: "Ringer spot",
     });
-    const { error: payError, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: paymentReturnUrl() },
-    });
-    if (payError) { clearPendingPayment(); setError(payError.message ?? "Payment failed."); setPaying(false); return; }
-    if (paymentIntent?.status === "succeeded") {
-      clearPendingPayment();
+    if (payError) { setError(payError.message ?? "Payment failed."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
       await onPaid(paymentIntent.id);
       return;
     }

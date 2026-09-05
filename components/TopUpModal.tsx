@@ -7,7 +7,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import TestModeNote from "@/components/TestModeNote";
-import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
+import { confirmCardPayment } from "@/lib/confirm-payment";
 
 const PRESETS_POUNDS = [10, 20, 50, 100];
 
@@ -26,26 +26,17 @@ function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, onSucce
     if (!stripe || !elements) return;
     setPaying(true);
     setPayError(null);
-    // Remembered before confirming, not after: on mobile the 3D Secure step
-    // hands the payer to their banking app and this tab may not survive being
-    // backgrounded. ResumePaymentBanner finishes it on the next load.
-    rememberPendingPayment({
-      clientSecret, kind: "credit", amountPence: Math.round(amount * 100),
-      label: `Team credit top-up`,
+    const { error, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret, kind: "credit",
+      amountPence: Math.round(amount * 100), label: "Team credit top-up",
     });
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: paymentReturnUrl() },
-    });
-    if (error) { clearPendingPayment(); setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
-    if (paymentIntent?.status !== "succeeded") {
-      // Still authenticating — leave the entry so the banner can pick it up.
+    if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
+    if (paymentIntent?.status !== "succeeded" && paymentIntent?.status !== "processing") {
+      // Still authenticating — the entry is kept so the banner can pick it up.
       setPayError("Payment did not complete. Please try again.");
       setPaying(false);
       return;
     }
-    clearPendingPayment();
     // The credit is applied by the Stripe webhook, not from here — the browser
     // has no way to prove a payment happened, and a tab closed at this moment
     // used to mean a charged card and no credit. Wait for the webhook's write

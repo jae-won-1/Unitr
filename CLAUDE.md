@@ -410,19 +410,32 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   that finish in place. Left on, Stripe offers whatever the live account has enabled —
   Klarna, Revolut Pay, iDEAL — and those finish by sending the payer to the provider's own
   site. Test mode hides this: fewer methods are enabled there.
-- **Every confirm is `confirmPayment({ redirect: "if_required" })` with a `return_url`** of
-  `/payment-return` (`paymentReturnUrl()`). The redirect is still only taken when a bank
-  insists on one, but supplying the URL removes the failure where Stripe needs to redirect,
-  finds nowhere to go, and errors instead of taking the payment.
-- **A card payment in flight is remembered before it is confirmed** (`lib/pending-payment.ts`
-  → localStorage). 3D Secure on mobile sends the payer into their banking app, and the OS is
-  free to evict the backgrounded tab while they're gone — which killed the `confirmPayment`
-  promise and lost the payment silently. `ResumePaymentBanner` (mounted app-wide in
-  `app/layout.tsx`) reads the entry on the next load, asks Stripe what actually happened, and
-  either resumes the challenge via `handleNextAction` or reports the outcome. The entry's
-  `kind` says what finishing it completes: `credit` is safe to resume outright because the
-  webhook grants the credit off the intent's metadata; `booking` had a client-side write after
-  the charge that a resume cannot recover, so the banner says so rather than claiming success.
+- **Never call `stripe.confirmPayment` directly — use `confirmCardPayment`**
+  (`lib/confirm-payment.ts`). It is the only place a card payment is confirmed, and it exists
+  because 3D Secure on mobile breaks the plain call in two different ways. Both were hit on a
+  live card; neither shows up in test mode, where cards skip SCA.
+  1. **The tab survives but the promise hangs.** `confirmPayment` resolves from a polling loop
+     inside Stripe's 3DS iframe. "Approve in your banking app" backgrounds the tab by
+     definition, and a backgrounded tab has its timers throttled and network suspended — so
+     the loop freezes exactly when the bank approves, and returning does not restart it.
+     Nothing reloads, so the on-mount recovery below never runs either. `confirmCardPayment`
+     races the promise against the **server**: on every return to the foreground it retrieves
+     the intent, resolves on `succeeded`/`processing`, and on `requires_action` re-drives the
+     challenge once with `handleNextAction`, which finds the approval already waiting.
+     Failures are deliberately not watched for — a fresh intent sits at
+     `requires_payment_method`, and treating that as terminal would fail every payment on
+     sight.
+  2. **The tab is evicted entirely.** The client secret is written to localStorage *before*
+     confirming (`lib/pending-payment.ts`), because it has to outlive the page.
+     `ResumePaymentBanner`, mounted app-wide in `app/layout.tsx`, reads it on the next load,
+     asks Stripe what happened, and either resumes or reports. The entry's `kind` bounds what
+     it may claim: `credit` is safe to resume outright because the webhook grants the credit
+     off the intent's metadata, while `booking` had a client-side write after the charge that
+     no resume recovers — so the banner says the money moved and the booking may not have,
+     rather than reporting a success the payer disproves later.
+  Every confirm also carries a `return_url` of `/payment-return` (`paymentReturnUrl()`). The
+  redirect is still only taken when a bank insists, but supplying it removes the failure where
+  Stripe needs to redirect, finds nowhere to go, and errors instead of taking the payment.
 - **Every API route authenticates its caller.** RLS is `using (true)` and the anon key is
   public, so the API routes are where authorisation actually happens. A route identifies the
   caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the
