@@ -49,8 +49,11 @@ update public.profiles
        card_brand = null,
        card_last4 = null;
 
--- Joining-fee progress was recorded against those payments.
+-- Joining-fee progress was recorded against those payments. Both copies of the
+-- figure: the squad's on team_members, and the captain's own on teams (they
+-- have no team_members row — see supabase_captain_joining_fee.sql).
 update public.team_members set joining_fee_paid_pence = 0;
+update public.teams set captain_joining_fee_paid_pence = 0;
 ```
 
 Optional, for a clean slate — check what's there first:
@@ -78,11 +81,44 @@ group by t.name, c.balance_pence, c.reserved_pence
 order by drift desc;
 ```
 
+## 1b. Only if going live on a DIFFERENT Stripe account
+
+Everything in step 1 applies to any cutover, because test ids don't exist to a
+live key. Changing *account* breaks one more class of id that survives the
+test→live boundary in the same account: **Connect account ids**.
+
+`pitches.stripe_account_id` holds `acct_…` values minted by the old platform
+account. A connected account belongs to the platform that created it, so the
+new account cannot see them, and `payouts_enabled = true` alongside them is a
+claim about an account that is no longer yours.
+
+```sql
+update public.pitches set stripe_account_id = null, payouts_enabled = false;
+delete from public.venue_transfers;
+```
+
+Admin-hosted events never reach this code — `/api/tournaments/join`
+short-circuits on `isAdminHosted` — so the pilot flow is unaffected either way.
+But a **team-vs-team friendly still fires a venue transfer** on confirmation
+(`ChallengePanel` → `/api/connect/venue-transfer`). It is fire-and-forget, so a
+stale id doesn't block the match; it just fails against Stripe on every
+confirmation and leaves failed `venue_transfers` rows. Cleared, `payVenue`
+returns its honest *"venue has not connected a payout account yet"* instead,
+which is the true state until a venue onboards to the new account.
+
+Also check the **old** account for a live webhook endpoint pointing at the
+Vercel domain and delete it. Two accounts delivering to one endpoint means
+half the events fail signature verification against whichever secret is set.
+
 ## 2. Activate the live Stripe account
 
 Toggle the dashboard out of test mode. Finish activation if it's incomplete —
 business details and a payout bank account. **Live charges fail outright until
 the account is activated**, so confirm this before touching Vercel.
+
+On a new account this is the long pole: activation is a fresh KYC review, not a
+toggle, and it can sit pending for a day or more. Nothing below works until it
+clears.
 
 ## 3. Create the live webhook endpoint
 
@@ -112,7 +148,27 @@ Settings → Environment Variables, **Production** scope:
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | `pk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | the **live** endpoint's secret from step 3 |
 
+All three must come from the **same** account. A `sk_live_` from one account
+with a `whsec_` from another is the silent failure this whole document is
+written around, and having two accounts open in two tabs is how it happens.
+
 Leave `.env.local` on test keys — local stays a sandbox.
+
+### The two `whsec_` secrets are different things
+
+There are two webhook secrets in play and they are not interchangeable:
+
+- **Production** (`STRIPE_WEBHOOK_SECRET` in Vercel) — the secret shown once
+  when you create the dashboard endpoint in step 3. It signs events Stripe
+  sends to the deployed URL.
+- **Local** (`STRIPE_WEBHOOK_SECRET` in `.env.local`) — the secret
+  `stripe listen` prints in your terminal when you start it. It signs events
+  the CLI forwards to `localhost`. It is issued per CLI session and belongs to
+  whichever account the CLI is logged into.
+
+So: dashboard secret → Vercel. Terminal secret → `.env.local`. Putting the
+production secret in `.env.local` makes every locally forwarded event fail
+signature verification, and nothing is credited locally.
 
 ## 5. Redeploy
 
@@ -133,6 +189,37 @@ payment would charge someone and credit nobody. Vercel → Logs will show
 
 Host a £1 admin event, enter it with a team, cash out the change. Costs pence
 and proves the live refund path, which until now has only run in test mode.
+
+---
+
+## Local development after the switch
+
+The Stripe CLI stays authenticated to whatever account you last logged it into,
+so after changing accounts it is pointing at the old one until told otherwise.
+
+```powershell
+stripe login          # pick the NEW account in the browser prompt
+stripe config --list  # confirm which account the CLI is on
+```
+
+Then, to work on payments locally, run the forwarder and take the secret it
+prints:
+
+```powershell
+stripe listen --forward-to localhost:3000/api/webhooks/stripe
+```
+
+It prints `Ready! Your webhook signing secret is whsec_…`. Put **that** value in
+`.env.local` as `STRIPE_WEBHOOK_SECRET`, alongside the new account's **test**
+keys (`sk_test_…` / `pk_test_…`). Restart `next dev` — env is read at boot.
+
+Keep `stripe listen` running the whole time you are testing payments. Without
+it nothing reaches the local webhook, so a local top-up charges the test card
+and credits nobody — the same symptom as a wrong secret, from a different
+cause.
+
+Never point the CLI at production, and never put a `sk_live_` key in
+`.env.local`.
 
 ---
 
