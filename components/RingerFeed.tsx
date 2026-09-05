@@ -10,6 +10,7 @@ import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import TestModeNote from "@/components/TestModeNote";
 import { loadLeadership } from "@/lib/team-leadership";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
@@ -150,10 +151,7 @@ function RingerCheckoutForm({ post, onPaid, onCancel }: {
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
-        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
-        <p className="text-[11px] text-blue-300/80">Use card 4242 4242 4242 4242, any future expiry and CVC.</p>
-      </div>
+      <TestModeNote />
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={onCancel} disabled={paying}

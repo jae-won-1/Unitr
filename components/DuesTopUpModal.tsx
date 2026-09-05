@@ -8,6 +8,7 @@ import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
+import TestModeNote from "@/components/TestModeNote";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -182,10 +183,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
-        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
-        <p className="text-[11px] text-blue-200">Use <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any CVC</p>
-      </div>
+      <TestModeNote />
       {payError && <p className="text-xs text-red-600 text-center">{payError}</p>}
       <button onClick={handlePay} disabled={!stripe || paying}
         className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">

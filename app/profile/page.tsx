@@ -7,6 +7,7 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import TestModeNote from "@/components/TestModeNote";
 
 const stripeAppearance = {
   theme: "night" as const,
@@ -67,12 +68,7 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
       <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
       </div>
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-4 py-3">
-        <p className="text-[11px] text-blue-300 font-semibold mb-0.5">Test Mode</p>
-        <p className="text-[11px] text-blue-200 leading-relaxed">
-          Use card <span className="font-mono font-bold">4242 4242 4242 4242</span> · any future expiry · any 3-digit CVC
-        </p>
-      </div>
+      <TestModeNote />
       {err && <p className="text-xs text-red-600">{err}</p>}
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
