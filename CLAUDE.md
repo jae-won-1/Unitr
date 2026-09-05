@@ -296,7 +296,17 @@ collecting from 10–22 people is far too slow and failure-prone to gate a booki
    (`supabase_venue_payouts.sql`). One connected account per venue. Test mode only; real
    payouts need KYC/onboarding and a fintech review.
 
-Everything is in **pence**, everywhere. Unitr's fee is **5%**, added on top of the split.
+Everything is in **pence**, everywhere. Unitr's per-transaction fee lives in
+`lib/unitr-fee.ts` and is currently **0** — the rate is being agreed with partners. It was a
+bare `0.05`/`1.05` literal at nineteen sites; the constant is now the only place it exists,
+and at 0 the fee lines hide themselves rather than printing "£0.00 (0%)". `unitr_fee_pence`
+on `player_payments` / `pitch_bookings` is a snapshot, never recomputed, so changing the rate
+cannot rewrite what someone already paid.
+
+Unitr's actual revenue in the pilot is the **buy-in on admin-hosted events**: the ledger's
+`booking_capture` row carries `open_match_id`, so a capture against an `open_matches` row with
+`organiser_admin_id` set is money that stayed with the platform. `/admin/finance` reads it
+that way rather than inferring it as a residual.
 
 Variants:
 - **Secured posts** — the poster already paid the venue in cash via `/book`, so the flow skips
@@ -396,10 +406,23 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.
-- **PaymentIntents pin `allow_redirects: "never"`.** Every confirm in the app is
-  `confirmPayment({ redirect: "if_required" })` with no `return_url`, so a redirect-based
-  method (Klarna, iDEAL) would error instead of paying. Test mode hides this — a live
-  account offers whatever is enabled on it.
+- **PaymentIntents pin `allow_redirects: "never"`.** It keeps the Payment Element to methods
+  that finish in place. Left on, Stripe offers whatever the live account has enabled —
+  Klarna, Revolut Pay, iDEAL — and those finish by sending the payer to the provider's own
+  site. Test mode hides this: fewer methods are enabled there.
+- **Every confirm is `confirmPayment({ redirect: "if_required" })` with a `return_url`** of
+  `/payment-return` (`paymentReturnUrl()`). The redirect is still only taken when a bank
+  insists on one, but supplying the URL removes the failure where Stripe needs to redirect,
+  finds nowhere to go, and errors instead of taking the payment.
+- **A card payment in flight is remembered before it is confirmed** (`lib/pending-payment.ts`
+  → localStorage). 3D Secure on mobile sends the payer into their banking app, and the OS is
+  free to evict the backgrounded tab while they're gone — which killed the `confirmPayment`
+  promise and lost the payment silently. `ResumePaymentBanner` (mounted app-wide in
+  `app/layout.tsx`) reads the entry on the next load, asks Stripe what actually happened, and
+  either resumes the challenge via `handleNextAction` or reports the outcome. The entry's
+  `kind` says what finishing it completes: `credit` is safe to resume outright because the
+  webhook grants the credit off the intent's metadata; `booking` had a client-side write after
+  the charge that a resume cannot recover, so the banner says so rather than claiming success.
 - **Every API route authenticates its caller.** RLS is `using (true)` and the anon key is
   public, so the API routes are where authorisation actually happens. A route identifies the
   caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the

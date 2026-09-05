@@ -7,12 +7,13 @@ import { stripePromise } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import TestModeNote from "@/components/TestModeNote";
+import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
 
 const PRESETS_POUNDS = [10, 20, 50, 100];
 
 // ── Card entry (inside <Elements>) ────────────────────────────
-function TopUpCheckoutForm({ amount, teamId, currentPence, onSuccess, onBack }: {
-  amount: number; teamId: string; currentPence: number;
+function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, onSuccess, onBack }: {
+  amount: number; teamId: string; currentPence: number; clientSecret: string;
   onSuccess: (newBalancePence: number, paymentIntentId: string | null, pending: boolean) => void;
   onBack: () => void;
 }) {
@@ -25,13 +26,26 @@ function TopUpCheckoutForm({ amount, teamId, currentPence, onSuccess, onBack }: 
     if (!stripe || !elements) return;
     setPaying(true);
     setPayError(null);
-    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
-    if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
+    // Remembered before confirming, not after: on mobile the 3D Secure step
+    // hands the payer to their banking app and this tab may not survive being
+    // backgrounded. ResumePaymentBanner finishes it on the next load.
+    rememberPendingPayment({
+      clientSecret, kind: "credit", amountPence: Math.round(amount * 100),
+      label: `Team credit top-up`,
+    });
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: paymentReturnUrl() },
+    });
+    if (error) { clearPendingPayment(); setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status !== "succeeded") {
+      // Still authenticating — leave the entry so the banner can pick it up.
       setPayError("Payment did not complete. Please try again.");
       setPaying(false);
       return;
     }
+    clearPendingPayment();
     // The credit is applied by the Stripe webhook, not from here — the browser
     // has no way to prove a payment happened, and a tab closed at this moment
     // used to mean a charged card and no credit. Wait for the webhook's write
@@ -171,6 +185,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
                   amount={effectiveAmount as number}
                   teamId={teamId}
                   currentPence={currentPence}
+                  clientSecret={clientSecret}
                   onSuccess={(newBalancePence, paymentIntentId, isPending) =>
                     saveCard.offer(paymentIntentId, () => { setPending(isPending); setDone(newBalancePence); })}
                   onBack={() => setClientSecret(null)}

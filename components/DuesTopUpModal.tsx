@@ -9,6 +9,7 @@ import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 import TestModeNote from "@/components/TestModeNote";
+import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
 // from this player, each payable on its own, plus a manual top-up. Paying a due
@@ -143,8 +144,8 @@ export function useMyDues(teamId: string | null, userId: string) {
 }
 
 // ── Card entry step ───────────────────────────────────────────
-function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcsId, skipDuesApply, onSuccess, onBack }: {
-  amount: number; teamId: string; userId: string; currentCredits: number;
+function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSecret, targetPcsId, skipDuesApply, onSuccess, onBack }: {
+  amount: number; teamId: string; userId: string; currentCredits: number; clientSecret: string;
   targetPcsId?: string;
   // A joining-fee payment: the deposit is applied to the fee server-side by
   // credit_from_payment, and must not tick off match-due bookkeeping here.
@@ -160,9 +161,21 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, targetPcs
     if (!stripe || !elements) return;
     setPaying(true);
     setPayError(null);
-    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
-    if (error) { setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
+    // See lib/pending-payment.ts — this has to outlive the tab, because 3D
+    // Secure on mobile sends the payer into their banking app and the browser
+    // is free to evict us while they're gone.
+    rememberPendingPayment({
+      clientSecret, kind: "credit", amountPence: Math.round(amount * 100),
+      label: "Team credit top-up",
+    });
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: paymentReturnUrl() },
+    });
+    if (error) { clearPendingPayment(); setPayError(error.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
+      clearPendingPayment();
       if (!skipDuesApply) await applyTopUp(userId, Math.round(amount * 100), targetPcsId);
       // Credit lands via the Stripe webhook — wait for it rather than assuming.
       const settled = await waitForCredit(teamId, Math.round(currentCredits * 100));
@@ -431,6 +444,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 teamId={teamId}
                 userId={userId}
                 currentCredits={credits}
+                clientSecret={clientSecret}
                 targetPcsId={payTarget?.pcsId}
                 skipDuesApply={feeTargeted}
                 onSuccess={(newBalance, paymentIntentId) => saveCard.offer(paymentIntentId, async () => {

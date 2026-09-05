@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import TopBar from "@/components/TopBar";
+import ResumePaymentBanner from "@/components/ResumePaymentBanner";
 import { RoleProvider } from "@/contexts/RoleContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -56,6 +57,9 @@ export default function RootLayout({
           <RoleProvider>
             <TopBar />
             <main className="min-h-screen pb-nav">{children}</main>
+            {/* Finishes a 3D Secure payment the payer walked away from — see
+                lib/pending-payment.ts. Renders nothing when there isn't one. */}
+            <ResumePaymentBanner />
             <BottomNav />
           </RoleProvider>
         </AuthProvider>

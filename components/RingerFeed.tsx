@@ -11,6 +11,7 @@ import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import TestModeNote from "@/components/TestModeNote";
+import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
 import { loadLeadership } from "@/lib/team-leadership";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
@@ -121,8 +122,9 @@ export function useRingerPosts(userId: string | undefined) {
 }
 
 // ── Checkout ──────────────────────────────────────────────────
-function RingerCheckoutForm({ post, onPaid, onCancel }: {
+function RingerCheckoutForm({ post, clientSecret, onPaid, onCancel }: {
   post: RingerPost;
+  clientSecret: string;
   onPaid: (paymentIntentId: string) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -135,9 +137,20 @@ function RingerCheckoutForm({ post, onPaid, onCancel }: {
     if (!stripe || !elements) return;
     setPaying(true);
     setError(null);
-    const { error: payError, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
-    if (payError) { setError(payError.message ?? "Payment failed."); setPaying(false); return; }
+    // "booking": the signup row is written after this resolves, so a recovered
+    // charge is not a recovered spot in the game.
+    rememberPendingPayment({
+      clientSecret, kind: "booking", amountPence: post.pricePence ?? 500,
+      label: "Ringer spot",
+    });
+    const { error: payError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: paymentReturnUrl() },
+    });
+    if (payError) { clearPendingPayment(); setError(payError.message ?? "Payment failed."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
+      clearPendingPayment();
       await onPaid(paymentIntent.id);
       return;
     }
@@ -387,7 +400,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
               <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
             ) : clientSecret ? (
               <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
-                <RingerCheckoutForm post={target} onPaid={confirmJoin} onCancel={closeModal} />
+                <RingerCheckoutForm post={target} clientSecret={clientSecret} onPaid={confirmJoin} onCancel={closeModal} />
               </Elements>
             ) : (
               <div className="space-y-3">

@@ -13,6 +13,7 @@ import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { loadLedTeam } from "@/lib/team-leadership";
 import { authedPost } from "@/lib/authed-fetch";
 import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL, UNITR_FEE_RATE } from "@/lib/unitr-fee";
+import { clearPendingPayment, paymentReturnUrl, rememberPendingPayment } from "@/lib/pending-payment";
 import "leaflet/dist/leaflet.css";
 
 // Leaflet must be client-only — no SSR
@@ -77,8 +78,9 @@ function Stars({ rating }: { rating: number }) {
 // ── Card form (must live inside <Elements>) ───────────────────
 // Collects card details and confirms the PaymentIntent. On success it hands
 // the intent id back up so the parent can finalise the booking.
-function CardBookingForm({ totalPence, working, onPaid, onError }: {
-  totalPence: number; working: boolean; onPaid: (intentId: string) => void; onError: (msg: string) => void;
+function CardBookingForm({ totalPence, clientSecret, working, onPaid, onError }: {
+  totalPence: number; clientSecret: string; working: boolean;
+  onPaid: (intentId: string) => void; onError: (msg: string) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -88,9 +90,21 @@ function CardBookingForm({ totalPence, working, onPaid, onError }: {
     if (!stripe || !elements) return;
     setPaying(true);
     onError("");
-    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: "if_required" });
-    if (error) { onError(error.message ?? "Payment failed. Please try again."); setPaying(false); return; }
+    // "booking", not "credit": the parent still has to write the booking row
+    // after this resolves. If the tab dies mid-3DS the charge can be recovered
+    // but that write cannot, so ResumePaymentBanner says exactly that instead
+    // of reporting a booking that doesn't exist.
+    rememberPendingPayment({
+      clientSecret, kind: "booking", amountPence: totalPence, label: "Pitch booking",
+    });
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: paymentReturnUrl() },
+    });
+    if (error) { clearPendingPayment(); onError(error.message ?? "Payment failed. Please try again."); setPaying(false); return; }
     if (paymentIntent?.status === "succeeded") {
+      clearPendingPayment();
       onPaid(paymentIntent.id);
       // parent takes over (books + closes); keep the button disabled meanwhile
     } else {
@@ -297,7 +311,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
           </div>
         ) : (
           <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
-            <CardBookingForm totalPence={cardTotalPence} working={working} onPaid={onCardPaid} onError={onError} />
+            <CardBookingForm totalPence={cardTotalPence} clientSecret={clientSecret} working={working} onPaid={onCardPaid} onError={onError} />
           </Elements>
         )}
       </div>
