@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
-import { stripePromise } from "@/lib/stripe-client";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useSaveCardOffer } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
@@ -185,7 +185,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSec
       </div>
       <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
-        <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
+        <PaymentElement options={cardElementOptions} />
       </div>
       <TestModeNote />
       {payError && <p className="text-xs text-red-600 text-center">{payError}</p>}

@@ -5,7 +5,7 @@ import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { stripePromise } from "@/lib/stripe-client";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
@@ -156,7 +156,7 @@ function RingerCheckoutForm({ post, clientSecret, onPaid, onCancel }: {
     <div className="space-y-4">
       <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
-        <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
+        <PaymentElement options={cardElementOptions} />
       </div>
       <TestModeNote />
       {error && <p className="text-xs text-red-600">{error}</p>}

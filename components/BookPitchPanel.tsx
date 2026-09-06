@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
 import { pitchFormatFor } from "@/lib/formations";
-import { stripePromise } from "@/lib/stripe-client";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import TopUpModal from "@/components/TopUpModal";
@@ -111,7 +111,7 @@ function CardBookingForm({ totalPence, clientSecret, working, onPaid, onError }:
   const busy = paying || working;
   return (
     <div className="space-y-4">
-      <PaymentElement />
+      <PaymentElement options={cardElementOptions} />
       <button onClick={handlePay} disabled={busy || !stripe}
         className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {busy

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { stripePromise } from "@/lib/stripe-client";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { saveCardFromIntent } from "@/components/SaveCardPrompt";
@@ -255,12 +255,7 @@ function CheckoutForm({
       {/* Stripe Elements card form */}
       <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
-        <PaymentElement
-          options={{
-            layout: "tabs",
-            paymentMethodOrder: ["card"],
-          }}
-        />
+        <PaymentElement options={cardElementOptions} />
       </div>
 
       {!showSavedCardOption && (

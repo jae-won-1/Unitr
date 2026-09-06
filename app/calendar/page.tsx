@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import CalendarSheet from "@/components/CalendarSheet";
 import FixtureDetailSheet, { type ViewerTeam } from "@/components/FixtureDetailSheet";
 import {
-  KIND_LABEL, KIND_STYLE, loadCalendarEntries,
+  KIND_LABEL, KIND_STYLE, fixtureAction, loadCalendarEntries,
   type CalendarEntry, type EntryKind,
 } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
@@ -43,12 +43,18 @@ function fmtDay(dateKey: string): string {
 }
 
 // ── Card ──────────────────────────────────────────────────────────────
-// The card body is a button and the availability row contains buttons, and
+// The card body is a button and the footer holds buttons and a link, and
 // buttons cannot nest — so the outer element is a div and the tappable region
 // is an inner button that fills it. Making the whole card one button (as it was
 // before availability landed here) is what forces that split.
-function EntryCard({ entry, viewerId, teamId, onOpen }: {
+//
+// The footer carries both things a fixture is opened for: the Available /
+// Unavailable answer, and the manage-or-view link that used to be reachable
+// only by opening the detail sheet first. The sheet still holds everything
+// else — the score and scorers, take-down, turning a booking into a post.
+function EntryCard({ entry, isCaptain, viewerId, teamId, onOpen }: {
   entry: CalendarEntry;
+  isCaptain: boolean;
   viewerId: string | null;
   teamId: string | null;
   onOpen: (e: CalendarEntry) => void;
@@ -60,6 +66,7 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
   const canRespond =
     entry.isUpcoming && (entry.matchId || entry.openMatchId) &&
     (entry.kind === "friendly" || entry.kind === "tournament") && viewerId && teamId;
+  const action = fixtureAction(entry, isCaptain);
 
   return (
     <div className={`bg-surface border border-border border-l-4 ${style.rule} shadow-card rounded-card px-4 py-3.5 ${entry.isUpcoming ? "" : "opacity-85"}`}>
@@ -103,15 +110,29 @@ function EntryCard({ entry, viewerId, teamId, onOpen }: {
       )}
     </button>
 
-    {canRespond && (
-      <div className="mt-3 pt-3 border-t border-border">
-        <AvailabilityButtons
-          matchId={entry.matchId}
-          openMatchId={entry.openMatchId}
-          playerId={viewerId!}
-          teamId={teamId!}
-          size="sm"
-        />
+    {(canRespond || action) && (
+      <div className="mt-3 pt-3 border-t border-border space-y-2">
+        {canRespond && (
+          <AvailabilityButtons
+            matchId={entry.matchId}
+            openMatchId={entry.openMatchId}
+            playerId={viewerId!}
+            teamId={teamId!}
+            size="sm"
+          />
+        )}
+        {/* A sibling of the card's button, never a child of it — a link nested
+            inside the button would have to swallow the tap that opens the sheet. */}
+        {action && (
+          <a href={action.href}
+            className={`block w-full py-2 rounded-btn text-xs text-center ${
+              action.primary
+                ? "bg-accent text-white font-bold"
+                : "bg-surface border border-border text-text-secondary font-semibold"
+            }`}>
+            {action.label}
+          </a>
+        )}
       </div>
     )}
     </div>
@@ -186,8 +207,9 @@ function FilterMenu({ options, value, onChange }: {
   );
 }
 
-function Section({ title, entries, empty, viewerId, teamId, onOpen }: {
+function Section({ title, entries, empty, isCaptain, viewerId, teamId, onOpen }: {
   title: string; entries: CalendarEntry[]; empty: string;
+  isCaptain: boolean;
   viewerId: string | null; teamId: string | null;
   onOpen: (e: CalendarEntry) => void;
 }) {
@@ -208,7 +230,8 @@ function Section({ title, entries, empty, viewerId, teamId, onOpen }: {
       ) : (
         <div className="space-y-3">
           {entries.map((e) => (
-            <EntryCard key={e.key} entry={e} viewerId={viewerId} teamId={teamId} onOpen={onOpen} />
+            <EntryCard key={e.key} entry={e} isCaptain={isCaptain}
+              viewerId={viewerId} teamId={teamId} onOpen={onOpen} />
           ))}
         </div>
       )}
@@ -335,10 +358,10 @@ export default function CalendarPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <Section title="Upcoming" entries={upcoming} onOpen={setDetail}
+          <Section title="Upcoming" entries={upcoming} onOpen={setDetail} isCaptain={isCaptain}
             viewerId={user?.id ?? null} teamId={myTeamId}
             empty={dateKey ? "Nothing coming up on this date." : "Nothing coming up."} />
-          <Section title="Past" entries={past} onOpen={setDetail}
+          <Section title="Past" entries={past} onOpen={setDetail} isCaptain={isCaptain}
             viewerId={user?.id ?? null} teamId={myTeamId}
             empty={dateKey ? "Nothing played on this date." : "Nothing played yet."} />
         </div>

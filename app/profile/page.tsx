@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { stripePromise } from "@/lib/stripe-client";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { confirmCardSetup } from "@/lib/confirm-payment";
 import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
 import { useRole } from "@/contexts/RoleContext";
@@ -57,7 +57,8 @@ function CardSetupForm({ clientSecret, onSaved, onCancel }: {
   return (
     <div className="space-y-3">
       <div className="bg-surface border border-border shadow-card rounded-card p-4">
-        <PaymentElement options={{ layout: "tabs", paymentMethodOrder: ["card"] }} />
+        <PaymentElement options={cardElementOptions} />
+        <p className="text-xs text-text-secondary mt-3">Remember this card for future use.</p>
       </div>
       <TestModeNote />
       {err && <p className="text-xs text-red-600">{err}</p>}

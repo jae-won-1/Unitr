@@ -89,6 +89,42 @@ export function compareEntries(a: CalendarEntry, b: CalendarEntry): number {
   return a.isUpcoming ? ka.localeCompare(kb) : kb.localeCompare(ka);
 }
 
+// ── The entry's one management CTA ────────────────────────────────────
+// Where an entry leads, named once. This used to belong to FixtureDetailSheet
+// alone, which meant a captain wanting the manage screen had to open a sheet
+// just to be handed a link — two taps to reach the thing most cards are opened
+// for. The card renders it directly now, beside the availability buttons, and
+// the sheet asks the same function, so a label can't drift between the two.
+//
+// Null for a pitch booking — its action is "Turn into Match Post", a form only
+// the sheet has room for — and for a friendly with no matches row yet.
+export type FixtureAction = { href: string; label: string; primary: boolean };
+
+export function fixtureAction(entry: CalendarEntry, isCaptain: boolean): FixtureAction | null {
+  switch (entry.kind) {
+    case "friendly":
+      if (!entry.matchId) return null;
+      return isCaptain
+        ? { href: `/my-team/match/${entry.matchId}`, label: "Manage match", primary: true }
+        : { href: `/my-team/match/${entry.matchId}`, label: "View match details", primary: false };
+    case "ringer":
+      // A guest reads the fixture they bought into; they never manage it.
+      return entry.matchId
+        ? { href: `/my-team/match/${entry.matchId}`, label: "View match details", primary: false }
+        : null;
+    case "tournament":
+      return {
+        href: `/play/tournament/${entry.id}`,
+        label: isCaptain ? "Manage schedule & referees" : "View schedule & referees",
+        primary: isCaptain,
+      };
+    case "my_post":
+      return { href: `/play/edit/${entry.id}`, label: "View / edit post", primary: true };
+    case "booking":
+      return null;
+  }
+}
+
 function base(date: string, time: string) {
   return { date: toDateKey(date), time: time ?? "", isUpcoming: isUpcomingDate(date) };
 }

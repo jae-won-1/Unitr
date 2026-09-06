@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { KIND_LABEL, KIND_STYLE, type CalendarEntry } from "@/lib/calendar-entries";
+import { KIND_LABEL, KIND_STYLE, fixtureAction, type CalendarEntry } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
 import { pitchFormatFor } from "@/lib/formations";
 import { loadResultScorers, OUTCOME_TEXT, type FixtureResult, type ResultScorer } from "@/lib/match-results";
@@ -230,6 +230,8 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
 }) {
   const [postingBooking, setPostingBooking] = useState(false);
   const style = KIND_STYLE[entry.kind];
+  // The same CTA the calendar card shows, so the two can't name it differently.
+  const action = fixtureAction(entry, isCaptain);
 
   const rows: { label: string; value: string }[] = [
     { label: "When", value: fmtKickoff(entry.date, entry.time) },
@@ -312,15 +314,14 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
                   Submit Result
                 </a>
               )}
-              {canManageMatch ? (
-                <a href={`/my-team/match/${entry.matchId}`}
-                  className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center">
-                  Manage match
-                </a>
-              ) : entry.matchId ? (
-                <a href={`/my-team/match/${entry.matchId}`}
-                  className="block w-full py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary text-center">
-                  View match details
+              {action ? (
+                <a href={action.href}
+                  className={`block w-full py-3 text-sm text-center ${
+                    action.primary
+                      ? "rounded-btn bg-accent text-white font-bold"
+                      : "rounded-xl border border-border font-semibold text-text-secondary"
+                  }`}>
+                  {action.label}
                 </a>
               ) : (
                 <p className="text-xs text-text-secondary text-center">
@@ -342,29 +343,33 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
                   isCaptain={isCaptain}
                 />
               )}
-              <a href={`/play/tournament/${entry.id}`}
-                className={`block w-full py-3 rounded-xl font-bold text-sm text-center ${
-                  isCaptain ? "bg-accent text-white" : "border border-border text-text-secondary font-semibold"
-                }`}>
-                {isCaptain ? "Manage schedule & referees" : "View schedule & referees"}
-              </a>
+              {action && (
+                <a href={action.href}
+                  className={`block w-full py-3 rounded-xl font-bold text-sm text-center ${
+                    action.primary ? "bg-accent text-white" : "border border-border text-text-secondary font-semibold"
+                  }`}>
+                  {action.label}
+                </a>
+              )}
             </div>
           )}
 
           {entry.kind === "my_post" && (
             <div className="space-y-2">
-              <a href={`/play/edit/${entry.id}`}
-                className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center">
-                View / edit post
-              </a>
+              {action && (
+                <a href={action.href}
+                  className="block w-full py-3 rounded-btn bg-accent text-white font-bold text-sm text-center">
+                  {action.label}
+                </a>
+              )}
               <TakeDownButton entry={entry} onRemoved={() => { onChanged(); onClose(); }} />
             </div>
           )}
 
-          {entry.kind === "ringer" && entry.matchId && (
-            <a href={`/my-team/match/${entry.matchId}`}
+          {entry.kind === "ringer" && action && (
+            <a href={action.href}
               className="block w-full py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary text-center">
-              View match details
+              {action.label}
             </a>
           )}
 
