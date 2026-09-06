@@ -12,11 +12,13 @@ import { supabase } from "@/lib/supabase";
 // organiser-team reimbursement / kept by the platform when Unitr staff host),
 // but what came IN is this same sum in all three cases.
 //
-// Two known limits, both deliberate:
-//   - No refund path writes `open_match_id`, so a refunded entry is not netted
-//     off here. Cancellations are rare enough in the prototype to leave loud.
-//   - `booking_capture` is also used for ordinary pitch captures; those rows
-//     carry a booking_id/match_id and no open_match_id, so they can't leak in.
+// Cancelling the event puts the buy-ins back the same way — /api/events/take-down
+// writes a positive `buyin_refund` row against the same listing — so both types
+// are read here and netted. A team refunded in full stops counting as a paying
+// team; nothing about the cancelled event is left claiming to have taken money.
+//
+// `booking_capture` is also used for ordinary pitch captures, but those rows
+// carry a booking_id/match_id and no open_match_id, so they can't leak in.
 
 export type EventRef = { id: string; price_per_team_pence: number | null; max_teams: number | null };
 
@@ -53,13 +55,28 @@ export async function loadEventRevenue(events: EventRef[]): Promise<Map<string, 
   const entriesByEvent = new Map<string, number>();
   for (const e of entries) entriesByEvent.set(e.open_match_id, (entriesByEvent.get(e.open_match_id) ?? 0) + 1);
 
-  const paidByEvent = new Map<string, { pence: number; teams: Set<string> }>();
+  // Per team first, so a refund cancels out the capture it reverses rather
+  // than just shrinking a total while the team still counts as having paid.
+  const netByEvent = new Map<string, Map<string, number>>();
   for (const c of ledger ?? []) {
-    if (c.type !== "booking_capture") continue;
-    const cur = paidByEvent.get(c.open_match_id) ?? { pence: 0, teams: new Set<string>() };
-    cur.pence += Math.abs(c.amount_pence ?? 0);
-    if (c.team_id) cur.teams.add(c.team_id);
-    paidByEvent.set(c.open_match_id, cur);
+    if (c.type !== "booking_capture" && c.type !== "buyin_refund") continue;
+    const perTeam = netByEvent.get(c.open_match_id) ?? new Map<string, number>();
+    // Captures are negative on the team's ledger, refunds positive: negating
+    // leaves what the team is actually out of pocket for this event.
+    const key = c.team_id ?? "";
+    perTeam.set(key, (perTeam.get(key) ?? 0) - (c.amount_pence ?? 0));
+    netByEvent.set(c.open_match_id, perTeam);
+  }
+
+  const paidByEvent = new Map<string, { pence: number; teams: Set<string> }>();
+  for (const [eventId, perTeam] of netByEvent) {
+    const cur = { pence: 0, teams: new Set<string>() };
+    for (const [teamId, pence] of perTeam) {
+      if (pence <= 0) continue; // fully refunded — this team paid nothing in the end
+      cur.pence += pence;
+      if (teamId) cur.teams.add(teamId);
+    }
+    paidByEvent.set(eventId, cur);
   }
 
   for (const ev of events) {

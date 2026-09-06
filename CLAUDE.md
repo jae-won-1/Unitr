@@ -33,7 +33,8 @@ better matchmaking and player-team matching, and eventually leagues.
 
 - **Social feed** — the scrollable stats/video feed on Home, and posting highlights to it.
 - **Leagues** — tables, standings, a fixture generator.
-- **Group chats** — team chat and match chat between captains. Messages is 1:1 only today.
+- **Match chats** — the chat between two captains around a fixture. The **team** group chat
+  is built (see Messages below); a match chat is not.
 - **Video ingestion** — upload/processing/playback of match footage.
 - **Availability-based matchmaking** — availability is collected and shown, but no algorithm
   ranks opponents by it. Only a per-post "matches availability" badge exists.
@@ -227,8 +228,24 @@ resulting bookings are listed on the Calendar, not here. A booked pitch can be t
 
 ### Messages / Profile
 
-- `/messages` — **1:1 direct messages only**. Payment reminders and announcements arrive here
-  as DMs. Group and match chats are not built.
+- `/messages` — the inbox: **one team group chat pinned above the 1:1 threads**. Payment
+  reminders and announcements still arrive as DMs. Match chats are not built.
+- `/messages/team` — the **team group chat**. Its membership is *derived*, never stored: the
+  captain plus every approved `team_members` row, so approving a squad member or a join
+  through the invite link puts them in the chat with nothing to write, and losing the
+  membership row takes them out. `lib/team-chat.ts` is the only place
+  `team_chat_messages` / `team_chat_members` are read or written.
+  `team_chat_members` holds only what the derivation can't know — **muted**, **left**, and
+  how far this person has read — and the row is created lazily, so most of a squad never has
+  one. **Muting** stops the chat contributing to the inbox count and the TopBar dot; it does
+  not hide the chat. **Leaving** freezes it: the leaver keeps the history up to `left_at`,
+  receives nothing after it, and the database refuses their posts (`can_post_team_chat`).
+  Their inbox row is greyed with a Rejoin rather than removed, per the house convention, and
+  rejoining is theirs to do for as long as they're in the squad.
+  New messages arrive by **polling every 5s while the tab is visible** — Supabase realtime
+  isn't enabled on this project.
+  RLS here is deliberately stricter than the rest of the prototype's `using (true)`: only
+  the squad can read a team's chat, and only a squad member who hasn't left can post.
 - `/profile` — profile info, saved payment method (Stripe SetupIntent), season stats, badges,
   highlights. The stats are display-level; there's no ingestion pipeline behind them.
 
@@ -241,6 +258,20 @@ any player route.
 ### Admin
 
 `/admin/finance` — reconciliation view over the credit ledger and Stripe transfers.
+`/admin` is the hub of every event this admin hosts, `/admin/create` posts one, and
+`/admin/posts` moderates the teams' match posts (take-down via `/api/posts/take-down`).
+
+**Taking Unitr's own event down.** An admin-hosted event is cancelled from the event page
+itself (`/play/tournament/[id]`), where staff see a take-down box under the organiser
+controls. It goes through `/api/events/take-down`, which flips `open_matches.status` to
+`cancelled` — every feed and calendar query already filters that out — and then refunds
+every buy-in with the `refund_event_buyin` RPC, which reads what each team **actually**
+paid off the ledger (an invitation discount never reaches the listing) and is idempotent, so
+a repeated take-down cannot pay twice. Pending invitations are cancelled and each entered
+captain gets a bell notification carrying the reason and their refund. The route refuses
+anything without `organiser_admin_id` — a team's or a venue's event is their fixture and
+their money — and the button hides once kickoff has passed, since football that happened
+can't be refunded.
 
 ## Availability
 
@@ -306,7 +337,10 @@ cannot rewrite what someone already paid.
 Unitr's actual revenue in the pilot is the **buy-in on admin-hosted events**: the ledger's
 `booking_capture` row carries `open_match_id`, so a capture against an `open_matches` row with
 `organiser_admin_id` set is money that stayed with the platform. `/admin/finance` reads it
-that way rather than inferring it as a residual.
+that way rather than inferring it as a residual. Cancelling such an event writes the money
+back as a positive `buyin_refund` row against the same listing, and both `/admin/finance`
+and `lib/event-revenue.ts` net the two per team — a fully refunded team stops counting as a
+paying entry rather than leaving the cancelled event still claiming revenue.
 
 Variants:
 - **Secured posts** — the poster already paid the venue in cash via `/book`, so the flow skips
@@ -368,9 +402,11 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_open_matches.sql`, `supabase_tournament_*.sql` | Tournaments, schedules, referees, invitations, notifications |
 | `supabase_ringers.sql` | `ringer_requests`, `ringer_signups`, `is_ringer` |
 | `supabase_transfer_market.sql` | `player_offers`, `friend_requests` |
+| `supabase_event_takedown.sql` | Take-down provenance on `open_matches` + `refund_event_buyin` (returns a team's net buy-in to its credit as a `buyin_refund` ledger row); run after `supabase_admin_hosting.sql` |
 | `supabase_tournament_entry_lockdown.sql` | Closes client inserts/deletes on `open_match_teams`; `enter_own_tournament` RPC for the organiser's own free entry; run after `supabase_open_matches.sql` |
 | `supabase_refunds.sql` | `refund_credit`, `team_card_contributions`, refund columns on the ledger; run after `supabase_joining_fees.sql` |
 | `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
+| `supabase_team_chat.sql` | `team_chat_messages` + per-person `team_chat_members` (muted / left / last read), `is_team_squad_member()`, `can_post_team_chat()`, and squad-only RLS; run after `supabase_joining_fees.sql` |
 | `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |
 | `supabase_captain_joining_fee.sql` | `teams.captain_joining_fee_due_pence` / `_paid_pence`, the snapshot + notify triggers, and the captain branch of `apply_deposit_to_joining_fee`; run after `supabase_joining_fees.sql` |
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { loadLeadership } from "@/lib/team-leadership";
+import { loadChatSummary } from "@/lib/team-chat";
 
 // /join is on this list for the same reason the auth screens are: it is an
 // entry point, often the first Unitr screen someone ever sees, and it carries
@@ -105,12 +106,21 @@ export default function TopBar() {
     loadDues();
   }, [user]);
 
-  // Unread direct messages — includes captain-sent payment reminders.
+  // Unread direct messages — includes captain-sent payment reminders, and the
+  // team group chat. A chat the viewer muted or left reports 0 unread, so
+  // turning notifications off genuinely clears this dot.
   useEffect(() => {
     if (!user) { setUnreadMessages(0); return; }
-    supabase.from("messages")
-      .select("id", { count: "exact", head: true }).eq("receiver_id", user.id).eq("read", false)
-      .then(({ count }) => setUnreadMessages(count ?? 0));
+    (async () => {
+      const [{ count }, led] = await Promise.all([
+        supabase.from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("receiver_id", user.id).eq("read", false),
+        loadLeadership(user.id),
+      ]);
+      const chat = await loadChatSummary(led?.teamId, user.id);
+      setUnreadMessages((count ?? 0) + (chat?.unreadCount ?? 0));
+    })();
   }, [user]);
 
   // Feed notifications (referee assignments, etc.) — newest first, unread lead.

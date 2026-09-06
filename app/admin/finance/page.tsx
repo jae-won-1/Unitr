@@ -150,7 +150,12 @@ export default function AdminFinancePage() {
       const perEvent = new Map<string, EventRevenue>();
       let revenueTotal = 0;
       for (const t of rows) {
-        if (t.type !== "booking_capture" || !t.open_match_id) continue;
+        // A buy-in in ('booking_capture', negative) and, if the event was
+        // taken down, the same money back out ('buyin_refund', positive —
+        // /api/events/take-down). Reading only the captures would leave a
+        // cancelled event still counted as revenue Unitr kept.
+        if (t.type !== "booking_capture" && t.type !== "buyin_refund") continue;
+        if (!t.open_match_id) continue;
         const title = adminHosted.get(t.open_match_id as string);
         if (!title) continue; // team- or venue-hosted: that money left for someone else
         const pence = -t.amount_pence; // captures are negative on the team's ledger
@@ -159,7 +164,8 @@ export default function AdminFinancePage() {
         perEvent.set(t.open_match_id as string, {
           id: t.open_match_id as string, title,
           pence: (prev?.pence ?? 0) + pence,
-          entries: (prev?.entries ?? 0) + 1,
+          // Entries counts buy-ins, not ledger rows: a refund reverses one.
+          entries: (prev?.entries ?? 0) + (t.type === "booking_capture" ? 1 : -1),
         });
       }
       setRevenue({

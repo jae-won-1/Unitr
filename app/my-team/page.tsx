@@ -292,6 +292,13 @@ function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean })
           </a>
         </div>
       )}
+      {/* Not captain-gated: the chat is the whole squad's, and this is where
+          the squad already is. It also lives at the top of /messages. */}
+      <div className="flex gap-2 mt-2">
+        <a href="/messages/team" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
+          Team Chat
+        </a>
+      </div>
     </div>
   );
 }

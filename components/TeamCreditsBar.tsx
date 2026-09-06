@@ -51,7 +51,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [reimbursedExpanded, setReimbursedExpanded] = useState(false);
   const [owedByPlayer, setOwedByPlayer] = useState<Record<string, number>>({});
   const [bookingTx, setBookingTx] = useState<{ id: string; label: string; detail: string; amount_pence: number; created_at: string }[]>([]);
-  const [reimbursedTx, setReimbursedTx] = useState<{ id: string; opponent: string; amount_pence: number; created_at: string }[]>([]);
+  const [reimbursedTx, setReimbursedTx] = useState<{ id: string; label: string; amount_pence: number; created_at: string }[]>([]);
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
@@ -482,16 +482,24 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
       }
       return { id: t.id, label: t.type === "booking_capture" ? "Pitch booking" : "Match payment", detail: "", amount_pence: Math.abs(t.amount_pence), created_at: t.created_at };
     }));
-    // Load reimbursements this team received from an opponent — e.g. when a
-    // challenger joins a secured post, they pay their half straight into the
-    // poster's credit (reimburse_secured_pitch → 'opponent_settlement', +ve).
+    // Money that came back into the pot rather than being paid into it. Two
+    // things do that: an opponent settling their half of a secured post
+    // (reimburse_secured_pitch → 'opponent_settlement'), and an event Unitr
+    // cancelled handing the buy-in back (refund_event_buyin → 'buyin_refund').
+    // Without the second, the balance would just go up with nothing in the log
+    // to explain it.
     const { data: reimbursed } = await supabase
       .from("team_credit_transactions")
-      .select("id, amount_pence, created_at, related_team_id")
+      .select("id, amount_pence, created_at, related_team_id, type, open_match_id")
       .eq("team_id", teamId)
-      .eq("type", "opponent_settlement")
+      .in("type", ["opponent_settlement", "buyin_refund"])
       .gt("amount_pence", 0)
       .order("created_at", { ascending: false });
+    const refundEventIds = [...new Set((reimbursed ?? []).map((t) => t.open_match_id).filter(Boolean))];
+    const { data: refundEvents } = refundEventIds.length
+      ? await supabase.from("open_matches").select("id, title").in("id", refundEventIds)
+      : { data: [] as { id: string; title: string }[] };
+    const refundEventTitle = new Map((refundEvents ?? []).map((e) => [e.id, e.title as string]));
     const oppIds = [...new Set((reimbursed ?? []).map((t) => t.related_team_id).filter(Boolean))];
     const { data: oppTeams } = oppIds.length
       ? await supabase.from("teams").select("id, name").in("id", oppIds)
@@ -499,7 +507,9 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
     const oppName = new Map((oppTeams ?? []).map((t) => [t.id, t.name as string]));
     setReimbursedTx((reimbursed ?? []).map((t) => ({
       id: t.id,
-      opponent: t.related_team_id ? (oppName.get(t.related_team_id) ?? "Opponent") : "Opponent",
+      label: t.type === "buyin_refund"
+        ? `Buy-in refunded — ${(t.open_match_id && refundEventTitle.get(t.open_match_id)) || "cancelled event"}`
+        : `Reimbursed by ${t.related_team_id ? (oppName.get(t.related_team_id) ?? "Opponent") : "Opponent"}`,
       amount_pence: t.amount_pence,
       created_at: t.created_at,
     })));
@@ -693,7 +703,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">Reimbursed by {p.opponent}</p>
+                            <p className="text-xs font-medium truncate">{p.label}</p>
                             <p className="text-[10px] text-text-secondary">{timeAgo}</p>
                           </div>
                           <span className="text-xs font-bold text-green-600">+£{(p.amount_pence / 100).toFixed(2)}</span>

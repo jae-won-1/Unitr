@@ -10,6 +10,8 @@ import { isKickoffPast } from "@/lib/match-dates";
 import { computeStandings } from "@/lib/standings";
 import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-revenue";
 import { loadLedTeam, loadLeadership } from "@/lib/team-leadership";
+import { useRole } from "@/contexts/RoleContext";
+import { takeDownEvent } from "@/lib/take-down-event";
 
 // Event detail + management — tournaments, leagues and admin-hosted friendlies
 // (all open_matches rows). The organiser (the hosting team's captain, the venue
@@ -73,6 +75,7 @@ export default function TournamentDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { role } = useRole();
 
   const [t, setT] = useState<Tournament | null | undefined>(undefined);
   const [teams, setTeams] = useState<JoinedTeam[]>([]);
@@ -87,6 +90,14 @@ export default function TournamentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [revenue, setRevenue] = useState<EventRevenue | null>(null);
+  const [takenDownReason, setTakenDownReason] = useState<string | null>(null);
+
+  // Take-down — Unitr staff, Unitr's own events only (see the section below).
+  const [confirmingTakeDown, setConfirmingTakeDown] = useState(false);
+  const [takeDownReason, setTakeDownReason] = useState("");
+  const [takeDownBusy, setTakeDownBusy] = useState(false);
+  const [takeDownError, setTakeDownError] = useState<string | null>(null);
+  const [takeDownNote, setTakeDownNote] = useState<string | null>(null);
 
   // Manual-fixture form
   const [mHome, setMHome] = useState("");
@@ -112,6 +123,18 @@ export default function TournamentDetailPage() {
     }
     if (!om) { setT(null); return; }
     setT(om as Tournament);
+
+    // Why it was taken down, for the banner. Its own query rather than another
+    // column on the one above: supabase_event_takedown.sql is a separate
+    // migration, and a 42703 there would take organiser_admin_id down with it
+    // and leave the admin who hosts this unable to see that they do.
+    if ((om as Tournament).status === "cancelled") {
+      const { data: down } = await supabase.from("open_matches")
+        .select("taken_down_reason").eq("id", params.id).maybeSingle();
+      setTakenDownReason((down?.taken_down_reason as string | null) ?? null);
+    } else {
+      setTakenDownReason(null);
+    }
 
     const { data: jt } = await supabase.from("open_match_teams")
       .select("team_id, team_name").eq("open_match_id", params.id);
@@ -353,6 +376,29 @@ export default function TournamentDetailPage() {
     setRatingDraft((prev) => ({ ...prev, [p.player_id]: { rating: "", note: "" } }));
   };
 
+  // Take an admin-hosted event off the feed and hand every buy-in back. The
+  // route does the deciding — this only collects the reason and reports what
+  // came back, including the case where the event went down but a refund
+  // didn't.
+  const handleTakeDown = async () => {
+    if (!t) return;
+    setTakeDownBusy(true);
+    setTakeDownError(null);
+    const res = await takeDownEvent(t.id, takeDownReason.trim());
+    setTakeDownBusy(false);
+    if ("error" in res) { setTakeDownError(res.error); return; }
+    const { refundedPence, refundedTeams, warning } = res.result;
+    setTakeDownNote(
+      warning ??
+      (refundedTeams > 0
+        ? `Taken down. £${(refundedPence / 100).toFixed(2)} returned to ${refundedTeams} team${refundedTeams === 1 ? "" : "s"}.`
+        : "Taken down. No buy-ins had been taken, so nothing was refunded."),
+    );
+    setConfirmingTakeDown(false);
+    setTakeDownReason("");
+    await load();
+  };
+
   if (t === undefined) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
   if (!t) return <div className="flex items-center justify-center min-h-screen px-4"><p className="text-text-secondary">Event not found.</p></div>;
 
@@ -369,6 +415,22 @@ export default function TournamentDetailPage() {
       </div>
 
       <div className="flex flex-col gap-5">
+        {/* Cancelled — the loudest thing on the page, because everything below
+            it (the schedule, the entered teams, the buy-in) is now history. */}
+        {t.status === "cancelled" && (
+          <section className="bg-red-500/10 border border-red-500/30 rounded-card p-4">
+            <p className="text-sm font-bold text-red-600">This {noun.toLowerCase()} was cancelled</p>
+            <p className="text-xs text-text-secondary mt-1">
+              It has left every team&apos;s feed and calendar, and any buy-in taken went back to the team&apos;s credit.
+            </p>
+            {takenDownReason && (
+              <p className="text-xs text-text-secondary mt-2 pt-2 border-t border-red-500/20 break-words">
+                <span className="font-semibold">Reason:</span> {takenDownReason}
+              </p>
+            )}
+          </section>
+        )}
+
         {/* Teams entered */}
         <section className="bg-surface border border-border shadow-card rounded-card p-4">
           <div className="flex items-center justify-between mb-3">
@@ -433,7 +495,7 @@ export default function TournamentDetailPage() {
           const alreadyIn = Boolean(myTeamId && teams.some((tm) => tm.team_id === myTeamId));
           const isFull = teams.length >= t.max_teams || t.status === "full";
           const past = isKickoffPast(t.match_date, t.start_time);
-          if (canManage || past) return null;
+          if (canManage || past || t.status === "cancelled") return null;
           const discounted = Math.max(0, t.price_per_team_pence - inviteDiscountPence);
           return (
             <section className="bg-surface border border-border shadow-card rounded-card p-4">
@@ -464,7 +526,7 @@ export default function TournamentDetailPage() {
         {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3"><p className="text-sm text-red-600">{error}</p></div>}
 
         {/* Organiser: invite good-fit teams */}
-        {canManage && t.status !== "full" && teams.length < t.max_teams && (
+        {canManage && t.status !== "full" && t.status !== "cancelled" && teams.length < t.max_teams && (
           <section className="bg-surface border border-border shadow-card rounded-card p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Invite teams</p>
@@ -655,6 +717,57 @@ export default function TournamentDetailPage() {
                 );
               })}
             </div>
+          </section>
+        )}
+
+        {/* Take it down — Unitr staff, Unitr's own events only.
+            A team's or a venue's event is their fixture and their money, so
+            the button isn't offered for one (and /api/events/take-down refuses
+            it anyway). It disappears once kickoff has passed: an event that has
+            already been played can't be un-run, and taking it down would hand
+            back buy-ins for football that happened. */}
+        {role === "admin" && t.organiser_admin_id && t.status !== "cancelled" && !isKickoffPast(t.match_date, t.start_time) && (
+          <section className="bg-surface border border-red-500/30 shadow-card rounded-card p-4">
+            <p className="text-sm font-semibold">Take this {noun.toLowerCase()} down</p>
+            <p className="text-[11px] text-text-secondary mt-1">
+              It leaves every team&apos;s feed and calendar, no one else can enter, and every
+              buy-in taken goes straight back to that team&apos;s credit. This can&apos;t be undone.
+            </p>
+
+            {!confirmingTakeDown ? (
+              <button onClick={() => setConfirmingTakeDown(true)}
+                className="w-full mt-3 py-2.5 rounded-btn border border-red-500/30 text-red-600 text-sm font-semibold">
+                Take down {noun.toLowerCase()}
+              </button>
+            ) : (
+              <div className="mt-3 border-t border-border pt-3 space-y-2">
+                <p className="text-[11px] text-text-secondary">
+                  {teams.length === 0
+                    ? "No team has entered yet."
+                    : `${teams.length} team${teams.length === 1 ? " is" : "s are"} entered — each captain is told what you type here, and gets their buy-in back.`}
+                </p>
+                <input value={takeDownReason} onChange={(e) => setTakeDownReason(e.target.value)} autoFocus
+                  placeholder="Reason — e.g. pitch double-booked, too few teams"
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                {takeDownError && <p className="text-[11px] text-red-600">{takeDownError}</p>}
+                <div className="flex gap-2">
+                  <button onClick={() => { setConfirmingTakeDown(false); setTakeDownError(null); }} disabled={takeDownBusy}
+                    className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40">Keep it up</button>
+                  <button onClick={handleTakeDown} disabled={takeDownBusy || !takeDownReason.trim()}
+                    className="flex-1 py-2 rounded-xl bg-red-500 text-white text-xs font-bold disabled:opacity-40">
+                    {takeDownBusy ? "Taking down…" : "Take down"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Stays after the section above disappears — the refund total is the
+            only place the admin sees what the take-down actually paid out. */}
+        {takeDownNote && (
+          <section className="bg-surface-2 border border-border rounded-card p-4">
+            <p className="text-xs text-text-secondary">{takeDownNote}</p>
           </section>
         )}
       </div>
