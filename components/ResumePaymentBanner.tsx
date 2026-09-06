@@ -13,12 +13,15 @@
 // localStorage read.
 
 import { useCallback, useEffect, useState } from "react";
+import type { SetupIntent } from "@stripe/stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
 import {
   clearPendingPayment,
   readPendingPayment,
   type PendingPayment,
 } from "@/lib/pending-payment";
+import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
+import { useAuth } from "@/contexts/AuthContext";
 
 type View =
   | { state: "hidden" }
@@ -26,6 +29,7 @@ type View =
   | { state: "working" }
   | { state: "done"; entry: PendingPayment }          // paid, credit on its way
   | { state: "orphaned"; entry: PendingPayment }      // paid, but its follow-up write never ran
+  | { state: "cardSaved" }                            // a card, saved and recorded
   | { state: "failed"; message: string };
 
 function money(pence: number) {
@@ -33,7 +37,24 @@ function money(pence: number) {
 }
 
 export default function ResumePaymentBanner() {
+  const { user } = useAuth();
   const [view, setView] = useState<View>({ state: "hidden" });
+
+  // A saved card that lost its tab mid-challenge. Unlike a "booking" payment,
+  // this one's follow-up write can be replayed in full: the SetupIntent carries
+  // the payment method, and putting it on the profile is all that was left. So
+  // the banner finishes the job instead of reporting a half-done one.
+  const finishCard = useCallback(async (intent: SetupIntent | undefined): Promise<View> => {
+    const pmId = paymentMethodIdOf(intent?.payment_method);
+    if (!user || !pmId) {
+      // Signed out, or Stripe gave us no card. Leave the entry so the next
+      // signed-in load can still record it, and say nothing meanwhile.
+      return { state: "hidden" };
+    }
+    await persistSavedCard(user.id, pmId);
+    clearPendingPayment();
+    return { state: "cardSaved" };
+  }, [user]);
 
   // Turn a PaymentIntent status into what the payer should be told.
   const settle = useCallback((entry: PendingPayment, status: string | undefined): View => {
@@ -41,6 +62,9 @@ export default function ResumePaymentBanner() {
       case "succeeded":
       case "processing":
         clearPendingPayment();
+        // A settled card is finished by finishCard, which has to await the
+        // profile write — both callers handle it before reaching here.
+        if (entry.kind === "card") return { state: "hidden" };
         // A "booking" payment had a write to make after the charge that never
         // ran. Saying "all done" would be a lie the payer only discovers when
         // the booking isn't there.
@@ -52,7 +76,12 @@ export default function ResumePaymentBanner() {
         return { state: "resume", entry };
       case "requires_payment_method":
         clearPendingPayment();
-        return { state: "failed", message: "That payment didn't go through — your card wasn't charged." };
+        return {
+          state: "failed",
+          message: entry.kind === "card"
+            ? "That card wasn't saved — nothing has been charged."
+            : "That payment didn't go through — your card wasn't charged.",
+        };
       case "canceled":
         clearPendingPayment();
         return { state: "hidden" };
@@ -69,6 +98,20 @@ export default function ResumePaymentBanner() {
     (async () => {
       const stripe = await stripePromise;
       if (!stripe || !live) return;
+
+      if (entry.kind === "card") {
+        const { setupIntent, error: setupError } = await stripe.retrieveSetupIntent(entry.clientSecret);
+        if (!live) return;
+        if (setupError || !setupIntent) { clearPendingPayment(); return; }
+        if (setupIntent.status === "succeeded") {
+          const next = await finishCard(setupIntent);
+          if (live) setView(next);
+          return;
+        }
+        setView(settle(entry, setupIntent.status));
+        return;
+      }
+
       const { paymentIntent, error } = await stripe.retrievePaymentIntent(entry.clientSecret);
       if (!live) return;
       if (error || !paymentIntent) {
@@ -80,7 +123,7 @@ export default function ResumePaymentBanner() {
       setView(settle(entry, paymentIntent.status));
     })();
     return () => { live = false; };
-  }, [settle]);
+  }, [settle, finishCard]);
 
   // Re-open the challenge the payer walked away from. handleNextAction picks up
   // exactly where confirmPayment left off, so no card details are asked for
@@ -89,9 +132,16 @@ export default function ResumePaymentBanner() {
     setView({ state: "working" });
     const stripe = await stripePromise;
     if (!stripe) { setView({ state: "resume", entry }); return; }
-    const { paymentIntent, error } = await stripe.handleNextAction({ clientSecret: entry.clientSecret });
+    // handleNextAction drives a SetupIntent's challenge exactly as it drives a
+    // PaymentIntent's, so saving a card resumes through the same call.
+    const { paymentIntent, setupIntent, error } = await stripe.handleNextAction({ clientSecret: entry.clientSecret });
     if (error) {
       setView({ state: "failed", message: error.message ?? "Couldn't finish that payment." });
+      return;
+    }
+    if (entry.kind === "card") {
+      if (setupIntent?.status === "succeeded") { setView(await finishCard(setupIntent)); return; }
+      setView(settle(entry, setupIntent?.status));
       return;
     }
     setView(settle(entry, paymentIntent?.status));
@@ -116,13 +166,35 @@ export default function ResumePaymentBanner() {
     );
   }
 
+  if (view.state === "cardSaved") {
+    return (
+      <div className={shell}>
+        <div className="max-w-lg mx-auto bg-surface border border-success-border shadow-card rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="w-7 h-7 rounded-full bg-success-bg border border-success-border flex items-center justify-center flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold">Card saved</p>
+            <p className="text-[11px] text-text-secondary">It&apos;s on your profile, ready for auto-settlement.</p>
+          </div>
+          <button onClick={() => setView({ state: "hidden" })} className="text-xs font-semibold text-text-secondary px-2 flex-shrink-0">Close</button>
+        </div>
+      </div>
+    );
+  }
+
   if (view.state === "resume") {
+    const isCard = view.entry.kind === "card";
     return (
       <div className={shell}>
         <div className="max-w-lg mx-auto bg-surface border border-accent/40 shadow-card rounded-2xl px-4 py-3">
-          <p className="text-sm font-bold">Finish your {money(view.entry.amountPence)} payment</p>
+          <p className="text-sm font-bold">
+            {isCard ? "Finish saving your card" : `Finish your ${money(view.entry.amountPence)} payment`}
+          </p>
           <p className="text-[11px] text-text-secondary mt-0.5 leading-snug">
-            {view.entry.label} — your bank still needs to approve it. You haven&apos;t been charged yet.
+            {isCard
+              ? "Your bank still needs to approve it. Nothing has been charged."
+              : `${view.entry.label} — your bank still needs to approve it. You haven't been charged yet.`}
           </p>
           <div className="flex gap-2 mt-3">
             <button onClick={dismiss}
@@ -131,7 +203,7 @@ export default function ResumePaymentBanner() {
             </button>
             <button onClick={() => resume(view.entry)}
               className="flex-1 py-2 rounded-btn bg-accent text-white text-xs font-bold">
-              Finish payment
+              {isCard ? "Finish saving" : "Finish payment"}
             </button>
           </div>
         </div>

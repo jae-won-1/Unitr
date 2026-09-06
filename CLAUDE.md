@@ -436,6 +436,19 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   Every confirm also carries a `return_url` of `/payment-return` (`paymentReturnUrl()`). The
   redirect is still only taken when a bank insists, but supplying it removes the failure where
   Stripe needs to redirect, finds nowhere to go, and errors instead of taking the payment.
+- **Saving a card is the same problem — use `confirmCardSetup`, never `stripe.confirmSetup`.**
+  A SetupIntent runs the identical 3D Secure challenge; the bank does not care that no money is
+  moving. So it goes through the same file, the same server-side race and the same `return_url`.
+  Three things differ. Its pending entry's `kind` is **`"card"`** with an amount of 0 — nothing
+  is charged, and the banner never prints a figure. Its follow-up write (the payment method onto
+  the profile) **can** be replayed from the intent alone, so `ResumePaymentBanner` finishes it
+  rather than reporting an orphan; that write lives once in `lib/save-card.ts` so a recovered
+  card is saved identically to a normal one. And `/api/create-setup-intent` writes
+  `stripe_customer_id` to the profile when it mints the customer, not after the card saves —
+  otherwise a challenge that costs the payer their tab loses the id and the next attempt creates
+  a second customer. `/payment-return` reads **`setup_intent_client_secret`** as well as
+  `payment_intent_client_secret`; reading only the latter told someone who had just authorised
+  a card that we couldn't find their payment.
 - **Every API route authenticates its caller.** RLS is `using (true)` and the anon key is
   public, so the API routes are where authorisation actually happens. A route identifies the
   caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the

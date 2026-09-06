@@ -1,6 +1,7 @@
 "use client";
 
-// Where Stripe sends the payer when authenticating had to leave the page.
+// Where Stripe sends the payer when authenticating had to leave the page —
+// paying, and equally saving a card, which authenticates the same way.
 //
 // Every confirm in the app is `redirect: "if_required"`, so most payments never
 // come through here — a 3D Secure challenge that can render in place does, and
@@ -16,29 +17,76 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { stripePromise } from "@/lib/stripe-client";
 import { clearPendingPayment } from "@/lib/pending-payment";
+import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Result =
   | { state: "checking" }
   | { state: "paid" }
   | { state: "processing" }
   | { state: "unfinished" }
+  | { state: "saved" }
   | { state: "failed"; message: string };
 
 function PaymentReturn() {
   const params = useSearchParams();
+  const { user, loading } = useAuth();
   const [result, setResult] = useState<Result>({ state: "checking" });
 
   useEffect(() => {
+    // Saving a card comes back here too, and comes back under a different
+    // parameter — Stripe appends setup_intent_client_secret for a SetupIntent.
+    // Reading only the payment one told a player who had just authenticated a
+    // card in their banking app that we couldn't find their payment.
+    const setupSecret = params.get("setup_intent_client_secret");
     const clientSecret = params.get("payment_intent_client_secret");
-    if (!clientSecret) {
+    if (!setupSecret && !clientSecret) {
       setResult({ state: "failed", message: "We couldn't find that payment." });
       return;
     }
+    // Recording the card needs the signed-in user, so a card return waits for
+    // the session to load rather than deciding without it.
+    if (setupSecret && loading) return;
+
     let live = true;
     (async () => {
       const stripe = await stripePromise;
       if (!stripe || !live) return;
-      const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret);
+
+      if (setupSecret) {
+        const { setupIntent, error: setupError } = await stripe.retrieveSetupIntent(setupSecret);
+        if (!live) return;
+        if (setupError || !setupIntent) {
+          setResult({ state: "failed", message: setupError?.message ?? "We couldn't check that card." });
+          return;
+        }
+        switch (setupIntent.status) {
+          case "succeeded": {
+            // The card exists at Stripe now; it still has to land on the
+            // profile. Signed in, that happens here. Signed out (a session that
+            // didn't survive the round trip), the remembered entry is left
+            // alone and ResumePaymentBanner records it on the next load.
+            const pmId = paymentMethodIdOf(setupIntent.payment_method);
+            if (user && pmId) {
+              await persistSavedCard(user.id, pmId);
+              clearPendingPayment();
+            }
+            if (!live) return;
+            setResult({ state: "saved" });
+            break;
+          }
+          case "requires_action":
+          case "requires_confirmation":
+            setResult({ state: "unfinished" });
+            break;
+          default:
+            clearPendingPayment();
+            setResult({ state: "failed", message: "That card wasn't saved — nothing has been charged." });
+        }
+        return;
+      }
+
+      const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret!);
       if (!live) return;
       if (error || !paymentIntent) {
         setResult({ state: "failed", message: error?.message ?? "We couldn't check that payment." });
@@ -65,15 +113,18 @@ function PaymentReturn() {
       }
     })();
     return () => { live = false; };
-  }, [params]);
+  }, [params, user, loading]);
 
   const copy = {
-    checking: { title: "Checking your payment…", body: "One moment." },
+    checking: { title: "Checking…", body: "One moment." },
     paid: { title: "Payment complete", body: "Your team balance updates in a moment." },
     processing: { title: "Payment received", body: "Your bank is still settling it. Your balance updates shortly — you can close this." },
-    unfinished: { title: "Not finished yet", body: "Your bank hasn't approved this payment. You haven't been charged; head back and we'll pick it up where you left off." },
-    failed: { title: "Payment didn't complete", body: result.state === "failed" ? result.message : "" },
+    saved: { title: "Card saved", body: "Your share of match fees can be charged to it automatically. Nothing has been charged now." },
+    unfinished: { title: "Not finished yet", body: "Your bank hasn't approved this yet. Nothing has been charged; head back and we'll pick it up where you left off." },
+    failed: { title: "Didn't complete", body: result.state === "failed" ? result.message : "" },
   }[result.state];
+
+  const good = result.state === "paid" || result.state === "processing" || result.state === "saved";
 
   return (
     <div className="px-6 pt-24 pb-24 max-w-sm mx-auto text-center">
@@ -81,11 +132,11 @@ function PaymentReturn() {
         <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-5" />
       ) : (
         <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5 border ${
-          result.state === "paid" || result.state === "processing"
+          good
             ? "bg-success-bg border-success-border"
             : "bg-surface-2 border-border"
         }`}>
-          {result.state === "paid" || result.state === "processing" ? (
+          {good ? (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
           ) : (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-text-secondary"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.01"/></svg>

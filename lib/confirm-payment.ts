@@ -1,6 +1,12 @@
 "use client";
 
-import type { Stripe, StripeElements, PaymentIntent, StripeError } from "@stripe/stripe-js";
+import type {
+  Stripe,
+  StripeElements,
+  PaymentIntent,
+  SetupIntent,
+  StripeError,
+} from "@stripe/stripe-js";
 import {
   clearPendingPayment,
   paymentReturnUrl,
@@ -8,7 +14,11 @@ import {
   type PendingKind,
 } from "@/lib/pending-payment";
 
-// The one way this app confirms a card payment.
+// The one way this app confirms a card payment, and the one way it saves a
+// card. Both go through the same machinery, because a SetupIntent authenticates
+// through exactly the same 3D Secure flow a PaymentIntent does — the bank does
+// not care whether money is actually moving — so it breaks in exactly the same
+// ways, and is fixed by exactly the same race.
 //
 // stripe.confirmPayment() resolves from a polling loop that lives inside
 // Stripe's 3D Secure iframe. On mobile that loop is not reliable, because
@@ -39,6 +49,11 @@ import {
 // payment the instant it started.
 
 export type ConfirmResult = { paymentIntent?: PaymentIntent; error?: StripeError };
+export type SetupResult = { setupIntent?: SetupIntent; error?: StripeError };
+
+// What either kind of intent comes back as. Stripe fills in whichever field
+// matches the client secret it was given.
+type IntentResult = ConfirmResult & SetupResult;
 
 const SETTLED = new Set(["succeeded", "processing"]);
 
@@ -47,11 +62,17 @@ const SETTLED = new Set(["succeeded", "processing"]);
 // stalls without the tab ever being hidden.
 const POLL_MS = 4000;
 
+// A SetupIntent's client secret is "seti_…", a PaymentIntent's "pi_…", so the
+// secret itself says which retrieve call to make and no caller has to pass it.
+export function isSetupSecret(clientSecret: string) {
+  return clientSecret.startsWith("seti_");
+}
+
 function watchFromServer(
   stripe: Stripe,
   clientSecret: string,
   signal: { done: boolean },
-): Promise<ConfirmResult> {
+): Promise<IntentResult> {
   return new Promise((resolve) => {
     let busy = false;
     let wasHidden = false;
@@ -65,7 +86,7 @@ function watchFromServer(
       window.removeEventListener("focus", onVisibility);
     };
 
-    const finish = (r: ConfirmResult) => {
+    const finish = (r: IntentResult) => {
       if (signal.done) return;
       cleanup();
       resolve(r);
@@ -75,12 +96,14 @@ function watchFromServer(
       if (signal.done || busy || document.visibilityState !== "visible") return;
       busy = true;
       try {
-        const { paymentIntent } = await stripe.retrievePaymentIntent(clientSecret);
-        const status = paymentIntent?.status;
+        const current: IntentResult = isSetupSecret(clientSecret)
+          ? await stripe.retrieveSetupIntent(clientSecret)
+          : await stripe.retrievePaymentIntent(clientSecret);
+        const status = (current.paymentIntent ?? current.setupIntent)?.status;
         if (signal.done) return;
 
         if (status && SETTLED.has(status)) {
-          finish({ paymentIntent });
+          finish(current);
           return;
         }
 
@@ -90,10 +113,11 @@ function watchFromServer(
         // repeatedly would stack them.
         if (status === "requires_action" && wasHidden && !reDriven) {
           reDriven = true;
-          const { paymentIntent: after, error } = await stripe.handleNextAction({ clientSecret });
+          const after: IntentResult = await stripe.handleNextAction({ clientSecret });
           if (signal.done) return;
-          if (error) { finish({ error }); return; }
-          if (after?.status && SETTLED.has(after.status)) finish({ paymentIntent: after });
+          if (after.error) { finish({ error: after.error }); return; }
+          const settled = (after.paymentIntent ?? after.setupIntent)?.status;
+          if (settled && SETTLED.has(settled)) finish(after);
         }
       } catch {
         // Offline, or Stripe briefly unhappy. The next tick tries again.
@@ -148,6 +172,57 @@ export async function confirmCardPayment({
     // so the banner can offer to finish it after a reload.
     if (result.error || (status && SETTLED.has(status))) clearPendingPayment();
     return result;
+  } finally {
+    signal.done = true;
+  }
+}
+
+// Saving a card, through the same race.
+//
+// This is the profile's "Add a card". It has no amount and moves no money, but
+// the bank runs the identical 3D Secure challenge, so the mobile failure is
+// identical: approve in Monzo, come back, and the promise inside the frozen
+// iframe never resolves. It was worse here than on a payment, because there was
+// no return_url either — a bank that insists on a top-level redirect made
+// confirmSetup *throw* an integration error out of the click handler rather
+// than return one, which is the crash the payer saw on coming back.
+//
+// The pending entry is written for the same reason a payment's is: if the OS
+// evicts the tab during the app switch, ResumePaymentBanner is the only thing
+// left that knows a card was half-saved. Its kind is "card" and its amount is
+// 0 — nothing was charged, and the banner says so in those words.
+export async function confirmCardSetup({
+  stripe, elements, clientSecret,
+}: {
+  stripe: Stripe;
+  elements: StripeElements;
+  clientSecret: string;
+}): Promise<SetupResult> {
+  rememberPendingPayment({ clientSecret, kind: "card", amountPence: 0, label: "Saving your card" });
+
+  const signal = { done: false };
+  try {
+    const result: IntentResult = await Promise.race([
+      stripe.confirmSetup({
+        elements,
+        redirect: "if_required",
+        confirmParams: { return_url: paymentReturnUrl() },
+      }),
+      watchFromServer(stripe, clientSecret, signal),
+    ]);
+    signal.done = true;
+
+    const status = result.setupIntent?.status;
+    if (result.error || (status && SETTLED.has(status))) clearPendingPayment();
+    return { setupIntent: result.setupIntent, error: result.error };
+  } catch (err) {
+    // confirmSetup throws rather than returns on an integration error. Thrown
+    // out of an onClick that becomes an unhandled rejection and the button
+    // sticks on "Saving…" forever, so it is turned back into the error shape
+    // the caller already knows how to show.
+    signal.done = true;
+    clearPendingPayment();
+    return { error: { message: (err as Error)?.message || "Could not save that card." } as StripeError };
   } finally {
     signal.done = true;
   }

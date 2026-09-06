@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise } from "@/lib/stripe-client";
+import { confirmCardSetup } from "@/lib/confirm-payment";
+import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -22,8 +24,8 @@ const stripeAppearance = {
 };
 
 // ── Card-on-file: SetupIntent form (saves a card for off-session settlement) ──
-function CardSetupForm({ customerId, onSaved, onCancel }: {
-  customerId: string | null;
+function CardSetupForm({ clientSecret, onSaved, onCancel }: {
+  clientSecret: string;
   onSaved: (card: { brand: string | null; last4: string | null }) => void;
   onCancel: () => void;
 }) {
@@ -38,29 +40,18 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
     setSaving(true);
     setErr(null);
 
-    const { error, setupIntent } = await stripe.confirmSetup({ elements, redirect: "if_required" });
+    // Never stripe.confirmSetup() directly — saving a card runs the same 3D
+    // Secure challenge a payment does, and breaks the same two ways when the
+    // bank sends the payer into their banking app. See lib/confirm-payment.ts.
+    const { error, setupIntent } = await confirmCardSetup({ stripe, elements, clientSecret });
     if (error) { setErr(error.message ?? "Could not save card."); setSaving(false); return; }
 
-    const pm = setupIntent?.payment_method;
-    const pmId = typeof pm === "string" ? pm : pm?.id;
+    const pmId = paymentMethodIdOf(setupIntent?.payment_method);
     if (!pmId) { setErr("No card was returned. Try again."); setSaving(false); return; }
 
-    let brand: string | null = null, last4: string | null = null;
-    try {
-      const res = await authedPost("/api/payment-method", { paymentMethodId: pmId });
-      const d = await res.json();
-      brand = d.brand ?? null; last4 = d.last4 ?? null;
-    } catch { /* brand/last4 are cosmetic — saving the card still succeeds */ }
-
-    await supabase.from("profiles").update({
-      stripe_customer_id: customerId,
-      stripe_payment_method_id: pmId,
-      card_brand: brand,
-      card_last4: last4,
-    }).eq("id", user.id);
-
+    const card = await persistSavedCard(user.id, pmId);
     setSaving(false);
-    onSaved({ brand, last4 });
+    onSaved(card);
   };
 
   return (
@@ -85,7 +76,9 @@ function CardSetupForm({ customerId, onSaved, onCancel }: {
 function PaymentMethodSection() {
   const { user } = useAuth();
   const [card, setCard] = useState<{ brand: string | null; last4: string | null } | null | undefined>(undefined);
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  // No customer id here any more: /api/create-setup-intent writes it to the
+  // profile itself, so the form no longer has to carry it across a 3D Secure
+  // round trip it may not survive.
   const [setupSecret, setSetupSecret] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -93,10 +86,9 @@ function PaymentMethodSection() {
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles")
-      .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
+      .select("stripe_payment_method_id, card_brand, card_last4")
       .eq("id", user.id).maybeSingle()
       .then(({ data }) => {
-        setCustomerId(data?.stripe_customer_id ?? null);
         setCard(data?.stripe_payment_method_id ? { brand: data.card_brand, last4: data.card_last4 } : null);
       });
   }, [user]);
@@ -107,7 +99,7 @@ function PaymentMethodSection() {
     try {
       const res = await authedPost("/api/create-setup-intent", {});
       const d = await res.json();
-      if (d.clientSecret) { setSetupSecret(d.clientSecret); setCustomerId(d.customerId); }
+      if (d.clientSecret) setSetupSecret(d.clientSecret);
       else setErr(d.error ?? "Could not start card setup. Check Stripe keys in .env.local");
     } catch { setErr("Could not connect to payment service."); }
     setStarting(false);
@@ -148,7 +140,7 @@ function PaymentMethodSection() {
         {setupSecret ? (
           <Elements stripe={stripePromise} options={{ clientSecret: setupSecret, appearance: stripeAppearance }}>
             <CardSetupForm
-              customerId={customerId}
+              clientSecret={setupSecret}
               onCancel={() => setSetupSecret(null)}
               onSaved={(c) => { setCard(c); setSetupSecret(null); }}
             />

@@ -27,7 +27,12 @@ const MAX_AGE_MS = 60 * 60 * 1000;
 //               booking, record the ringer signup). Resuming recovers the
 //               payment but NOT that write, so the banner says so rather than
 //               claiming everything worked.
-export type PendingKind = "credit" | "booking";
+//   "card"    — no charge at all: a SetupIntent saving a card on the profile.
+//               Its follow-up write (the payment method onto the profile) *can*
+//               be replayed from the intent alone, so the banner finishes it
+//               rather than reporting a half-done job. Nothing was ever
+//               charged, so its amount is 0 and no money is mentioned.
+export type PendingKind = "credit" | "booking" | "card";
 
 export type PendingPayment = {
   clientSecret: string;
