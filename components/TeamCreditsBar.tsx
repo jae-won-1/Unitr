@@ -520,59 +520,54 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
 
   return (
     <>
-      {/* The rebrand makes this a wrapping row of equal-weight pills rather than
-          three buttons plus a right-aligned text link. Counts sit *inside* the
-          pill as a red chip — as absolute corner badges they were clipped once
-          the row was allowed to wrap. */}
-      <div className="flex flex-wrap items-center gap-2 mt-2">
+      {/* A fixed two-column grid rather than a wrapping row: the four pills are
+          equal-weight actions, and left to wrap they came out ragged — two
+          natural-width pills on top, two stretched ones below. Every cell is
+          the same width and height, so the captain's four make a symmetrical
+          2×2. Counts sit *inside* the pill as a red chip; as absolute corner
+          badges they were clipped by the neighbouring cell.
+          A player has only three, so Settle Payments spans the bottom row. */}
+      <div className="grid grid-cols-2 gap-2 mt-2">
         <button onClick={() => openLog("deposits")}
-          className="flex items-center gap-1.5 bg-surface border border-border rounded-full px-3.5 py-2.5 hover:border-accent transition-colors whitespace-nowrap">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
+          className="flex items-center justify-center gap-1.5 min-w-0 bg-surface border border-border rounded-full px-3 py-2.5 hover:border-accent transition-colors">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
             <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
           </svg>
-          <span className="text-[13px] font-bold text-text-primary">£{credits.toFixed(2)}</span>
-          <span className="text-xs font-medium text-text-secondary">team credits</span>
-          <span className="text-text-secondary text-xs">›</span>
+          <span className="text-[13px] font-bold text-text-primary whitespace-nowrap">£{credits.toFixed(2)}</span>
+          <span className="text-xs font-medium text-text-secondary truncate">credits</span>
         </button>
         <button onClick={() => setShowTopUp(true)}
-          className={`flex items-center gap-1.5 text-[13px] font-bold px-3.5 py-2.5 rounded-full border whitespace-nowrap ${myOwedPence + feeOwedPence > 0 ? "text-white bg-danger border-danger" : "text-white bg-accent border-accent"}`}>
+          className={`flex items-center justify-center gap-1.5 min-w-0 text-[13px] font-bold px-3 py-2.5 rounded-full border whitespace-nowrap ${myOwedPence + feeOwedPence > 0 ? "text-white bg-danger border-danger" : "text-white bg-accent border-accent"}`}>
           + Top Up
           {myDues.length > 0 && (
-            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white text-danger text-[10px] font-bold flex items-center justify-center">
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-white text-danger text-[10px] font-bold flex items-center justify-center flex-shrink-0">
               {myDues.length}
             </span>
           )}
         </button>
-        {/* Payment Status and Settle Payments are one pair, so for the captain
-            they get their own full-width sub-row and split it evenly — left to
-            the outer wrap they were too wide to share a line and the second
-            always dropped below the first. A player sees only Settle Payments,
-            which keeps its natural width in the main row. */}
-        <div className={`flex items-center gap-2 ${role === "captain" ? "w-full" : ""}`}>
-          {role === "captain" && (
-            <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
-              className="flex-1 flex items-center justify-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap">
-              Payment Status
-              {collectMatches.length > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
-                  {collectMatches.length}
-                </span>
-              )}
-            </button>
-          )}
-          {/* Opens in place rather than navigating: its neighbours in this row are
-              all popups, and sending the captain to a full page for the same kind
-              of quick check lost them their position on Home. */}
-          <button onClick={() => setShowSettle(true)}
-            className={`flex items-center justify-center gap-1.5 text-[13px] font-bold text-text-primary border border-border bg-surface px-3.5 py-2.5 rounded-full whitespace-nowrap ${role === "captain" ? "flex-1" : ""}`}>
-            Settle Payments
-            {historyAlertCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
-                {historyAlertCount}
+        {role === "captain" && (
+          <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
+            className="flex items-center justify-center gap-1.5 min-w-0 text-[13px] font-bold text-text-primary border border-border bg-surface px-3 py-2.5 rounded-full whitespace-nowrap">
+            Payment Status
+            {collectMatches.length > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                {collectMatches.length}
               </span>
             )}
           </button>
-        </div>
+        )}
+        {/* Opens in place rather than navigating: its neighbours in this row are
+            all popups, and sending the captain to a full page for the same kind
+            of quick check lost them their position on Home. */}
+        <button onClick={() => setShowSettle(true)}
+          className={`flex items-center justify-center gap-1.5 min-w-0 text-[13px] font-bold text-text-primary border border-border bg-surface px-3 py-2.5 rounded-full whitespace-nowrap ${role === "captain" ? "" : "col-span-2"}`}>
+          Settle Payments
+          {historyAlertCount > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+              {historyAlertCount}
+            </span>
+          )}
+        </button>
       </div>
       {reserved > 0 && (
         <p className="text-[11px] text-text-secondary mt-1">
