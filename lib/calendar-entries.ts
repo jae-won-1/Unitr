@@ -42,6 +42,9 @@ export type CalendarEntry = {
   openMatchId: string | null;
   /** Written back after a booking is turned into a post, to flip the CTA. */
   postId: string | null;
+  /** Tournaments only: this team is the organiser rather than an entrant.
+   *  Only a host has a schedule to draw up — everyone else manages their games. */
+  hosting: boolean;
   resultVerified: boolean;
   /** The submitted score from the viewer's side, once a captain has filed one.
    *  Null for anything with no result, and for kinds that can't have one. */
@@ -113,9 +116,15 @@ export function fixtureAction(entry: CalendarEntry, isCaptain: boolean): Fixture
         ? { href: `/my-team/match/${entry.matchId}`, label: "View match details", primary: false }
         : null;
     case "tournament":
+      // Drawing up fixtures and appointing referees is the organiser's job. A
+      // captain who only entered — an admin-hosted event, another team's
+      // tournament — reaches the same page to manage their own games, so the
+      // label says that rather than promising controls they'll never see.
       return {
         href: `/play/tournament/${entry.id}`,
-        label: isCaptain ? "Manage schedule & referees" : "View schedule & referees",
+        label: isCaptain
+          ? (entry.hosting ? "Manage schedule & referees" : "Manage match")
+          : "View schedule & referees",
         primary: isCaptain,
       };
     case "my_post":
@@ -206,6 +215,7 @@ async function loadFriendlies(captainId: string, teamId: string | null): Promise
       matchId: (m?.id as string) ?? null,
       openMatchId: null,
       postId: d.postId,
+      hosting: false,
       resultVerified: Boolean(m?.result_verified),
       result: m && teamId ? results.get(resultKey(m.id as string, teamId)) ?? null : null,
       ...base(d.date, d.time),
@@ -231,6 +241,7 @@ async function loadTournaments(teamId: string | null): Promise<CalendarEntry[]> 
     // separately — so only an entered one asks the squad for availability.
     openMatchId: t.entered ? t.id : null,
     postId: null,
+    hosting: Boolean(t.hosting),
     resultVerified: false,
     result: null,
     ...base(t.date, t.time),
@@ -264,6 +275,7 @@ async function loadMyPosts(captainId: string): Promise<CalendarEntry[]> {
       matchId: null,
       openMatchId: null,
       postId: r.id,
+      hosting: false,
       resultVerified: false,
       result: null,
       ...base(r.match_date, r.match_time),
@@ -320,6 +332,7 @@ async function loadRingerGames(userId: string): Promise<CalendarEntry[]> {
       matchId: s.match_id,
       openMatchId: null,
       postId: null,
+      hosting: false,
       resultVerified: Boolean(m.result_verified),
       result: results.get(resultKey(s.match_id, s.team_id)) ?? null,
       ...base(m.match_date, m.match_time),
@@ -358,6 +371,7 @@ async function loadBookings(userId: string): Promise<CalendarEntry[]> {
       matchId: null,
       openMatchId: null,
       postId: r.post_id ?? null,
+      hosting: false,
       resultVerified: false,
       result: null,
       ...base(r.match_date, r.start_time),

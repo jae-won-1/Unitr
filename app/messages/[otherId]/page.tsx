@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
@@ -23,7 +23,12 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Only follow the thread down when the reader is already at the live end —
+  // see the team chat, which has the same rule.
+  const stickToBottom = useRef(true);
+  // First paint jumps; later arrivals animate. See the team chat.
+  const settled = useRef(false);
 
   useEffect(() => {
     if (!user) return;
@@ -45,9 +50,20 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
     load();
   }, [user, params.otherId]);
 
+  // scrollTop on the list, not scrollIntoView: the latter scrolls every
+  // scrollable ancestor as well, so it moved the page along with the thread.
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const el = listRef.current;
+    if (loading || !el || !stickToBottom.current) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: settled.current ? "smooth" : "auto" });
+    settled.current = true;
+  }, [messages, loading]);
 
   const handleSend = async () => {
     if (!user || !draft.trim()) return;
@@ -64,7 +80,9 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
   };
 
   return (
-    <div className="flex flex-col min-h-screen pt-16 pb-4">
+    // h-chat, not min-h-screen: a definite height is what makes the message
+    // list scroll instead of the whole page. See globals.css.
+    <div className="flex flex-col h-chat mt-14 pt-2 pb-2">
       <div className="flex items-center gap-3 px-4 mb-4 flex-shrink-0">
         <a href="/messages">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -72,7 +90,11 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
         <p className="font-bold text-lg">{name}</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 space-y-2">
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 space-y-2"
+      >
         {loading ? (
           <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
         ) : messages.length === 0 ? (
@@ -90,7 +112,6 @@ export default function ThreadPage({ params }: { params: { otherId: string } }) 
             );
           })
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="flex items-center gap-2 px-4 pt-3 flex-shrink-0">

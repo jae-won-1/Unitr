@@ -6,6 +6,15 @@ import { toDateKey } from "@/lib/match-dates";
 // rather than defaulting to today: supply is thin enough across every feed that
 // a today-only default would show an empty list most of the time.
 
+// The strip runs to the same date one month out, so the window is "a month from
+// today" rather than a fixed day count — 28 to 31 days depending on the month.
+export function monthAheadDays() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  return Math.round((end.getTime() - today.getTime()) / 86_400_000) + 1;
+}
+
 export function buildDays(count: number) {
   const now = new Date();
   return Array.from({ length: count }, (_, i) => {
@@ -25,7 +34,7 @@ export function countByDate<T>(items: T[], getDate: (item: T) => string): Map<st
   return counts;
 }
 
-export default function DateDial({ value, onChange, counts, days = 14 }: {
+export default function DateDial({ value, onChange, counts, days = monthAheadDays() }: {
   value: string | null;
   onChange: (v: string | null) => void;
   counts: Map<string, number>;

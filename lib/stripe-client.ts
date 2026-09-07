@@ -12,8 +12,14 @@ export const stripePromise = loadStripe(
 // We already know who they are from the session, and nothing downstream reads
 // the billing name — so the form is the card and nothing else. Address is left
 // alone, because some cards need the postcode to authorise.
+//
+// Link is turned off outright (`wallets.link: "never"`). Hiding the billing
+// fields wasn't enough: Link renders its own "Save my information for faster
+// checkout" box with its own email, phone and name inputs, which is a second
+// account signup on top of the one the payer already has with us.
 export const cardElementOptions: StripePaymentElementOptions = {
   layout: "tabs",
   paymentMethodOrder: ["card"],
   fields: { billingDetails: { name: "never", email: "never", phone: "never" } },
+  wallets: { link: "never" },
 };

@@ -21,6 +21,14 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+// The squad is more than two people, so every incoming run is captioned with a
+// name AND an initials disc — the same treatment the search results and credit
+// rows give a player. A bare name over the first bubble of a run is easy to
+// scroll past and leaves the rest of the run unattributed.
+function initialsOf(name: string): string {
+  return name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
 function fmtDay(iso: string): string {
   const d = new Date(iso);
   if (d.toDateString() === new Date().toDateString()) return "Today";
@@ -44,8 +52,17 @@ export default function TeamChatPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Whether the viewer is reading the live end of the chat. Only then does a
+  // new message pull the list down — otherwise the five-second poll would yank
+  // someone out of the history they were scrolling through.
+  const stickToBottom = useRef(true);
+  // The first paint jumps to the latest message outright; only later arrivals
+  // animate. Smooth-scrolling a long history on open is a second of the chat
+  // flying past before it settles.
+  const settled = useRef(false);
+  const [showJump, setShowJump] = useState(false);
 
   const hasLeft = Boolean(settings?.leftAt);
 
@@ -98,7 +115,34 @@ export default function TeamChatPage() {
     return () => clearInterval(id);
   }, [poll]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // scrollTop on the list itself, never scrollIntoView: the latter walks up
+  // and scrolls every scrollable ancestor too, so it moved the page as well as
+  // the thread.
+  const scrollToLatest = useCallback((smooth: boolean) => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    stickToBottom.current = true;
+    setShowJump(false);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottom.current = atBottom;
+    if (atBottom) setShowJump(false);
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (stickToBottom.current) {
+      scrollToLatest(settled.current);
+      settled.current = true;
+    } else if (messages.length) {
+      setShowJump(true);
+    }
+  }, [messages, loading, scrollToLatest]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -155,7 +199,9 @@ export default function TeamChatPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen pt-16 pb-4">
+    // h-chat, not min-h-screen: a definite height is what makes the message
+    // list the thing that scrolls instead of the whole page. See globals.css.
+    <div className="flex flex-col h-chat mt-14 pt-2 pb-2">
       {/* ── Header ── */}
       <div className="flex items-center gap-3 px-4 mb-4 flex-shrink-0">
         <a href="/messages" aria-label="Back to messages">
@@ -210,7 +256,13 @@ export default function TeamChatPage() {
       )}
 
       {/* ── Body ── */}
-      <div className="flex-1 overflow-y-auto px-4 space-y-2">
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        // overscroll-contain stops a drag past either end chaining out to the
+        // document (and, on iOS, into pull-to-refresh).
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 space-y-2"
+      >
         {loading ? (
           <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
         ) : !teamId ? (
@@ -228,7 +280,7 @@ export default function TeamChatPage() {
             const newDay = !prev || fmtDay(prev.createdAt) !== fmtDay(m.createdAt);
             // Consecutive messages from one person are captioned once — a group
             // chat is unreadable with a name over every bubble.
-            const showName = !mine && (!prev || prev.senderId !== m.senderId || newDay);
+            const startsRun = !mine && (!prev || prev.senderId !== m.senderId || newDay);
             return (
               <div key={m.id}>
                 {newDay && (
@@ -236,10 +288,22 @@ export default function TeamChatPage() {
                     {fmtDay(m.createdAt)}
                   </p>
                 )}
-                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div className={`flex items-end gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                  {!mine && (
+                    // The disc is drawn once per run; the rest of the run keeps
+                    // the same 28px gutter so the bubbles stay lined up under
+                    // the person they came from.
+                    <div className="w-7 flex-shrink-0">
+                      {startsRun && (
+                        <div className="w-7 h-7 rounded-full bg-surface-2 border border-border flex items-center justify-center">
+                          <span className="text-[9.5px] font-bold text-accent-ink">{initialsOf(m.senderName)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="max-w-[78%]">
-                    {showName && (
-                      <p className="text-[10.5px] font-bold text-text-secondary mb-0.5 px-1">{m.senderName}</p>
+                    {startsRun && (
+                      <p className="text-[11px] font-bold text-text-primary mb-0.5 px-1">{m.senderName}</p>
                     )}
                     <div className={`rounded-card px-4 py-2.5 ${mine ? "bg-accent text-white" : "bg-surface border border-border text-text-primary"}`}>
                       <p className="text-sm whitespace-pre-wrap break-words">{m.body}</p>
@@ -251,8 +315,21 @@ export default function TeamChatPage() {
             );
           })
         )}
-        <div ref={bottomRef} />
       </div>
+
+      {/* The way back to the live end, for someone who scrolled up and then
+          had new messages land above the fold. */}
+      {showJump && (
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => scrollToLatest(true)}
+            className="absolute -top-12 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-accent text-white text-[11.5px] font-bold shadow-lg flex items-center gap-1.5 z-10"
+          >
+            New messages
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </button>
+        </div>
+      )}
 
       {/* ── Composer, or the way back in ── */}
       {teamId && !loading && (

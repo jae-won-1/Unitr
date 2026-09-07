@@ -117,6 +117,28 @@ body {
   }
 }
 
+/* ── Chat panes ────────────────────────────────────────────────
+   A chat is the one layout where the *page* must not scroll: the composer
+   stays put and the message list is the only thing that moves. `min-h-screen`
+   cannot do that. A min-height leaves the column free to grow, so the list
+   never overflows, the document scrolls in its place, and the bottom of the
+   thread plus the composer end up underneath the fixed BottomNav — which is
+   why scrolling back through history felt broken on a phone.
+
+   So the column gets a *definite* height instead: the viewport, less the
+   TopBar it starts below (mt-14) and the BottomNav it has to stop above
+   (.pb-nav's own sum). Added to that 3.5rem offset and the pb-nav on <main>,
+   it comes to exactly 100dvh, so the document has nothing left to scroll and
+   every drag reaches the message list. */
+.h-chat {
+  height: calc(100vh - 3.5rem - 4rem - max(1rem, env(safe-area-inset-bottom)));
+}
+@supports (height: 100dvh) {
+  .h-chat {
+    height: calc(100dvh - 3.5rem - 4rem - max(1rem, env(safe-area-inset-bottom)));
+  }
+}
+
 /* ── Touch input ───────────────────────────────────────────────
    Everything here is scoped to coarse pointers, so desktop is untouched. */
 @media (pointer: coarse) {
