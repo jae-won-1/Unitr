@@ -20,6 +20,13 @@ export const stripePromise = loadStripe(
 export const cardElementOptions: StripePaymentElementOptions = {
   layout: "tabs",
   paymentMethodOrder: ["card"],
-  fields: { billingDetails: { name: "never", email: "never", phone: "never" } },
+  // Opting out of a field obliges us to supply it at confirm time instead —
+  // resolveBillingDetails() in lib/confirm-payment.ts does that for name and
+  // email. Phone is deliberately NOT opted out of: there is no phone number on
+  // a profile to send, so claiming "never" here would owe Stripe a value we
+  // haven't got. Left at the default it costs nothing, because the Element only
+  // renders a phone field for payment methods that require one, and cards
+  // don't.
+  fields: { billingDetails: { name: "never", email: "never" } },
   wallets: { link: "never" },
 };

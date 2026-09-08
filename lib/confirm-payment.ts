@@ -7,6 +7,7 @@ import type {
   SetupIntent,
   StripeError,
 } from "@stripe/stripe-js";
+import { supabase } from "@/lib/supabase";
 import {
   clearPendingPayment,
   paymentReturnUrl,
@@ -140,6 +141,35 @@ function watchFromServer(
   });
 }
 
+// Stripe's contract for `fields.billingDetails: "never"` (lib/stripe-client.ts):
+// anything the Element is told not to collect has to be supplied at confirm
+// time instead. Miss it and Stripe raises an IntegrationError — and that one
+// THROWS out of the click handler rather than coming back as a result, so the
+// caller's button sits on "Processing…" for ever.
+//
+// It is resolved here, once, rather than at the six call sites: every confirm in
+// the app already goes through this file, so there is nowhere left for a caller
+// to forget it. The payer is signed in, so the name and email come from their
+// session and profile — which is the whole point of hiding those inputs.
+async function resolveBillingDetails(): Promise<{ name: string; email?: string }> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const email = user?.email ?? undefined;
+    let name = "";
+    if (user?.id) {
+      const { data } = await supabase
+        .from("profiles").select("full_name").eq("id", user.id).maybeSingle();
+      name = String(data?.full_name ?? "").trim();
+    }
+    // Stripe rejects an empty name, so fall back rather than send "".
+    if (!name) name = email?.split("@")[0] || "Unitr player";
+    return email ? { name, email } : { name };
+  } catch {
+    // Never block a payment on this lookup — a generic name still confirms.
+    return { name: "Unitr player" };
+  }
+}
+
 export async function confirmCardPayment({
   stripe, elements, clientSecret, kind, amountPence, label,
 }: {
@@ -155,13 +185,18 @@ export async function confirmCardPayment({
   // (ResumePaymentBanner reads it on the next load).
   rememberPendingPayment({ clientSecret, kind, amountPence, label });
 
+  const billing_details = await resolveBillingDetails();
+
   const signal = { done: false };
   try {
     const result = await Promise.race([
       stripe.confirmPayment({
         elements,
         redirect: "if_required",
-        confirmParams: { return_url: paymentReturnUrl() },
+        confirmParams: {
+          return_url: paymentReturnUrl(),
+          payment_method_data: { billing_details },
+        },
       }),
       watchFromServer(stripe, clientSecret, signal),
     ]);
@@ -172,6 +207,15 @@ export async function confirmCardPayment({
     // so the banner can offer to finish it after a reload.
     if (result.error || (status && SETTLED.has(status))) clearPendingPayment();
     return result;
+  } catch (err) {
+    // The same failure confirmCardSetup already guards against: confirmPayment
+    // throws rather than returns on an integration error, and an exception out
+    // of an onClick leaves the button on "Processing…" for ever, because the
+    // setPaying(false) that would clear it never runs. Nothing was charged — the
+    // throw happens before the card is submitted — so the pending entry goes too.
+    signal.done = true;
+    clearPendingPayment();
+    return { error: { message: (err as Error)?.message || "Payment failed." } as StripeError };
   } finally {
     signal.done = true;
   }
@@ -200,13 +244,18 @@ export async function confirmCardSetup({
 }): Promise<SetupResult> {
   rememberPendingPayment({ clientSecret, kind: "card", amountPence: 0, label: "Saving your card" });
 
+  const billing_details = await resolveBillingDetails();
+
   const signal = { done: false };
   try {
     const result: IntentResult = await Promise.race([
       stripe.confirmSetup({
         elements,
         redirect: "if_required",
-        confirmParams: { return_url: paymentReturnUrl() },
+        confirmParams: {
+          return_url: paymentReturnUrl(),
+          payment_method_data: { billing_details },
+        },
       }),
       watchFromServer(stripe, clientSecret, signal),
     ]);
