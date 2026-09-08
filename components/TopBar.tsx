@@ -6,6 +6,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { loadLeadership } from "@/lib/team-leadership";
 import { loadChatSummary } from "@/lib/team-chat";
+import { useRole } from "@/contexts/RoleContext";
+import TutorialSheet, { hasSeenTutorial } from "@/components/TutorialSheet";
+import type { TutorialRole } from "@/lib/tutorial-content";
 
 // /join is on this list for the same reason the auth screens are: it is an
 // entry point, often the first Uniter screen someone ever sees, and it carries
@@ -15,7 +18,9 @@ const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-passwor
 export default function TopBar() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { role, roleLoading } = useRole();
   const [initials, setInitials] = useState("?");
+  const [tutorialRole, setTutorialRole] = useState<TutorialRole | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -154,6 +159,25 @@ export default function TopBar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // ── Tutorial ────────────────────────────────────────────────────────
+  // The track this viewer gets, or null while the role is still resolving and
+  // for the two roles with no track — a venue manager never sees player chrome,
+  // and an admin learns the hosting tools from a person. `new_user` covers
+  // signed-out browsing too, hence the `user` test.
+  const track: TutorialRole | null =
+    !user || roleLoading ? null
+      : role === "captain" || role === "player" || role === "new_user" ? role
+        : null;
+
+  // First run, once per role: someone promoted from player to captain meets the
+  // captain track once rather than never. Closing the sheet writes the flag, so
+  // this can't reopen it — and the effect only re-runs if the track itself
+  // changes.
+  useEffect(() => {
+    if (!track || hasSeenTutorial(track)) return;
+    setTutorialRole(track);
+  }, [track]);
+
   if (pathname.startsWith("/venue")) return null;
   if (HIDDEN_PATHS.some((p) => pathname.startsWith(p))) return null;
 
@@ -170,6 +194,11 @@ export default function TopBar() {
     // uses, so the band clears the page's first row — QuickNav on Home — by 8px
     // instead of butting straight up against it. Raising this back to h-16
     // closes that gap again.
+    //
+    // The fragment matters: the bar's own z-40 creates a stacking context, so a
+    // sheet rendered *inside* it would be trapped at z-40 and painted under the
+    // BottomNav however high its own z-index went. The tutorial is a sibling.
+    <>
     <div className="fixed top-0 left-0 right-0 z-40 h-14 w-full bg-accent flex items-center justify-between gap-2 px-4">
 
       {/* ── Logo ── */}
@@ -328,6 +357,13 @@ export default function TopBar() {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 Profile
               </a>
+              {/* Permanent way back to the tutorial. A first-run carousel with
+                  no re-entry point is one nobody ever re-reads. */}
+              <button onClick={() => { setProfileOpen(false); setTutorialRole(track ?? "new_user"); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-text-primary hover:bg-surface-2 transition-colors border-t border-border">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+                How Uniter works
+              </button>
               <button onClick={() => { setProfileOpen(false); signOut(); }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-surface-2 transition-colors border-t border-border">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -344,5 +380,8 @@ export default function TopBar() {
       )}
       </div>
     </div>
+
+    <TutorialSheet role={tutorialRole} onClose={() => setTutorialRole(null)} />
+    </>
   );
 }
