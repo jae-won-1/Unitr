@@ -131,7 +131,7 @@ export default function VenueLayout({ children }: { children: React.ReactNode })
           </div>
           <div className="hidden md:block min-w-0">
             <p className="text-sm font-bold leading-tight truncate">Venue Portal</p>
-            <p className="text-[10px] text-text-secondary leading-tight">Powered by Unitr</p>
+            <p className="text-[10px] text-text-secondary leading-tight">Powered by Uniter</p>
           </div>
         </div>
 

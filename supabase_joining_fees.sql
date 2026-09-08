@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team joining fees migration
+-- UNITER — Team joining fees migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Requires supabase_payment_integrity.sql to have run first (it redefines
 -- credit_from_payment / record_cash_credit from that file).

@@ -26,7 +26,7 @@ export default function SignUpGate({ target, onClose }: {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <p className="font-bold text-base">Join Unitr</p>
+          <p className="font-bold text-base">Join Uniter</p>
           <button type="button" onClick={onClose} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, calcSplit } from "@/lib/stripe";
-import { feeWithin } from "@/lib/unitr-fee";
+import { feeWithin } from "@/lib/uniter-fee";
 import { getCaller, callerCustomerId, unauthorized } from "@/lib/api-auth";
 
 // Open a card payment for the caller's own share of a pitch. The payer and the
@@ -18,13 +18,13 @@ export async function POST(req: NextRequest) {
 
     // Credit-replenishment path passes an exact pre-computed amount (the player's
     // pitch share + fee). Individual path passes price + headcount to split here.
-    let perPlayer: number, unitrFee: number, totalPerPlayer: number;
+    let perPlayer: number, uniterFee: number, totalPerPlayer: number;
     if (amountPence && amountPence > 0) {
       totalPerPlayer = Math.round(amountPence);
-      unitrFee = feeWithin(totalPerPlayer);
-      perPlayer = totalPerPlayer - unitrFee;
+      uniterFee = feeWithin(totalPerPlayer);
+      perPlayer = totalPerPlayer - uniterFee;
     } else if (pitchPricePerHour && playerCount) {
-      ({ totalPerPlayer, perPlayer, unitrFee } = calcSplit(pitchPricePerHour, playerCount));
+      ({ totalPerPlayer, perPlayer, uniterFee } = calcSplit(pitchPricePerHour, playerCount));
     } else {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (!customer) {
       const created = await stripe.customers.create({
         email: email ?? undefined,
-        metadata: { app: "unitr" },
+        metadata: { app: "uniter" },
       });
       customer = created.id;
     }
@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
         bookingId: bookingId ?? "",
         playerId,
         pitchShare: perPlayer,
-        unitrFee: unitrFee,
+        uniterFee: uniterFee,
       },
-      description: `Unitr match booking — £${(perPlayer / 100).toFixed(2)} pitch + £${(unitrFee / 100).toFixed(2)} platform fee`,
+      description: `Uniter match booking — £${(perPlayer / 100).toFixed(2)} pitch + £${(uniterFee / 100).toFixed(2)} platform fee`,
     });
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret, customerId: customer });

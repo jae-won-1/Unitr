@@ -3,7 +3,7 @@ import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue } from "@/lib/venue-payout";
-import { feeOn } from "@/lib/unitr-fee";
+import { feeOn } from "@/lib/uniter-fee";
 
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
@@ -16,7 +16,7 @@ import { feeOn } from "@/lib/unitr-fee";
 //     buy-in reimburses the ORGANISER team's credit here (hostType 'team'). If the
 //     organiser is joining its OWN tournament, no payout and no reimbursement happen —
 //     they already paid the venue in full when they created it.
-//   - Admin-hosted (organiser_admin_id set): Unitr staff booked the pitch outside the
+//   - Admin-hosted (organiser_admin_id set): Uniter staff booked the pitch outside the
 //     app, so the debited buy-in stays with the platform (hostType 'admin') — nothing
 //     moves after the debit.
 //
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
     //    they already paid the venue in full at creation time.
     const isOrganiserSelfJoin = Boolean(om.organiser_team_id) && om.organiser_team_id === teamId;
     const isTeamHosted = Boolean(om.organiser_team_id) && !isOrganiserSelfJoin;
-    // Admin-hosted (Unitr staff): the admin already paid the venue in cash
+    // Admin-hosted (Uniter staff): the admin already paid the venue in cash
     // outside the app, so after the debit above the buy-in simply stays with
     // the platform — no reimbursement, no venue transfer. The ledger's
     // booking_capture row is the record of it.

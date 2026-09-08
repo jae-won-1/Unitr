@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Transfer Market migration
+-- UNITER — Transfer Market migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- The Transfer Market is two-sided discovery: players browsing teams, and

@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team tactics presets migration
+-- UNITER — Team tactics presets migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Replaces contexts/TacticsContext.tsx, which kept a SINGLE tactics blob in

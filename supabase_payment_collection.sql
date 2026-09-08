@@ -1,9 +1,9 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Payment Collection + Direct Messages migration
+-- UNITER — Payment Collection + Direct Messages migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Lets a captain, from each match's widget in Match History, tick which
--- players participated, split the team's booking cost (+5% Unitr fee)
+-- players participated, split the team's booking cost (+5% Uniter fee)
 -- evenly between them, and send each a payment request as a direct
 -- message. The Collect Payment popup (Team Credits bar) then aggregates
 -- every player's outstanding total across all matches, and the captain

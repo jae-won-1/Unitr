@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Refunds
+-- UNITER — Refunds
 -- Run in the Supabase SQL editor, AFTER supabase_payment_integrity.sql and
 -- supabase_joining_fees.sql. Idempotent — safe to re-run.
 --

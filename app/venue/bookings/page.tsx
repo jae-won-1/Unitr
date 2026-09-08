@@ -134,7 +134,7 @@ export default function VenueBookingsPage() {
           : b.booking_type === "open_match"
             ? (matchTypeByBooking.get(b.id) === "tournament" ? "tournament"
               : matchTypeByBooking.get(b.id) === "league" ? "league" : "match")
-            : "match"; // platform = a team's match booked through Unitr
+            : "match"; // platform = a team's match booked through Uniter
 
         const paidNames = payment.payers.filter((p) => p.paid).map((p) => p.name);
         const payerLabel = paidNames.length > 0 ? paidNames.join(", ") : null;
@@ -266,11 +266,11 @@ export default function VenueBookingsPage() {
                         </p>
                         {b.payerLabel && <p className="text-[11px] text-text-secondary mt-0.5 truncate">Paid by {b.payerLabel}</p>}
                         {b.payment.payoutFailed && (
-                          <p className="text-[11px] text-yellow-400 mt-0.5">Customer paid · Unitr payout failed</p>
+                          <p className="text-[11px] text-yellow-400 mt-0.5">Customer paid · Uniter payout failed</p>
                         )}
                         <span className="text-[10px] text-text-secondary italic">
                           {b.booking_type === "manual" ? "External booking"
-                            : b.booking_type === "platform" ? "Booked via Unitr" : "Listing"}
+                            : b.booking_type === "platform" ? "Booked via Uniter" : "Listing"}
                         </span>
                       </div>
                       <StatusBadge status={b.status} />

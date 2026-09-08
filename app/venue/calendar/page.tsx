@@ -22,17 +22,17 @@ const COLORS = [
 ];
 
 // Booking colour is driven by what kind of booking it is, not which pitch it's
-// on — venues need to eyeball Unitr vs manual vs tournament slots at a glance.
-type BookingCategory = "unitr" | "manual" | "tournament" | "league" | "match";
+// on — venues need to eyeball Uniter vs manual vs tournament slots at a glance.
+type BookingCategory = "uniter" | "manual" | "tournament" | "league" | "match";
 const CATEGORY_COLORS: Record<BookingCategory, { bg: string; text: string }> = {
-  unitr: { bg: "#00E676", text: "#000" },       // green — booked via Unitr (platform)
+  uniter: { bg: "#00E676", text: "#000" },       // green — booked via Uniter (platform)
   manual: { bg: "#3B82F6", text: "#fff" },      // blue — manual / external entry
   tournament: { bg: "#A855F7", text: "#fff" },  // purple
   league: { bg: "#F97316", text: "#fff" },      // orange
   match: { bg: "#EC4899", text: "#fff" },       // pink — open match listing
 };
 const CATEGORY_LABELS: Record<BookingCategory, string> = {
-  unitr: "Unitr booking",
+  uniter: "Uniter booking",
   manual: "Manual",
   tournament: "Tournament",
   league: "League",
@@ -72,7 +72,7 @@ function categoryFor(booking: Booking, matchTypeByBooking: Map<string, string>):
     if (mt === "league") return "league";
     return "match";
   }
-  return "unitr"; // "platform" — booked by a team via the Unitr Book flow
+  return "uniter"; // "platform" — booked by a team via the Uniter Book flow
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -152,7 +152,7 @@ function BookingBlock({ booking, onClick }: {
   booking: Booking;
   onClick: () => void;
 }) {
-  const color = CATEGORY_COLORS[booking.category ?? "unitr"];
+  const color = CATEGORY_COLORS[booking.category ?? "uniter"];
   const startSlot = Math.max(0, timeToSlot(booking.start_time));
   const endTime = booking.end_time ?? addOneHour(booking.start_time);
   const endSlot = Math.min(TOTAL_SLOTS, timeToSlot(endTime));
@@ -697,9 +697,9 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
         <div className="flex-1 px-5 pb-6 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-bold">{booking.booker_name ?? "Unitr Booking"}</p>
+              <p className="font-bold">{booking.booker_name ?? "Uniter Booking"}</p>
               <p className="text-xs text-text-secondary mt-0.5">
-                {booking.booking_type === "platform" ? "Booked via Unitr" : "External / manual entry"}
+                {booking.booking_type === "platform" ? "Booked via Uniter" : "External / manual entry"}
               </p>
             </div>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0">
@@ -748,7 +748,7 @@ function ViewBookingModal({ booking, pitch, onClose, onCancel, onPaymentUpdate }
             )}
 
             {payment?.payoutFailed && (
-              <p className="text-[11px] text-yellow-400">The customer paid, but Unitr&apos;s payout to your account failed — see Reports.</p>
+              <p className="text-[11px] text-yellow-400">The customer paid, but Uniter&apos;s payout to your account failed — see Reports.</p>
             )}
 
             {/* Listing: many teams pay in over time, so show entries + money in. */}
@@ -877,7 +877,7 @@ export default function VenueCalendarPage() {
         let booker_name = b.booker_name;
         if (!booker_name) {
           const { data: prof } = await supabase.from("profiles").select("full_name").eq("id", b.booked_by).maybeSingle();
-          booker_name = prof?.full_name ?? "Unitr Booking";
+          booker_name = prof?.full_name ?? "Uniter Booking";
         }
         const payment = payments.get(b.id);
         const withName = { ...b, booker_name, payment, payment_status: payment?.status ?? b.payment_status } as Booking;

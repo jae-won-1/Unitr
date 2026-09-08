@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — How often a player plays, per month
+-- UNITER — How often a player plays, per month
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Collected at registration. It is the first availability signal the platform

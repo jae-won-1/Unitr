@@ -144,7 +144,7 @@ export default function VenueDashboard() {
         {upcoming.length === 0 ? (
           <div className="bg-surface-2 border border-border rounded-2xl px-4 py-6 text-center">
             <p className="text-sm text-text-secondary">No bookings yet</p>
-            <p className="text-xs text-text-secondary mt-1">Bookings made through Unitr will appear here.</p>
+            <p className="text-xs text-text-secondary mt-1">Bookings made through Uniter will appear here.</p>
           </div>
         ) : (
           <div className="space-y-2">

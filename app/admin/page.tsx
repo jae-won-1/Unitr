@@ -143,7 +143,7 @@ export default function AdminHubPage() {
 
       {/* Everything this admin's events have taken. Admin-hosted buy-ins stay
           with the platform (the admin paid the venue in cash outside the app),
-          so this total is Unitr's, not a balance owed on to anyone. */}
+          so this total is Uniter's, not a balance owed on to anyone. */}
       <div className="bg-surface-2 border border-border rounded-2xl p-4">
         <div className="flex items-end justify-between">
           <div>

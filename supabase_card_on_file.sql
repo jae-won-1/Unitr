@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Card-on-file + roster-lock settlement migration
+-- UNITER — Card-on-file + roster-lock settlement migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Implements PAYMENT_PLAN.md §10:

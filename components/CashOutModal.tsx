@@ -110,7 +110,7 @@ export default function CashOutModal({ teamId, onClose, onDone }: {
           {failed.length > 0 && (
             <p className="text-[11px] text-yellow-600">
               {failed.length === 1 ? "One refund" : `${failed.length} refunds`} couldn&rsquo;t be sent. That
-              credit is still in the team balance — try again, or ask Unitr to sort it by hand.
+              credit is still in the team balance — try again, or ask Uniter to sort it by hand.
             </p>
           )}
           <button onClick={onClose} className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm mt-1">

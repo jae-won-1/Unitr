@@ -8,6 +8,26 @@ import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/tea
 const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
 const experiences = ["Beginner", "Casual", "Intermediate", "Competitive", "Semi-Pro"];
 
+// Self-reported buckets rather than a birth date or a strict binary — same
+// reasoning as games_per_month: an approximate honest answer beats a
+// precise-looking one. Closed sets so they can eventually back the "Age" /
+// "Gender" filters TeamsPanel already shows, greyed, with no data behind
+// them. Kept in sync with supabase_player_demographics.sql.
+const ageGroups = [
+  { value: "under-18", label: "Under 18" },
+  { value: "18-24", label: "18–24" },
+  { value: "25-34", label: "25–34" },
+  { value: "35-44", label: "35–44" },
+  { value: "45+", label: "45+" },
+];
+
+const genders = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "non_binary", label: "Non-binary" },
+  { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
+
 // How much football someone actually plays, which is a different question from
 // how good they are. Buckets rather than a number because the answer is a
 // self-reported estimate — the stored value is the `value`, the label is only
@@ -52,6 +72,8 @@ export default function RegisterPage() {
   const [experience, setExperience] = useState("");
   const [gamesPerMonth, setGamesPerMonth] = useState("");
   const [footballType, setFootballType] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
+  const [gender, setGender] = useState("");
 
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -72,7 +94,7 @@ export default function RegisterPage() {
     if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (accountType === "player" && (!position || !experience || !gamesPerMonth || !footballType)) {
+    if (accountType === "player" && (!position || !experience || !gamesPerMonth || !footballType || !ageGroup || !gender)) {
       setError("Please fill in all player fields.");
       return;
     }
@@ -94,6 +116,8 @@ export default function RegisterPage() {
               experience,
               games_per_month: gamesPerMonth,
               preferred_football_type: footballType,
+              age_group: ageGroup,
+              gender,
               account_type: "player",
             };
 
@@ -115,7 +139,7 @@ export default function RegisterPage() {
       <div className="relative overflow-hidden bg-accent px-6 pt-12 pb-8">
         <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(90deg,rgba(255,255,255,0.05) 0 40px,rgba(0,0,0,0.05) 40px 80px)" }} />
         <span className="relative flex items-center gap-1.5">
-          <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITR</span>
+          <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITER</span>
           <span className="w-[11px] h-6 bg-accent-2 -skew-x-12" />
         </span>
       </div>
@@ -234,6 +258,30 @@ export default function RegisterPage() {
         {accountType === "player" && (
           <>
             <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Age Group</label>
+              <div className="grid grid-cols-2 gap-2">
+                {ageGroups.map((ag) => (
+                  <button key={ag.value} type="button" onClick={() => setAgeGroup(ag.value)}
+                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${ageGroup === ag.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    {ag.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-text-secondary">Gender</label>
+              <div className="grid grid-cols-2 gap-2">
+                {genders.map((g) => (
+                  <button key={g.value} type="button" onClick={() => setGender(g.value)}
+                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${gender === g.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-text-secondary">Position</label>
               <div className="flex flex-wrap gap-2">
                 {positions.map((pos) => (
@@ -294,7 +342,7 @@ export default function RegisterPage() {
           <div className="bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
             <p className="text-xs text-accent-ink font-semibold mb-1">What happens next</p>
             <p className="text-xs text-text-secondary leading-relaxed">
-              After signing up you&apos;ll land in your Venue Portal where you can register your pitch, set availability, and start receiving bookings from Unitr players.
+              After signing up you&apos;ll land in your Venue Portal where you can register your pitch, set availability, and start receiving bookings from Uniter players.
             </p>
           </div>
         )}

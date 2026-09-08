@@ -12,7 +12,7 @@ import { getCallerId } from "@/lib/api-auth";
 type SettleItem = {
   amountPence: number;    // total to charge (pitch share + 5% fee)
   sharePence: number;     // the pitch share portion (refills team credit)
-  feePence: number;       // the 5% Unitr fee portion
+  feePence: number;       // the 5% Uniter fee portion
   teamId?: string | null; // set to refill this team's credit from the charge
   pcsId?: string | null;  // a due row — its amount overrides the one sent
   matchId?: string;
@@ -115,9 +115,9 @@ export async function POST(req: NextRequest) {
             bookingId: it.bookingId ?? "",
             teamId: it.teamId ?? "",
             pitchShare: sharePence,
-            unitrFee: feePence,
+            uniterFee: feePence,
           },
-          description: `Unitr match settlement — £${(sharePence / 100).toFixed(2)} pitch + £${(feePence / 100).toFixed(2)} fee`,
+          description: `Uniter match settlement — £${(sharePence / 100).toFixed(2)} pitch + £${(feePence / 100).toFixed(2)} fee`,
         });
 
         if (pi.status === "succeeded") {

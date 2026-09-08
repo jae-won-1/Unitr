@@ -15,7 +15,7 @@ import { takeDownEvent } from "@/lib/take-down-event";
 
 // Event detail + management — tournaments, leagues and admin-hosted friendlies
 // (all open_matches rows). The organiser (the hosting team's captain, the venue
-// owner, or the Unitr admin who posted it) can generate a schedule of fixtures
+// owner, or the Uniter admin who posted it) can generate a schedule of fixtures
 // between the joined teams — manually or randomly — save results, and rate
 // players. Every fixture is assigned a referee: a randomly chosen player from a
 // team NOT in that fixture, who is notified. Everyone can view the schedule,
@@ -92,7 +92,7 @@ export default function TournamentDetailPage() {
   const [revenue, setRevenue] = useState<EventRevenue | null>(null);
   const [takenDownReason, setTakenDownReason] = useState<string | null>(null);
 
-  // Take-down — Unitr staff, Unitr's own events only (see the section below).
+  // Take-down — Uniter staff, Uniter's own events only (see the section below).
   const [confirmingTakeDown, setConfirmingTakeDown] = useState(false);
   const [takeDownReason, setTakeDownReason] = useState("");
   const [takeDownBusy, setTakeDownBusy] = useState(false);
@@ -458,7 +458,7 @@ export default function TournamentDetailPage() {
           <section className="bg-surface border border-border shadow-card rounded-card p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold">Revenue</p>
-              <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">kept by Unitr</span>
+              <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">kept by Uniter</span>
             </div>
             <div className="flex items-end justify-between">
               <p className="text-2xl font-extrabold tabular-nums">{fmtPence(revenue.collectedPence)}</p>
@@ -720,7 +720,7 @@ export default function TournamentDetailPage() {
           </section>
         )}
 
-        {/* Take it down — Unitr staff, Unitr's own events only.
+        {/* Take it down — Uniter staff, Uniter's own events only.
             A team's or a venue's event is their fixture and their money, so
             the button isn't offered for one (and /api/events/take-down refuses
             it anyway). It disappears once kickoff has passed: an event that has

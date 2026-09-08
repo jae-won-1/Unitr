@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Player watchlist migration
+-- UNITER — Player watchlist migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Scouting in the Transfer Market is a browsing session; signing is a decision

@@ -430,7 +430,7 @@ export default function TransferMarketPage() {
         {!loading && count === 0 && (
           <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
             <p className="text-sm text-text-secondary">
-              {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.` : `No ${tab} on Unitr yet.`}
+              {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.` : `No ${tab} on Uniter yet.`}
             </p>
           </div>
         )}

@@ -1,7 +1,7 @@
 import { adminSupabase } from "@/lib/supabase-admin";
 import { stripe } from "@/lib/stripe";
 
-// Paying a venue: transfer the pitch fee from Unitr's Stripe balance to the
+// Paying a venue: transfer the pitch fee from Uniter's Stripe balance to the
 // venue's connected account. This is the CASH counterpart to the in-app credit
 // debit on match confirmation — every booking's credit-spend should produce
 // exactly one venue_transfers row here so the two reconcile.
@@ -121,7 +121,7 @@ export async function payVenue(p: VenuePayout): Promise<PayoutOutcome> {
       amount,
       currency: "gbp",
       destination: pitch.stripe_account_id,
-      description: `Unitr pitch payout — ${pitch.name}`,
+      description: `Uniter pitch payout — ${pitch.name}`,
       metadata: { pitchId: pitch.id, bookingId: bookingId ?? "", matchId: matchId ?? "", teamId: teamId ?? "", openMatchId: openMatchId ?? "" },
     });
     transferId = transfer.id;

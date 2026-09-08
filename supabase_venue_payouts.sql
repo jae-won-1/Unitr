@@ -1,9 +1,9 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Venue payouts (Stripe Connect, TEST MODE)
+-- UNITER — Venue payouts (Stripe Connect, TEST MODE)
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Adds the "real money out" side of the ledger: when a booking is confirmed,
--- Unitr transfers the pitch fee from its Stripe balance to the VENUE's
+-- Uniter transfers the pitch fee from its Stripe balance to the VENUE's
 -- connected Stripe account. This is the cash counterpart to the in-app
 -- credit debit (split_pitch_fee / capture_and_settle), so the two can be
 -- reconciled side by side in the finance analysis views.

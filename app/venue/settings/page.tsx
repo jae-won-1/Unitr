@@ -777,7 +777,7 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
           )}
         </div>
         <p className="text-xs text-text-secondary mb-4">
-          When a booking is paid on any of your pitches, Unitr transfers the pitch fee to this
+          When a booking is paid on any of your pitches, Uniter transfers the pitch fee to this
           account. One account covers your whole venue{pitches.length > 1 ? ` — all ${pitches.length} pitches pay out here` : ""}.
           Test mode — no real money moves.
         </p>

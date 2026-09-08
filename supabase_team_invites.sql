@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team invite links migration
+-- UNITER — Team invite links migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Run after supabase_joining_fees.sql (this file relies on that file's
 -- approval triggers firing for link joins too).

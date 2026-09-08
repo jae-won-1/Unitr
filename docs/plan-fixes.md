@@ -1,4 +1,4 @@
-# Unitr — eight fixes
+# Uniter — eight fixes
 
 ## Context
 

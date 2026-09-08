@@ -1,13 +1,13 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Ringers migration
+-- UNITER — Ringers migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- A "ringer" is a one-off guest player. A captain short of bodies posts a
 -- ringer request from Manage Match; any player browsing the Fill In feed
--- pays a flat £5 to Unitr by card and is instantly in the matchday squad.
+-- pays a flat £5 to Uniter by card and is instantly in the matchday squad.
 --
 -- Money model — deliberately NOT the team-credit model:
---   * The ringer pays Unitr £5. Nothing touches team_credits, the pitch
+--   * The ringer pays Uniter £5. Nothing touches team_credits, the pitch
 --     booking, or the venue payout — the team's own pitch fee is unchanged.
 --   * A ringer is therefore never charged at settlement. They aren't a
 --     team_member, so the captain's Collect Payment roster (built from
@@ -24,7 +24,7 @@ create table if not exists public.ringer_requests (
   positions    text[] not null default '{}',          -- e.g. {GK,CB,ST}; empty = any
   spots        integer not null default 1,
   notes        text,
-  price_pence  integer not null default 500,          -- flat Unitr fee the ringer pays
+  price_pence  integer not null default 500,          -- flat Uniter fee the ringer pays
   status       text not null default 'open',          -- 'open' | 'filled' | 'cancelled'
   created_at   timestamptz default now(),
   -- One live request per team per match; the captain edits spots instead of

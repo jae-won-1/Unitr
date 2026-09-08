@@ -7,7 +7,7 @@ import { payVenue, payoutCeilingPence, type VenuePayout } from "@/lib/venue-payo
 // this route is the authorisation in front of it.
 //
 // It is the single most dangerous endpoint in the app: stripe.transfers.create
-// moves money OUT of Unitr's Stripe balance to an external connected account.
+// moves money OUT of Uniter's Stripe balance to an external connected account.
 // Unauthenticated, with the amount taken from the request body, it is a
 // cash-out tap that anyone with the URL can open — harmless on a test key,
 // not harmless on a live one. Three things gate it now:

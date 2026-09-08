@@ -55,7 +55,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Unitr staff (set by hand in the Supabase dashboard). Admin wins even
+        // Uniter staff (set by hand in the Supabase dashboard). Admin wins even
         // if the account also captains a team — they get the admin Home.
         if (profile?.account_type === "admin") {
           setRole("admin");

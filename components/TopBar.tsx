@@ -8,7 +8,7 @@ import { loadLeadership } from "@/lib/team-leadership";
 import { loadChatSummary } from "@/lib/team-chat";
 
 // /join is on this list for the same reason the auth screens are: it is an
-// entry point, often the first Unitr screen someone ever sees, and it carries
+// entry point, often the first Uniter screen someone ever sees, and it carries
 // the wordmark itself rather than the app chrome.
 const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/join"];
 
@@ -174,7 +174,7 @@ export default function TopBar() {
 
       {/* ── Logo ── */}
       <a href="/" className="text-[19px] font-extrabold tracking-[0.01em] text-white flex-shrink-0">
-        UNITR
+        UNITER
       </a>
 
       <div className="flex items-center gap-2">

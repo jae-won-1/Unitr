@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Payment integrity migration
+-- UNITER — Payment integrity migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Closes the gap between "a card was charged" and "credit appeared".

@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Co-captains migration
+-- UNITER — Co-captains migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Run AFTER: supabase_joining_fees.sql, supabase_team_invites.sql,
 --            supabase_tournament_entry_lockdown.sql

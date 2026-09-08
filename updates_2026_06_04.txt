@@ -1,4 +1,4 @@
-UNITR — Updates 4 June 2026
+UNITER — Updates 4 June 2026
 ============================
 
 ## Venue Portal — Calendar & Settings
@@ -9,7 +9,7 @@ NEW: Venue Calendar page (/venue/calendar)
 - Full scrollable time grid (full operating hours visible, sticky headers)
 - Tap any empty slot → pre-filled Add Booking modal (team name, date, start/end time, notes)
 - Tap any booking block → view details, cancel option
-- Platform bookings (from Unitr matchmaking) appear automatically alongside manual entries
+- Platform bookings (from Uniter matchmaking) appear automatically alongside manual entries
 - Today button + prev/next date navigation
 - "Availability" nav item replaced with "Calendar" in venue bottom nav
 

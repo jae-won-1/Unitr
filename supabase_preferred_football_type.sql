@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — What kind of football a player actually wants
+-- UNITER — What kind of football a player actually wants
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Collected at registration, next to position, experience and games per month.

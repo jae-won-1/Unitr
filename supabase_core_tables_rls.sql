@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Row-Level Security for the hand-made core tables
+-- UNITER — Row-Level Security for the hand-made core tables
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Every table created BY a migration already enables RLS on the way in. The

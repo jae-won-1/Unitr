@@ -145,7 +145,7 @@ function SearchContent() {
             </svg>
           </div>
           <p className="text-sm font-semibold">Find players & teams</p>
-          <p className="text-xs text-text-secondary max-w-[220px]">Search by name to discover players and teams on Unitr.</p>
+          <p className="text-xs text-text-secondary max-w-[220px]">Search by name to discover players and teams on Uniter.</p>
         </div>
       )}
 

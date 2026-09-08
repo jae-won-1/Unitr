@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Availability for tournament entries
+-- UNITER — Availability for tournament entries
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Run after supabase_open_matches.sql and supabase_ringers.sql.
 --

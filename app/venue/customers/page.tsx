@@ -189,7 +189,7 @@ export default function VenueCustomersPage() {
       {!loading && players.length === 0 && teams.length === 0 && (
         <div className="bg-surface-2 border border-border rounded-2xl px-4 py-12 text-center">
           <p className="text-sm font-semibold mb-1">{query.trim() ? `No results for "${query}"` : "No customers found"}</p>
-          <p className="text-xs text-text-secondary">Teams and players who join Unitr will show up here.</p>
+          <p className="text-xs text-text-secondary">Teams and players who join Uniter will show up here.</p>
         </div>
       )}
 

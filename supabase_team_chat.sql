@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team group chat migration
+-- UNITER — Team group chat migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Run after supabase_joining_fees.sql (needs `teams` and `team_members`).
 --

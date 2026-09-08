@@ -38,7 +38,7 @@ type Confirmation = {
   status: string;
   full_name: string;
   // A paid guest player. In the squad and the lineup, but never in the charge —
-  // they've already paid Unitr their flat ringer fee (supabase_ringers.sql).
+  // they've already paid Uniter their flat ringer fee (supabase_ringers.sql).
   is_ringer: boolean;
 };
 
@@ -116,7 +116,7 @@ function AttendanceGroup({ title, subtitle, rows, highlight = false }: {
 
 // ── Ringer request (captain) ──────────────────────────────────
 // Short of bodies for this match? Post the positions you need and the spots
-// show up in every player's Fill In feed. Guests pay Unitr a flat fee to join
+// show up in every player's Fill In feed. Guests pay Uniter a flat fee to join
 // — nothing about the team's own pitch split changes.
 const RINGER_POSITIONS = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
 const RINGER_FEE_PENCE = 500;

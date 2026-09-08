@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Credit Ledger + Replenish migration
+-- UNITER — Credit Ledger + Replenish migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Implements the model in PAYMENT_PLAN.md:
@@ -301,7 +301,7 @@ end $$;
 
 
 -- Phase 3 — a player's replenishment payment refills THEIR team's credit.
--- Credits the pitch-share portion (amount_pence); the 5% fee goes to Unitr.
+-- Credits the pitch-share portion (amount_pence); the 5% fee goes to Uniter.
 -- Idempotent: only applies once per payment row.
 create or replace function public.apply_replenishment(
   p_payment_id uuid

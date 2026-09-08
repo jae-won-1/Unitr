@@ -1,4 +1,12 @@
-# Unitr — Project Brief
+# Uniter — Project Brief
+
+## Working with Codex and Claude Code
+
+Before making changes, read `AGENTS.md` for shared development and collaboration
+instructions and `docs/HANDOFF.md` for current progress and validation. This file
+remains the shared product and architecture reference for both tools. Update it
+when behaviour changes; record session state in the handoff. See `README.md` for
+local setup. Historical plans may be superseded by the implementation.
 
 A football platform providing: player-team matching, matchmaking, pitch booking, and a
 stats/video social space.
@@ -73,9 +81,10 @@ page was deleted. Don't "clean these up" without a reason; ~15 call sites point 
 
 ## Roles
 
-`contexts/RoleContext.tsx` derives one of four roles, checked in this order:
+`contexts/RoleContext.tsx` derives one of five roles, checked in this order:
 
 - `venue_manager` — `profiles.account_type`; skips all player logic
+- `admin` — `profiles.account_type`; takes precedence over team leadership
 - `captain` — captains a row in `teams`, **or** is an approved member with
   `team_members.is_co_captain`
 - `player` — has an approved `team_members` row
@@ -261,7 +270,7 @@ any player route.
 `/admin` is the hub of every event this admin hosts, `/admin/create` posts one, and
 `/admin/posts` moderates the teams' match posts (take-down via `/api/posts/take-down`).
 
-**Taking Unitr's own event down.** An admin-hosted event is cancelled from the event page
+**Taking Uniter's own event down.** An admin-hosted event is cancelled from the event page
 itself (`/play/tournament/[id]`), where staff see a take-down box under the organiser
 controls. It goes through `/api/events/take-down`, which flips `open_matches.status` to
 `cancelled` — every feed and calendar query already filters that out — and then refunds
@@ -323,18 +332,18 @@ collecting from 10–22 people is far too slow and failure-prone to gate a booki
 3. **Replenish** — each player who actually played refills their own team's credit. Either
    they top up manually, or their **saved card is charged off-session** at roster lock
    (`supabase_card_on_file.sql`).
-4. **Venue payout** — Unitr transfers the pitch fee to the venue's **Stripe Connect** account
+4. **Venue payout** — Uniter transfers the pitch fee to the venue's **Stripe Connect** account
    (`supabase_venue_payouts.sql`). One connected account per venue. Test mode only; real
    payouts need KYC/onboarding and a fintech review.
 
-Everything is in **pence**, everywhere. Unitr's per-transaction fee lives in
-`lib/unitr-fee.ts` and is currently **0** — the rate is being agreed with partners. It was a
+Everything is in **pence**, everywhere. Uniter's per-transaction fee lives in
+`lib/uniter-fee.ts` and is currently **0** — the rate is being agreed with partners. It was a
 bare `0.05`/`1.05` literal at nineteen sites; the constant is now the only place it exists,
 and at 0 the fee lines hide themselves rather than printing "£0.00 (0%)". `unitr_fee_pence`
 on `player_payments` / `pitch_bookings` is a snapshot, never recomputed, so changing the rate
 cannot rewrite what someone already paid.
 
-Unitr's actual revenue in the pilot is the **buy-in on admin-hosted events**: the ledger's
+Uniter's actual revenue in the pilot is the **buy-in on admin-hosted events**: the ledger's
 `booking_capture` row carries `open_match_id`, so a capture against an `open_matches` row with
 `organiser_admin_id` set is money that stayed with the platform. `/admin/finance` reads it
 that way rather than inferring it as a residual. Cancelling such an event writes the money
@@ -352,7 +361,7 @@ Variants:
   anything paid, and the `enter_own_tournament` RPC for an organiser fielding a team in their
   own tournament, where there is no buy-in to take. `open_match_teams` takes no client
   inserts — an open policy there meant a team could enter a paid event for free.
-- **Ringers** — a guest pays Unitr a **flat £5 by card**. It never touches team credit or the
+- **Ringers** — a guest pays Uniter a **flat £5 by card**. It never touches team credit or the
   pitch split, and a ringer is excluded from settlement via `match_confirmations.is_ringer`.
 - **Refunds** — money can go back out, two ways, both through `refund_credit`
   (`supabase_refunds.sql`), idempotent on the Stripe refund id. **Cash-out**:
@@ -385,9 +394,12 @@ move money or call Stripe. The real settlement is the credit ledger.
 
 ## Data model
 
-Migrations live as `supabase_*.sql` at the repo root. All are **idempotent — safe to re-run**,
-and are applied by hand in the Supabase SQL editor. RLS is permissive throughout, matching the
-prototype's threat model.
+Schema updates live as `supabase_*.sql` at the repo root and are applied by hand in
+the Supabase SQL editor. Many are designed to be idempotent, but check each file's
+dependencies and effects before running it; test/seed scripts also live here, and
+some core tables were created manually before these files existed. RLS is permissive
+on many prototype tables, with stricter policies for areas such as profiles, team
+chat and tournament entry. Inspect the relevant SQL rather than assuming uniform access.
 
 Core chain: `match_posts → challenges → matches → match_confirmations`.
 

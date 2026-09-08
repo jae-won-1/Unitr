@@ -238,5 +238,5 @@ Never point the CLI at production, and never put a `sk_live_` key in
 
 Stripe Connect and venue payouts. Admin-hosted events set `organiser_admin_id`,
 and `/api/tournaments/join` short-circuits on `isAdminHosted` — no transfer to a
-venue ever fires. Unitr collects the buy-ins and pays the venue in cash outside
+venue ever fires. Uniter collects the buy-ins and pays the venue in cash outside
 the app.

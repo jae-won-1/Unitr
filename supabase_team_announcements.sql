@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team Announcements migration
+-- UNITER — Team Announcements migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Lets a captain post a team-wide announcement (separate from match posts).

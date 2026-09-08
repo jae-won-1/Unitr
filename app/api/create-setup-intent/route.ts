@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       const created = await stripe.customers.create({
         email: email ?? undefined,
         name: name ?? undefined,
-        metadata: { app: "unitr", playerId: caller.id },
+        metadata: { app: "uniter", playerId: caller.id },
       });
       customer = created.id;
       // Written now, not after the card saves. The profile form used to be the

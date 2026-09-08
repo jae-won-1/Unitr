@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Settlement RPC tests (in-app CREDIT movement only)
+-- UNITER — Settlement RPC tests (in-app CREDIT movement only)
 -- Run in the Supabase SQL editor AFTER supabase_credit_ledger.sql.
 --
 -- Verifies the two match-settlement mechanics the product needs:

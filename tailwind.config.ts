@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Rebrand palette — see "Unitr Rebrand.dc.html", artboard 5a.
+        // Rebrand palette — see "Uniter Rebrand.dc.html", artboard 5a.
         // The design ships three distinct brand colours, and which one you reach
         // for depends on whether it is a *surface* or *text*:
         //   accent      — fills: top bar, monogram, primary buttons. Dark enough

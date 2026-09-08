@@ -99,7 +99,7 @@ export default function RegisterPitchPage() {
         </a>
         <div>
           <h1 className="text-xl font-extrabold">Register Your Pitch</h1>
-          <p className="text-xs text-text-secondary">List your venue on Unitr — free to join</p>
+          <p className="text-xs text-text-secondary">List your venue on Uniter — free to join</p>
         </div>
       </div>
 

@@ -80,7 +80,7 @@ export default function CreateTeamPage() {
         </a>
         <div>
           <h1 className="text-xl font-extrabold">Register Your Team</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Set up your team profile on Unitr</p>
+          <p className="text-xs text-text-secondary mt-0.5">Set up your team profile on Uniter</p>
         </div>
       </header>
 

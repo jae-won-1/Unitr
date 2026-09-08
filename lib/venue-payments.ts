@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabase";
 // read from:
 //
 //   player_payments          a card charge against the booking
-//   venue_transfers          the Connect payout Unitr sent the venue
+//   venue_transfers          the Connect payout Uniter sent the venue
 //   team_credit_transactions the credit debit at match confirmation / direct book
 //   open_match_teams         which teams bought into a listing, and for how much
 //
@@ -236,12 +236,12 @@ export async function loadBookingPayments(
 
     let detail = "";
     let paid = false;
-    if (PAID_STORED.has(stored)) { paid = true; detail = "Paid through Unitr"; }
+    if (PAID_STORED.has(stored)) { paid = true; detail = "Paid through Uniter"; }
     if (card > 0) { paid = true; detail = "Paid by card"; }
     else if (b.stripe_payment_intent_id) { paid = true; detail = "Paid by card"; }
     if (creditDirect > 0) { paid = true; detail = "Paid from team credit"; }
     else if (creditMatch > 0) { paid = true; detail = "Both teams' credit split at match confirmation"; }
-    if (!paid && payout && payout.paid > 0) { paid = true; detail = "Paid — Unitr payout sent"; }
+    if (!paid && payout && payout.paid > 0) { paid = true; detail = "Paid — Uniter payout sent"; }
 
     const collected = paid ? Math.max(expected, card, creditDirect, creditMatch, payout?.paid ?? 0) : 0;
 

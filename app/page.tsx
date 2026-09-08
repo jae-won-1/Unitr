@@ -512,7 +512,7 @@ function AdminHome({ userId }: { userId: string | undefined }) {
     <div className="flex flex-col gap-6">
       {/* Hosting hub CTA — admins post events from /admin, not /play/create */}
       <section className="bg-surface border border-border shadow-card rounded-card p-5">
-        <h2 className="text-lg font-bold">Unitr Admin</h2>
+        <h2 className="text-lg font-bold">Uniter Admin</h2>
         <p className="text-sm text-text-secondary mt-1">
           Host and manage tournaments, leagues and friendlies on pitches booked
           outside the app.

@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Pitches, bookings and per-player payment records
+-- UNITER — Pitches, bookings and per-player payment records
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- This file used to be the one migration in the repo that could not be re-run:

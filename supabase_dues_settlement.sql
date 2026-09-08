@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Dues Settlement migration
+-- UNITER — Dues Settlement migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Lets a player's team-credit top-up pay down their own outstanding match

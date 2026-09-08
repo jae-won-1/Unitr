@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Match tasks migration
+-- UNITER — Match tasks migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- The jobs around a fixture that aren't football: bring the kit, collect the

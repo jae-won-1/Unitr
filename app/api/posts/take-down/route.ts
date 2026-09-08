@@ -9,7 +9,7 @@ import { getCallerId, isAdmin, isTeamLeader, forbidden, unauthorized } from "@/l
 //
 //  - the team that posted it (captain or co-captain), pressing "Take Down
 //    Post" on their own card;
-//  - a Unitr admin moderating the feed from /admin/posts, who is removing
+//  - a Uniter admin moderating the feed from /admin/posts, who is removing
 //    someone else's post and has to say why.
 //
 // It lives server-side because the second case is an authorisation question
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
         user_id: post.captain_id,
         type: "post_taken_down",
         title: "Your match post was taken down",
-        body: `Unitr staff removed ${post.team_name ?? "your team"}'s post for ${post.match_date}`
+        body: `Uniter staff removed ${post.team_name ?? "your team"}'s post for ${post.match_date}`
           + `${post.match_time ? ` at ${post.match_time}` : ""}. Reason: ${note}`,
         link: "/",
       });

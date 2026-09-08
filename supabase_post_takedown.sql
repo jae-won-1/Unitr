@@ -2,7 +2,7 @@
 --
 -- Until now the only person who could pull a post off the feed was the team
 -- that put it there — a captain or co-captain pressing "Take Down Post", which
--- flipped match_posts.status to 'cancelled' and nothing else. Unitr staff had
+-- flipped match_posts.status to 'cancelled' and nothing else. Uniter staff had
 -- no way to remove a post at all, so anything abusive, duplicated or plain
 -- wrong stayed on every team's home screen until its kickoff passed.
 --

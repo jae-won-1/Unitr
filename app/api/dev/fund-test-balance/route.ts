@@ -16,7 +16,7 @@ async function requireAdmin(req: NextRequest) {
   return null;
 }
 
-// TEST MODE ONLY — add funds to Unitr's platform balance so venue transfers
+// TEST MODE ONLY — add funds to Uniter's platform balance so venue transfers
 // have something to draw from. Uses Stripe's `bypassPending` test card, whose
 // charges settle straight into AVAILABLE balance (normal test charges sit in
 // pending for days and can't back a transfer). Refuses to run on a live key.
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       payment_method: "pm_card_bypassPending",
       confirm: true,
       automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-      description: "Unitr test-mode platform balance top-up",
+      description: "Uniter test-mode platform balance top-up",
       metadata: { type: "dev_fund_test_balance" },
     });
     if (pi.status !== "succeeded") {

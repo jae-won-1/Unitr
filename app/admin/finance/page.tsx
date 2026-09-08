@@ -3,10 +3,10 @@
 // Platform finance — the three numbers that actually matter, then the detail.
 //
 //   1) Player top-ups      real money players have put in, via Stripe
-//   2) Unitr revenue       entry fees from Unitr-HOSTED events — earned, ours
+//   2) Uniter revenue       entry fees from Uniter-HOSTED events — earned, ours
 //   3) Owed to teams       credit still sitting on team balances — a liability
 //
-// The first version of this page showed "Net held by Unitr" as
+// The first version of this page showed "Net held by Uniter" as
 // `player_payments − venue_transfers` and deliberately excluded credit
 // top-ups to avoid double-counting them against the credit ledger. That made
 // the headline read £0.00 while £1.00 of real money sat in Stripe, and set
@@ -15,7 +15,7 @@
 // in, and credit issued. It belongs on both sides, and netting them is what
 // produces a number worth reading.
 //
-// Unitr's revenue is identified exactly, not inferred: /api/tournaments/join
+// Uniter's revenue is identified exactly, not inferred: /api/tournaments/join
 // stamps `open_match_id` onto the booking_capture row it writes, so a capture
 // against an open_match whose `organiser_admin_id` is set is a buy-in that
 // stayed with the platform (the admin paid the venue in cash outside the app).
@@ -25,7 +25,7 @@
 import { useEffect, useState } from "react";
 import { authedGet, authedPost } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
-import { UNITR_FEE_ENABLED, UNITR_FEE_LABEL } from "@/lib/unitr-fee";
+import { UNITER_FEE_ENABLED, UNITER_FEE_LABEL } from "@/lib/uniter-fee";
 
 const CREDIT_LABELS: Record<string, string> = {
   deposit: "Top-ups / manual credit",
@@ -142,7 +142,7 @@ export default function AdminFinancePage() {
       }
       setTopUps({ cardPence, cardCount, cashPence, cashCount, refundPence, refundCount });
 
-      // ── 2) Unitr's revenue ──
+      // ── 2) Uniter's revenue ──
       const adminHosted = new Map<string, string>();
       for (const e of events ?? []) {
         if (e.organiser_admin_id) adminHosted.set(e.id as string, (e.title as string) || "Untitled event");
@@ -153,7 +153,7 @@ export default function AdminFinancePage() {
         // A buy-in in ('booking_capture', negative) and, if the event was
         // taken down, the same money back out ('buyin_refund', positive —
         // /api/events/take-down). Reading only the captures would leave a
-        // cancelled event still counted as revenue Unitr kept.
+        // cancelled event still counted as revenue Uniter kept.
         if (t.type !== "booking_capture" && t.type !== "buyin_refund") continue;
         if (!t.open_match_id) continue;
         const title = adminHosted.get(t.open_match_id as string);
@@ -207,15 +207,15 @@ export default function AdminFinancePage() {
   return (
     <div className="space-y-6">
       <p className="text-xs text-text-secondary">
-        Real money in, what Unitr has earned, and what is still owed back to teams.
+        Real money in, what Uniter has earned, and what is still owed back to teams.
       </p>
 
       {/* ── The three numbers ── */}
       <div className="grid gap-3 sm:grid-cols-3">
         <Headline tone="in" label="Player top-ups" value={fmt(netIn)}
           sub={topUps.refundPence > 0 ? `${fmt(totalIn)} in, less ${fmt(topUps.refundPence)} refunded` : "Total put in by players"} />
-        <Headline tone="ours" label="Unitr revenue" value={fmt(revenue.totalPence)}
-          sub="Entry fees from Unitr-hosted events" />
+        <Headline tone="ours" label="Uniter revenue" value={fmt(revenue.totalPence)}
+          sub="Entry fees from Uniter-hosted events" />
         <Headline tone="owed" label="Owed back to teams" value={fmt(owedToTeams)}
           sub="Credit still on team balances" />
       </div>
@@ -238,15 +238,15 @@ export default function AdminFinancePage() {
         </p>
       </div>
 
-      {/* ── Unitr's revenue ── */}
+      {/* ── Uniter's revenue ── */}
       <div className="bg-surface-2 border border-accent/30 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">Unitr revenue</p>
+          <p className="text-sm font-semibold">Uniter revenue</p>
           <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">earned</span>
         </div>
         <div className="space-y-2">
           {revenue.byEvent.length === 0 ? (
-            <p className="text-xs text-text-secondary">No Unitr-hosted events have taken an entry fee yet.</p>
+            <p className="text-xs text-text-secondary">No Uniter-hosted events have taken an entry fee yet.</p>
           ) : (
             revenue.byEvent.map((e) => (
               <Row key={e.id} label={`${e.title} (${e.entries} ${e.entries === 1 ? "team" : "teams"})`} value={fmt(e.pence)} />
@@ -255,12 +255,12 @@ export default function AdminFinancePage() {
           <Row label="Total earned" value={fmt(revenue.totalPence)} strong />
         </div>
         <p className="text-[10px] text-text-secondary mt-3 leading-relaxed">
-          Buy-ins from events Unitr hosted. The venue for these is paid in cash outside the app, so the
+          Buy-ins from events Uniter hosted. The venue for these is paid in cash outside the app, so the
           whole entry fee stays with the platform. Team- and venue-hosted events are excluded — that
           money is passed on.
-          {UNITR_FEE_ENABLED
-            ? ` A ${UNITR_FEE_LABEL} platform fee is also charged on pitch splits.`
-            : " The per-transaction platform fee is currently switched off (lib/unitr-fee.ts)."}
+          {UNITER_FEE_ENABLED
+            ? ` A ${UNITER_FEE_LABEL} platform fee is also charged on pitch splits.`
+            : " The per-transaction platform fee is currently switched off (lib/uniter-fee.ts)."}
         </p>
         {legacyFeesPence > 0 && (
           <p className="text-[10px] text-text-secondary mt-2">
@@ -274,7 +274,7 @@ export default function AdminFinancePage() {
         <p className="text-sm font-semibold mb-3">Owed back to teams</p>
         <div className="space-y-2">
           <Row label="Net taken in" value={fmt(netIn)} />
-          <Row label="Less Unitr revenue" value={`−${fmt(revenue.totalPence)}`} />
+          <Row label="Less Uniter revenue" value={`−${fmt(revenue.totalPence)}`} />
           {otherMovement !== 0 && (
             <Row label="Other credit movement" value={`${otherMovement > 0 ? "+" : "−"}${fmt(Math.abs(otherMovement))}`} />
           )}
@@ -282,7 +282,7 @@ export default function AdminFinancePage() {
         </div>
         {otherMovement !== 0 && (
           <p className="text-[10px] text-text-secondary mt-3 leading-relaxed">
-            &ldquo;Other credit movement&rdquo; is credit that moved for a reason other than a Unitr-hosted
+            &ldquo;Other credit movement&rdquo; is credit that moved for a reason other than a Uniter-hosted
             entry fee — a friendly&rsquo;s pitch capture, a team-to-team settlement or a player
             replenishment. It is not drift; the full breakdown is in the ledger below.
           </p>
@@ -295,7 +295,7 @@ export default function AdminFinancePage() {
           <p className="text-sm font-semibold mb-3">Venue payouts</p>
           <Row label={`Transferred to venues (${payouts.count})`} value={`−${fmt(payouts.pence)}`} />
           <p className="text-[10px] text-text-secondary mt-3">
-            Stripe Connect transfers for venue-hosted events. Out of scope for the pilot — Unitr-hosted
+            Stripe Connect transfers for venue-hosted events. Out of scope for the pilot — Uniter-hosted
             events pay the venue in cash outside the app.
           </p>
         </div>

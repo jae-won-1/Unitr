@@ -8,7 +8,7 @@ import { outcomeOf, OUTCOME_TEXT } from "@/lib/match-results";
 import { fmtFee } from "@/lib/joining-fee";
 import BottomSheet from "@/components/BottomSheet";
 import { loadLeadership } from "@/lib/team-leadership";
-import { withFee } from "@/lib/unitr-fee";
+import { withFee } from "@/lib/uniter-fee";
 
 // Settle Payments — per-fixture payment collection for the captain.
 //

@@ -145,7 +145,7 @@ export default function AvailabilityPollForm({
               <input
                 type="text"
                 value={row.location}
-                list="unitr-pitch-names"
+                list="uniter-pitch-names"
                 onChange={(e) => updateRow(i, "location", e.target.value)}
                 placeholder="Where you'd play this slot"
                 className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border text-sm placeholder:text-text-secondary/60 focus:outline-none focus:border-accent/60"
@@ -164,7 +164,7 @@ export default function AvailabilityPollForm({
         ))}
       </div>
 
-      <datalist id="unitr-pitch-names">
+      <datalist id="uniter-pitch-names">
         {pitchNames.map((n) => <option key={n} value={n} />)}
       </datalist>
 

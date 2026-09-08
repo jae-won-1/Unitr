@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — The captain owes the joining fee too
+-- UNITER — The captain owes the joining fee too
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 -- Run AFTER supabase_joining_fees.sql (it redefines
 -- apply_deposit_to_joining_fee from that file).

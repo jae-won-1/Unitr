@@ -17,13 +17,13 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Unitr",
+  title: "Uniter",
   description: "The football platform for players, coaches, and clubs.",
   manifest: "/manifest.webmanifest",
-  applicationName: "Unitr",
+  applicationName: "Uniter",
   appleWebApp: {
     capable: true,
-    title: "Unitr",
+    title: "Uniter",
     // "black", not "black-translucent": translucent draws the page *under* the
     // status bar, which would push every page's hardcoded pt-16 TopBar offset
     // out by the notch height. This keeps the web view below the status bar so

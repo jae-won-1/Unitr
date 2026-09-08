@@ -3,7 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCaller, unauthorized } from "@/lib/api-auth";
 
-// Card payment for a ringer spot. The price is a flat fee paid to Unitr and
+// Card payment for a ringer spot. The price is a flat fee paid to Uniter and
 // is read from the request row server-side — never from the client — so the
 // amount can't be tampered with. Availability is re-checked here so a player
 // isn't asked for card details for a spot that has just gone.
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (!customer) {
       const created = await stripe.customers.create({
         email: email ?? undefined,
-        metadata: { app: "unitr" },
+        metadata: { app: "uniter" },
       });
       customer = created.id;
     }
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         matchId: request.match_id,
         teamId: request.team_id,
       },
-      description: `Unitr ringer spot — £${(amount / 100).toFixed(2)}`,
+      description: `Uniter ringer spot — £${(amount / 100).toFixed(2)}`,
     });
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret, amountPence: amount, customerId: customer });

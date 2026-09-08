@@ -146,7 +146,7 @@ function PaymentReturn() {
       <p className="text-lg font-bold mb-1">{copy.title}</p>
       <p className="text-sm text-text-secondary mb-7">{copy.body}</p>
       <a href="/" className="inline-block px-8 py-3 rounded-btn bg-accent text-white font-bold text-sm">
-        Back to Unitr
+        Back to Uniter
       </a>
     </div>
   );

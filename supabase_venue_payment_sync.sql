@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Venue payment sync
+-- UNITER — Venue payment sync
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- `pitch_bookings.payment_status` is only ever written when the row is created,
@@ -51,7 +51,7 @@ where b.payment_status is distinct from 'paid'
 update public.pitch_bookings set payment_status = 'paid'
 where payment_status is distinct from 'paid' and stripe_payment_intent_id is not null;
 
--- 3. A completed payout to the venue — Unitr only sends one once it has been paid.
+-- 3. A completed payout to the venue — Uniter only sends one once it has been paid.
 update public.pitch_bookings b set payment_status = 'paid'
 where b.payment_status is distinct from 'paid'
   and exists (select 1 from public.venue_transfers t where t.booking_id = b.id and t.status = 'paid');

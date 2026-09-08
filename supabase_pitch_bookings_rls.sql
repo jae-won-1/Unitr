@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — RLS for pitch_bookings
+-- UNITER — RLS for pitch_bookings
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- supabase_core_tables_rls.sql covered the nine tables that no migration

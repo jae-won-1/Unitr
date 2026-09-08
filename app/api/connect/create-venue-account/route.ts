@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           venueOwnerId: ownerId ?? "",
           pitchId: pitch.id,
-          type: "unitr_venue",
+          type: "uniter_venue",
         },
       });
       accountId = account.id;

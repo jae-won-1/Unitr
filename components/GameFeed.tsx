@@ -123,7 +123,7 @@ type Tournament = {
   joinedCount: number;
   // Null for venue-hosted tournaments.
   organiserTeamName: string | null;
-  // Set on admin-hosted (Unitr staff) events.
+  // Set on admin-hosted (Uniter staff) events.
   organiserAdminName: string | null;
   // Teams already bought in — so the card can say "you're entered" instead of
   // offering the buy-in again.
@@ -390,10 +390,15 @@ function ChallengeButton({ post, onMatched }: { post: MatchPost; onMatched: (id:
 
 const EVENT_TYPE_LABEL: Record<string, string> = { tournament: "Tournament", league: "League", match: "Friendly" };
 
-function TournamentPostCard({ t, children }: { t: Tournament; children: React.ReactNode }) {
+// `entered` is the viewer's team already being bought in. The feed decides it
+// once and hands it down, because the answer has to reach the badge *and* the
+// action block: an entered event that still offers its buy-in — or, for a squad
+// player, a "Suggest to team" on a game the captain already entered — is the
+// feed disagreeing with the Calendar about the same fixture.
+function TournamentPostCard({ t, entered, children }: { t: Tournament; entered: boolean; children: React.ReactNode }) {
   const spotsLeft = Math.max(0, t.maxTeams - t.joinedCount);
   return (
-    <div className="bg-surface border border-border shadow-card rounded-card p-4">
+    <div className={`bg-surface shadow-card rounded-card p-4 border ${entered ? "border-accent/50" : "border-border"}`}>
       <div className="flex items-start gap-3 mb-3">
         <div className="w-10 h-10 rounded-btn bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
@@ -408,13 +413,21 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-surface text-text-secondary border-border">
             {EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}
           </span>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-            spotsLeft === 0
-              ? "bg-surface text-text-secondary border-border"
-              : "bg-accent/10 text-accent-ink border-accent/30"
-          }`}>
-            {spotsLeft === 0 ? "Full" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
-          </span>
+          {/* Once you hold a place, how many are left stops being the news. */}
+          {entered ? (
+            <span className="text-[10px] font-extrabold uppercase tracking-[0.06em] px-2 py-0.5 rounded-full bg-accent text-white border border-accent flex items-center gap-1 whitespace-nowrap">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Entered
+            </span>
+          ) : (
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+              spotsLeft === 0
+                ? "bg-surface text-text-secondary border-border"
+                : "bg-accent/10 text-accent-ink border-accent/30"
+            }`}>
+              {spotsLeft === 0 ? "Full" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
+            </span>
+          )}
         </div>
       </div>
 
@@ -444,6 +457,40 @@ function TournamentPostCard({ t, children }: { t: Tournament; children: React.Re
 // button raises the confirmation sheet rather than linking straight through.
 // The detail page (/play/tournament/[id]) is the schedule/referee view; it's the
 // secondary link here, not the action.
+function ViewScheduleLink({ id }: { id: string }) {
+  return (
+    <a href={`/play/tournament/${id}`}
+      className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-surface border border-border text-sm font-semibold text-text-primary">
+      View schedule &amp; referees
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    </a>
+  );
+}
+
+// What an entered event offers instead of an action — the same block whether the
+// viewer is the captain who entered it or a squad player, because neither has
+// anything left to do here. The commitment belongs to the Calendar from this
+// point on, which is where the first link goes.
+function EnteredTournamentActions({ t }: { t: Tournament }) {
+  return (
+    <div className="space-y-2">
+      <div className="w-full py-2.5 rounded-btn bg-accent text-white text-center text-sm font-bold flex items-center justify-center gap-1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Your team is entered
+      </div>
+      <a href="/calendar"
+        className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-surface border border-border text-sm font-semibold text-text-primary">
+        See it on your calendar
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+      <ViewScheduleLink id={t.id} />
+    </div>
+  );
+}
+
+// Only ever rendered for an event the viewer's team is *not* in — the feed
+// swaps in EnteredTournamentActions otherwise, so there is no entered branch
+// left to fall through to here.
 function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
   t: Tournament;
   teamId: string | null;
@@ -451,15 +498,12 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
   onJoined: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const alreadyIn = teamId ? t.joinedTeamIds.includes(teamId) : false;
   const isFull = t.joinedCount >= t.maxTeams;
   const discounted = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
 
   return (
     <div className="space-y-2">
-      {alreadyIn ? (
-        <div className="w-full py-2.5 rounded-btn bg-accent/10 border border-accent/30 text-center text-sm font-semibold text-accent-ink">Your team is entered ✓</div>
-      ) : isFull ? (
+      {isFull ? (
         <div className="w-full py-2.5 rounded-xl bg-surface border border-border text-center text-sm font-semibold text-text-secondary">{EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"} full</div>
       ) : (
         <button onClick={() => setOpen(true)}
@@ -469,11 +513,7 @@ function EnterTournamentButton({ t, teamId, teamName, onJoined }: {
             : `Enter ${EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}`}
         </button>
       )}
-      <a href={`/play/tournament/${t.id}`}
-        className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-surface border border-border text-sm font-semibold text-text-primary">
-        View schedule &amp; referees
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-      </a>
+      <ViewScheduleLink id={t.id} />
 
       {open && (
         <EnterTournamentPanel
@@ -625,20 +665,28 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
         ) : (
           <div className="space-y-4">
             {showAll && <SectionLabel>Tournaments</SectionLabel>}
-            {visibleTournaments.map((t) => (
-              <TournamentPostCard key={t.id} t={t}>
-                {canAct
-                  ? (
-                    <EnterTournamentButton
-                      t={t}
-                      teamId={teamId}
-                      teamName={teamName}
-                      onJoined={() => teamId && markJoined(t.id, teamId)}
-                    />
-                  )
-                  : <SuggestButton postId={t.id} kind="tournament" suggested={suggested.has(t.id)} unavailable={unavailable} onSuggest={suggest} />}
-              </TournamentPostCard>
-            ))}
+            {visibleTournaments.map((t) => {
+              // One test, both roles. It used to live inside the captain's
+              // button, so a squad player was still offered "Suggest to team"
+              // on an event their own team had already bought into.
+              const entered = Boolean(teamId && t.joinedTeamIds.includes(teamId));
+              return (
+                <TournamentPostCard key={t.id} t={t} entered={entered}>
+                  {entered
+                    ? <EnteredTournamentActions t={t} />
+                    : canAct
+                      ? (
+                        <EnterTournamentButton
+                          t={t}
+                          teamId={teamId}
+                          teamName={teamName}
+                          onJoined={() => teamId && markJoined(t.id, teamId)}
+                        />
+                      )
+                      : <SuggestButton postId={t.id} kind="tournament" suggested={suggested.has(t.id)} unavailable={unavailable} onSuggest={suggest} />}
+                </TournamentPostCard>
+              );
+            })}
           </div>
         )
       )}

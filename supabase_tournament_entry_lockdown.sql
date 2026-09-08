@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Lock down tournament entry
+-- UNITER — Lock down tournament entry
 -- Run in the Supabase SQL editor, AFTER supabase_open_matches.sql.
 -- Idempotent — safe to re-run.
 --

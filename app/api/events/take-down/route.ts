@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
 
-// Take one of Unitr's own hosted events off the feed.
+// Take one of Uniter's own hosted events off the feed.
 //
 // The sibling of /api/posts/take-down, for the other kind of thing that sits on
 // the feed: an open_matches row an admin posted (a tournament, a league, or a
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   try {
     const callerId = await getCallerId(req);
     if (!callerId) return unauthorized();
-    if (!(await isAdmin(callerId))) return forbidden("Only Unitr staff can take an event down.");
+    if (!(await isAdmin(callerId))) return forbidden("Only Uniter staff can take an event down.");
 
     const { openMatchId, reason } = await req.json();
     if (!openMatchId) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
             user_id: r.captain_id,
             type: "event_cancelled",
             title: `${event.title ?? "An event"} was cancelled`,
-            body: `Unitr cancelled the ${label} on ${event.match_date}`
+            body: `Uniter cancelled the ${label} on ${event.match_date}`
               + `${event.start_time ? ` at ${event.start_time}` : ""}. Reason: ${note}`
               + `${back > 0 ? ` Your £${(back / 100).toFixed(2)} buy-in is back in your team credit.` : ""}`,
             link: "/calendar",

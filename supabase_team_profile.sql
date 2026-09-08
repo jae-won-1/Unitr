@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Team Profile migration
+-- UNITER — Team Profile migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Adds team history, play style, and a team photo to the teams table so

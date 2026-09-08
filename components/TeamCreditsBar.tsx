@@ -484,7 +484,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
     }));
     // Money that came back into the pot rather than being paid into it. Two
     // things do that: an opponent settling their half of a secured post
-    // (reimburse_secured_pitch → 'opponent_settlement'), and an event Unitr
+    // (reimburse_secured_pitch → 'opponent_settlement'), and an event Uniter
     // cancelled handing the buy-in back (refund_event_buyin → 'buyin_refund').
     // Without the second, the balance would just go up with nothing in the log
     // to explain it.

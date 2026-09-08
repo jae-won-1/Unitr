@@ -1,4 +1,4 @@
-# Unitr — Backend Implementation Plan
+# Uniter — Backend Implementation Plan
 
 ## Current State
 The frontend is entirely static — all data is hardcoded, context only lives in browser memory/localStorage, and nothing persists between users or sessions. There is no backend.

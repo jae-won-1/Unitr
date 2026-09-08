@@ -178,7 +178,7 @@ export default function VenueReportsPage() {
   // Booking type breakdown
   const types: Record<string, number> = {};
   for (const b of active) {
-    const key = b.booking_type === "open_match" ? "Open / events" : b.booking_type === "platform" ? "Via Unitr" : "Manual";
+    const key = b.booking_type === "open_match" ? "Open / events" : b.booking_type === "platform" ? "Via Uniter" : "Manual";
     types[key] = (types[key] ?? 0) + 1;
   }
 
@@ -203,7 +203,7 @@ export default function VenueReportsPage() {
         <StatCard label="Total bookings" value={String(bookings.length)} sub="all time" />
         <StatCard label="Confirmed" value={String(confirmed.length)} sub={`${cancelRate}% cancel rate`} />
         <StatCard label="Revenue" value={`£${revenue.toFixed(0)}`} sub="confirmed" />
-        <StatCard label="Paid out" value={`£${payoutTotal.toFixed(0)}`} sub="received from Unitr" />
+        <StatCard label="Paid out" value={`£${payoutTotal.toFixed(0)}`} sub="received from Uniter" />
       </div>
 
       {/* ── Payout history (account management lives in Settings → Payouts) ── */}
@@ -220,7 +220,7 @@ export default function VenueReportsPage() {
           )}
         </div>
         <p className="text-xs text-text-secondary">
-          When a booking is paid on one of your pitches, the pitch fee is transferred from Unitr to your
+          When a booking is paid on one of your pitches, the pitch fee is transferred from Uniter to your
           venue&apos;s payout account. Manage the account in Settings → Payouts, and see every individual
           payment in Payment history below.
         </p>

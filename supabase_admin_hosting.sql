@@ -1,4 +1,4 @@
--- Admin-hosted events (Unitr staff hosting tournaments / leagues / friendlies
+-- Admin-hosted events (Uniter staff hosting tournaments / leagues / friendlies
 -- on pitches booked outside the app) + admin player ratings.
 -- Run in the Supabase SQL editor. Idempotent - safe to re-run.
 

@@ -1,6 +1,6 @@
 import { authedPost } from "@/lib/authed-fetch";
 
-// Take one of Unitr's own hosted events (an open_matches row with
+// Take one of Uniter's own hosted events (an open_matches row with
 // organiser_admin_id set) off the feed and refund every buy-in.
 //
 // Thin on purpose: who may do it, what the money has to do on the way out, and

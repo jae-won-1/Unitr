@@ -66,7 +66,7 @@ export default function AdminCreateEventPage() {
       pitch_id: null,
       venue_owner_id: null,
       organiser_admin_id: user.id,
-      organiser_admin_name: profile?.full_name ?? "Unitr",
+      organiser_admin_name: profile?.full_name ?? "Uniter",
       // pitch_name doubles as the free-text venue name on admin posts.
       pitch_name: venueName.trim(),
       venue_address: venueAddress.trim() || null,
@@ -117,7 +117,7 @@ export default function AdminCreateEventPage() {
       <div>
         <label className={labelCls}>Title</label>
         <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)}
-          placeholder={isFriendly ? "e.g. Wednesday 5s friendly" : "e.g. Unitr Summer Cup"} />
+          placeholder={isFriendly ? "e.g. Wednesday 5s friendly" : "e.g. Uniter Summer Cup"} />
       </div>
 
       {/* Venue — free text, booked outside the app */}
@@ -198,7 +198,7 @@ export default function AdminCreateEventPage() {
         {saving ? "Posting…" : "Post event"}
       </button>
       <p className="text-[10px] text-text-secondary -mt-2 text-center">
-        Buy-ins come out of joining teams&rsquo; credit and stay with Unitr — you&rsquo;ve already paid the venue.
+        Buy-ins come out of joining teams&rsquo; credit and stay with Uniter — you&rsquo;ve already paid the venue.
       </p>
     </div>
   );

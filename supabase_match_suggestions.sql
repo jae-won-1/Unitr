@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Match suggestions migration
+-- UNITER — Match suggestions migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Squad players can't post or challenge on their team's behalf, but they can

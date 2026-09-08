@@ -1,4 +1,4 @@
-# Unitr — Payment System Restructure: Credit Ledger + Replenish
+# Uniter — Payment System Restructure: Credit Ledger + Replenish
 
 **Goal:** Use team credit as the *booking mechanism* (fast, reliable, decouples booking
 from collecting money) and individual split payment as the *settlement mechanism* (fair —
@@ -98,9 +98,9 @@ Let `P` = pitch fee in pence.
 
 ### Phase 3 — Replenish (players pay)
 - Generate `player_payments` for every confirmed player on **both** teams:
-  `(P/2 ÷ team_players) + 5% Unitr fee`, `purpose='replenish'`, `team_id` set.
+  `(P/2 ÷ team_players) + 5% Uniter fee`, `purpose='replenish'`, `team_id` set.
 - On each Stripe success: pitch-share portion flows **into that player's own team
-  credit** (`player_replenish` +share); the 5% goes to Unitr.
+  credit** (`player_replenish` +share); the 5% goes to Uniter.
 - When a team's players have all paid, its credit returns to baseline. ✓
   Only players who actually played paid.
 
@@ -269,7 +269,7 @@ denominator problem entirely.
    computed (`splitPence`).
 4. **Auto-settle:** for each participant, create a `PaymentIntent`
    (`off_session: true, confirm: true`) against their saved card. On success →
-   `apply_replenishment` refills that team's credit (§3 Phase 3). The 5% Unitr fee rides
+   `apply_replenishment` refills that team's credit (§3 Phase 3). The 5% Uniter fee rides
    on top as today.
 5. **Credit returns to baseline**, paid only by who played. ✓
 

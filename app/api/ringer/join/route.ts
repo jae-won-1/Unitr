@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Put the ringer in the matchday squad. is_ringer keeps them out of the
-    // captain's settlement — they've already paid Unitr directly.
+    // captain's settlement — they've already paid Uniter directly.
     const { error: confErr } = await adminSupabase.from("match_confirmations").upsert({
       match_id: request.match_id,
       player_id: playerId,

@@ -162,11 +162,11 @@ async function resolveBillingDetails(): Promise<{ name: string; email?: string }
       name = String(data?.full_name ?? "").trim();
     }
     // Stripe rejects an empty name, so fall back rather than send "".
-    if (!name) name = email?.split("@")[0] || "Unitr player";
+    if (!name) name = email?.split("@")[0] || "Uniter player";
     return email ? { name, email } : { name };
   } catch {
     // Never block a payment on this lookup — a generic name still confirms.
-    return { name: "Unitr player" };
+    return { name: "Uniter player" };
   }
 }
 

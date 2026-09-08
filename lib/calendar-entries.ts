@@ -84,6 +84,14 @@ export const KIND_STYLE: Record<EntryKind, { text: string; border: string; bg: s
   booking:    { text: "text-accent-2",    border: "border-[#C6D4FF]",  bg: "bg-[#EAF0FF]",  dot: "bg-accent-2",   rule: "border-l-accent-2" },
 };
 
+// Badges that mean "your team is in", as opposed to one still waiting on
+// something ("Awaiting opponent", "Payment pending") or already over
+// ("Expired", "Cancelled"). Committed badges render green, so the state the
+// Home feed also has to agree about is the one that carries colour. Kept beside
+// the strings themselves — every badge below is minted in this file — so a
+// reworded badge can't quietly fall back to grey.
+export const COMMITTED_BADGES = new Set(["Entered", "Confirmed", "Paid ✓"]);
+
 /** Upcoming soonest-first, then past most-recent-first. */
 export function compareEntries(a: CalendarEntry, b: CalendarEntry): number {
   if (a.isUpcoming !== b.isUpcoming) return a.isUpcoming ? -1 : 1;

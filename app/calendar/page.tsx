@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import CalendarSheet from "@/components/CalendarSheet";
 import FixtureDetailSheet, { type ViewerTeam } from "@/components/FixtureDetailSheet";
 import {
-  KIND_LABEL, KIND_STYLE, fixtureAction, loadCalendarEntries,
+  COMMITTED_BADGES, KIND_LABEL, KIND_STYLE, fixtureAction, loadCalendarEntries,
   type CalendarEntry, type EntryKind,
 } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
@@ -92,7 +92,11 @@ function EntryCard({ entry, isCaptain, viewerId, teamId, onOpen }: {
             </span>
           </div>
         ) : entry.badge && (
-          <span className="text-[10px] font-semibold text-text-secondary bg-background border border-border px-2.5 py-0.5 rounded-full flex-shrink-0">
+          <span className={`text-[10px] px-2.5 py-0.5 rounded-full border flex-shrink-0 ${
+            COMMITTED_BADGES.has(entry.badge)
+              ? "font-extrabold uppercase tracking-[0.06em] bg-accent text-white border-accent"
+              : "font-semibold text-text-secondary bg-background border-border"
+          }`}>
             {entry.badge}
           </span>
         )}

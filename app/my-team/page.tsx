@@ -352,7 +352,7 @@ function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean })
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
         <p className="font-semibold">No team registered yet</p>
-        <p className="text-sm text-text-secondary max-w-[240px]">Register your team on Unitr to start finding opponents and managing your squad.</p>
+        <p className="text-sm text-text-secondary max-w-[240px]">Register your team on Uniter to start finding opponents and managing your squad.</p>
         <a href="/my-team/create" className="px-6 py-3 rounded-btn bg-accent text-white font-bold text-sm">Register Your Team</a>
       </div>
     );

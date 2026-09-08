@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Match Result Verification migration
+-- UNITER — Match Result Verification migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- When both teams have submitted their result, we cross-check the scores.

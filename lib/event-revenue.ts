@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 // never written back to the listing.
 //
 // Where the money goes AFTER the debit depends on who hosts (venue transfer /
-// organiser-team reimbursement / kept by the platform when Unitr staff host),
+// organiser-team reimbursement / kept by the platform when Uniter staff host),
 // but what came IN is this same sum in all three cases.
 //
 // Cancelling the event puts the buy-ins back the same way — /api/events/take-down

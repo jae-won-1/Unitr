@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import TopUpModal from "@/components/TopUpModal";
 import { seedAvailabilityFromPoll } from "@/lib/event-availability";
 import { loadLedTeam } from "@/lib/team-leadership";
-import { feeOn, UNITR_FEE_RATE } from "@/lib/unitr-fee";
+import { feeOn, UNITER_FEE_RATE } from "@/lib/uniter-fee";
 
 // The challenger's side of a match post: pick one of the poster's pitch
 // options, confirm, and both teams are debited their half of the fee (or, for
@@ -357,7 +357,7 @@ export default function ChallengePanel({
 
         // ── Cash side: pay the venue (Stripe Connect, test mode) ──
         // The teams settle the fee between them in credit above; separately,
-        // Unitr transfers the full pitch fee out to the venue's connected
+        // Uniter transfers the full pitch fee out to the venue's connected
         // account. Best-effort — a missing/unconnected venue account or empty
         // test balance must not block match confirmation. Records a
         // venue_transfers row either way so credit↔cash can be reconciled.
@@ -548,7 +548,7 @@ export default function ChallengePanel({
                 </p>
               ) : (
                 <p>
-                  £{(((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 2) * (1 + UNITR_FEE_RATE)).toFixed(2)} charged from the team credit when you send challenge.
+                  £{(((post.pitchOptions.find((p) => p.id === selectedPitch)?.price ?? 80) / 2) * (1 + UNITER_FEE_RATE)).toFixed(2)} charged from the team credit when you send challenge.
                 </p>
               )}
             </div>

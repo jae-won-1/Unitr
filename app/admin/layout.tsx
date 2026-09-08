@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 
-// Gate + slim tab strip for the Unitr staff area. Admins keep the normal
+// Gate + slim tab strip for the Uniter staff area. Admins keep the normal
 // player chrome (TopBar/BottomNav) — this is a section inside the app, not a
 // separate portal like /venue. Also guards the previously-open /admin/finance.
 
@@ -40,7 +40,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="px-4 pt-16 pb-24 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold">Unitr Admin</h1>
+        <h1 className="text-xl font-bold">Uniter Admin</h1>
         <span className="text-[10px] font-semibold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full">staff</span>
       </div>
       <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

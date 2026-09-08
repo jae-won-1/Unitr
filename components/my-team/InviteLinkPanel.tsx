@@ -66,8 +66,8 @@ export default function InviteLinkPanel({ teamId, teamName }: Props) {
     if (!url || typeof navigator.share !== "function") return;
     try {
       await navigator.share({
-        title: `Join ${teamName} on Unitr`,
-        text: `Join ${teamName} on Unitr`,
+        title: `Join ${teamName} on Uniter`,
+        text: `Join ${teamName} on Uniter`,
         url,
       });
     } catch {

@@ -1,8 +1,8 @@
--- Admin take-down of Unitr's own hosted events.
+-- Admin take-down of Uniter's own hosted events.
 --
 -- supabase_post_takedown.sql gave staff a way to pull a team's match post off
 -- the feed. An admin-hosted event (an open_matches row with organiser_admin_id
--- set — a tournament, league or friendly Unitr put up itself) had no equivalent:
+-- set — a tournament, league or friendly Uniter put up itself) had no equivalent:
 -- once posted, the only way it left the feed was its kickoff passing, and the
 -- teams that had already bought in stayed bought in.
 --

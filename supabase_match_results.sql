@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Match Results migration
+-- UNITER — Match Results migration
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Lets the captain submit the final score, scorers, and participating

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { saveCardFromIntent } from "@/components/SaveCardPrompt";
 import { authedPost } from "@/lib/authed-fetch";
-import { feeOn, UNITR_FEE_ENABLED, UNITR_FEE_LABEL } from "@/lib/unitr-fee";
+import { feeOn, UNITER_FEE_ENABLED, UNITER_FEE_LABEL } from "@/lib/uniter-fee";
 import TestModeNote from "@/components/TestModeNote";
 import { confirmCardPayment } from "@/lib/confirm-payment";
 
@@ -21,7 +21,7 @@ type MatchInfo = {
   mode: "credit" | "individual";
   // Exact amounts for THIS player, in pence.
   sharePence: number;   // pitch share (credit mode → refills team credit)
-  feePence: number;     // the Unitr fee portion — see lib/unitr-fee.ts
+  feePence: number;     // the Uniter fee portion — see lib/uniter-fee.ts
   totalPence: number;   // charged to card
   paymentId: string | null;   // pre-created player_payments row (credit mode)
   bookingId: string | null;   // pitch_bookings row
@@ -63,7 +63,7 @@ function PaySavedCard({
   const [payError, setPayError] = useState<string | null>(null);
 
   const share = matchInfo.sharePence / 100;
-  const unitrFee = matchInfo.feePence / 100;
+  const uniterFee = matchInfo.feePence / 100;
   const total = matchInfo.totalPence / 100;
 
   const handlePay = async () => {
@@ -111,10 +111,10 @@ function PaySavedCard({
           </span>
           <span className="font-semibold">£{share.toFixed(2)}</span>
         </div>
-        {UNITR_FEE_ENABLED && (
+        {UNITER_FEE_ENABLED && (
           <div className="flex justify-between text-xs">
-            <span className="text-text-secondary">Unitr platform fee ({UNITR_FEE_LABEL})</span>
-            <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
+            <span className="text-text-secondary">Uniter platform fee ({UNITER_FEE_LABEL})</span>
+            <span className="font-semibold">£{uniterFee.toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-2 mt-1">
@@ -179,7 +179,7 @@ function CheckoutForm({
   const [payError, setPayError] = useState<string | null>(null);
 
   const share = matchInfo.sharePence / 100;
-  const unitrFee = matchInfo.feePence / 100;
+  const uniterFee = matchInfo.feePence / 100;
   const total = matchInfo.totalPence / 100;
 
   const handlePay = async () => {
@@ -230,10 +230,10 @@ function CheckoutForm({
           </span>
           <span className="font-semibold">£{share.toFixed(2)}</span>
         </div>
-        {UNITR_FEE_ENABLED && (
+        {UNITER_FEE_ENABLED && (
           <div className="flex justify-between text-xs">
-            <span className="text-text-secondary">Unitr platform fee ({UNITR_FEE_LABEL})</span>
-            <span className="font-semibold">£{unitrFee.toFixed(2)}</span>
+            <span className="text-text-secondary">Uniter platform fee ({UNITER_FEE_LABEL})</span>
+            <span className="font-semibold">£{uniterFee.toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-2 mt-1">
@@ -329,7 +329,7 @@ function PaymentSuccess({ matchInfo }: { matchInfo: MatchInfo }) {
       <div className="bg-surface border border-border shadow-card rounded-card px-6 py-4 mb-6 w-full max-w-xs">
         <p className="text-xs text-text-secondary mb-1">Amount paid</p>
         <p className="text-2xl font-extrabold text-accent-ink">£{total.toFixed(2)}</p>
-        {UNITR_FEE_ENABLED && <p className="text-[10px] text-text-secondary mt-1">inc. {UNITR_FEE_LABEL} Unitr fee</p>}
+        {UNITER_FEE_ENABLED && <p className="text-[10px] text-text-secondary mt-1">inc. {UNITER_FEE_LABEL} Uniter fee</p>}
       </div>
       <a href="/my-team" className="px-8 py-3 rounded-btn bg-accent text-white font-bold text-sm">
         Back to My Team
@@ -407,7 +407,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       const bookingId = booking?.id ?? null;
 
       // Count players (both teams) — used for the individual split display.
-      // Ringers are excluded: they pay Unitr a flat fee instead of a share, so
+      // Ringers are excluded: they pay Uniter a flat fee instead of a share, so
       // counting them would understate what everyone else owes. (is_ringer
       // arrives with supabase_ringers.sql; selecting a missing column fails the
       // whole query, so fall back to the pre-ringer shape.)

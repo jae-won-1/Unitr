@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     if (!customer) {
       const created = await stripe.customers.create({
         email: email ?? undefined,
-        metadata: { app: "unitr" },
+        metadata: { app: "uniter" },
       });
       customer = created.id;
     }
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       // The webhook credits the team off this metadata — it is the only link
       // between the charge and the ledger, so teamId has to be here.
       metadata: { teamId, playerId, type: "team_credits" },
-      description: `Unitr team credits — £${(amountPence / 100).toFixed(2)}`,
+      description: `Uniter team credits — £${(amountPence / 100).toFixed(2)}`,
     });
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret, customerId: customer });

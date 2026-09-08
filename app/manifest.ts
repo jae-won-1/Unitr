@@ -5,8 +5,8 @@ import type { MetadataRoute } from "next";
 // prototype feels on a phone.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Unitr",
-    short_name: "Unitr",
+    name: "Uniter",
+    short_name: "Uniter",
     description: "The football platform for players, coaches, and clubs.",
     start_url: "/",
     scope: "/",

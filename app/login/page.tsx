@@ -57,7 +57,7 @@ export default function LoginPage() {
       <div className="relative overflow-hidden bg-accent px-6 pt-12 pb-8">
         <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(90deg,rgba(255,255,255,0.05) 0 40px,rgba(0,0,0,0.05) 40px 80px)" }} />
         <span className="relative flex items-center gap-1.5">
-          <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITR</span>
+          <span className="text-[34px] font-extrabold text-white tracking-[-0.03em] leading-none">UNITER</span>
           <span className="w-[11px] h-6 bg-accent-2 -skew-x-12" />
         </span>
       </div>

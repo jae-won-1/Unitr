@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
--- UNITR — Collect Payment for tournament entry fees
+-- UNITER — Collect Payment for tournament entry fees
 -- Run in the Supabase SQL editor. Idempotent — safe to re-run.
 --
 -- Captains can already tick off who owes a share of a MATCH fee from Match
