@@ -15,7 +15,7 @@ export default function SettlePaymentsPage() {
         </a>
         <div>
           <h1 className="text-xl font-extrabold">Settle Payments</h1>
-          <p className="text-xs text-text-secondary">Upcoming and past fixtures for your team</p>
+          <p className="text-xs text-text-secondary">Issue what your squad owes — fixture shares and the joining fee</p>
         </div>
       </div>
 

@@ -184,7 +184,7 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee, invite link, co-captains (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
-| `/my-team/history` | **Settle Payments** — per-fixture payment collection, not a results archive |
+| `/my-team/history` | **Settle Payments** — issuing what the squad owes, not a results archive |
 | `/my-team/match/[matchId]` | Manage Match — overview / squad / payment / tactics / result tabs, plus ringer requests |
 | `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad |
 | `/my-team/tournament-match/[fixtureId]` | Manage Tournament Fixture — the same info / attendance / lineup / tactics surface for one game inside a tournament |
@@ -378,8 +378,10 @@ Variants:
   snapshotted onto `team_members.joining_fee_due_pence` at approval (trigger), and
   `joining_fee_paid_pence` is advanced **only inside** `credit_from_payment` /
   `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
-  can't join or vote available for games (`AvailabilityButtons`, `AvailabilityModal`); the
-  captain sees per-member fee status in Settle Payments.
+  can't join or vote available for games (`AvailabilityButtons`, `AvailabilityModal`). The fee
+  splits across the money row like every other charge: the **amount** is set in Settle
+  Payments → Joining fee (and still in Team Settings and at registration), **who has paid it**
+  is Payment Status → Joining fee. Both panels live in `components/JoiningFeePanels.tsx`.
   **The captain owes it too.** They play in the games the fee pays for, and they have no
   `team_members` row, so their copy of the same two numbers sits on `teams`
   (`captain_joining_fee_due_pence` / `_paid_pence`, `supabase_captain_joining_fee.sql`).
@@ -391,6 +393,29 @@ Variants:
 
 `payment_collection_status` is a **bookkeeping checklist** the captain ticks off — it does not
 move money or call Stripe. The real settlement is the credit ledger.
+
+### Settle Payments vs Payment Status
+
+Two chips in the money row (`components/TeamCreditsBar.tsx`), and the split between them is
+**issuing** vs **chasing**. They were blurred before — the joining-fee tracker sat inside
+Settle Payments, and the Payment Status sheet opened titled "Collect Payment".
+
+| | Settle Payments (`SettlePaymentsModal`) | Payment Status (the sheet in `TeamCreditsBar`) |
+|---|---|---|
+| Question | Who owes what, and say so | Who has actually paid |
+| Fixtures tab | Pick who played, send the request, then a read-only receipt of what was charged | Every fixture a request was issued for → mark paid / unpaid, remind, drop a player |
+| Joining fee tab | Set `teams.joining_fee_pence` — permanent, so there's somewhere to set it when there isn't one yet | Per-member paid/due off the snapshots, with a nudge |
+
+Consequences worth knowing:
+
+- **`payment_collection_status.received` is written in exactly one place now** — `markReceived`
+  in `TeamCreditsBar`. It moves `credited_pence` with it and rolls the fixture's
+  `fees_settled` (`matches` for a game, `open_match_teams` for a tournament entry).
+- **Payment Status keeps fully-paid fixtures listed** rather than filtering to what's still
+  owed, because a tick has to be undoable. The chip's red badge counts only fixtures still
+  owed, so the number still means "needs you".
+- Settle Payments' fixture panel disappears once `fees_settled` is true, exactly as before —
+  a settled fixture has nothing left to issue.
 
 ## Data model
 

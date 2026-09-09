@@ -8,6 +8,7 @@ import BottomSheet from "@/components/BottomSheet";
 import CashOutModal from "@/components/CashOutModal";
 import { loadLeadership } from "@/lib/team-leadership";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
+import { JoiningFeeStatusPanel } from "@/components/JoiningFeePanels";
 
 // The team's money bar: credit balance and transaction log, the player's own
 // top-up / settle-up popup, and — for captains — the payment status of every
@@ -19,9 +20,10 @@ import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 type DuePlayer = { player_id: string; name: string; status: string; sharePence: number };
 type DueGroup = { matchId: string; bookingId: string | null; opponent: string; date: string; teamPoolPence: number; players: DuePlayer[] };
 
-// Captain's Collect Payment view — grouped by match. Each recent match with
-// an outstanding fee lists its charged players + individual pay status, and
-// the captain can remind any unpaid player.
+// Captain's Payment Status view — grouped by match. Every fixture a payment
+// request has been issued for lists its charged players + individual pay
+// status; the captain marks payments off, reminds, or drops a player here.
+// Issuing the request in the first place is Settle Payments' job.
 type CollectPlayer = { player_id: string; name: string; sharePence: number; remainingPence: number; received: boolean };
 // `matchId` holds whichever id the charge targets — a matches row for a game,
 // an open_matches row for a tournament entry. `kind` says which, so writes go
@@ -55,6 +57,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [dues, setDues] = useState<DueGroup[]>([]);
   const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
+  const [collectTab, setCollectTab] = useState<"fixtures" | "fee">("fixtures");
   const [showSettle, setShowSettle] = useState(false);
   const [collectMatches, setCollectMatches] = useState<CollectMatch[]>([]);
   const [selectedCollectMatch, setSelectedCollectMatch] = useState<string | null>(null);
@@ -62,6 +65,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [remindingPlayer, setRemindingPlayer] = useState<string | null>(null);
   const [remindedPlayers, setRemindedPlayers] = useState<Set<string>>(new Set());
   const [removingPlayer, setRemovingPlayer] = useState<string | null>(null);
+  const [markingPlayer, setMarkingPlayer] = useState<string | null>(null);
   const [historyAlertCount, setHistoryAlertCount] = useState(0);
   // Dues drive the bar's badge and warning strip; the modal owns paying them.
   const { dues: myDues, owedPence: myOwedPence, reload: reloadMyDues } = useMyDues(teamId, userId);
@@ -368,12 +372,55 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
         });
       }
     }
+    // Fully-paid fixtures stay in the list rather than dropping out of it.
+    // This is the only place a payment is ticked off, so a mistaken tick has
+    // to be reachable to undo — and "everyone paid" is an answer the captain
+    // came here for. Still owed sorts first, then most recent.
     const groups = Array.from(byMatch.values())
-      .filter((g) => g.totalDuePence > 0)                       // only matches still owed
       .map((g) => ({ ...g, players: g.players.sort((a, b) => Number(a.received) - Number(b.received)) }))
-      .sort((a, b) => b.date.localeCompare(a.date));             // most recent first
+      .sort((a, b) => {
+        const aOwed = a.totalDuePence > 0 ? 0 : 1;
+        const bOwed = b.totalDuePence > 0 ? 0 : 1;
+        return aOwed - bOwed || b.date.localeCompare(a.date);
+      });
     setCollectMatches(groups);
     setCollectLoading(false);
+  };
+
+  // Tick a share off — or put it back. Settle Payments issues the request and
+  // keeps the receipt; marking money as received is Payment Status' job, so
+  // this is the one place it happens. credited_pence moves with `received` so
+  // the player's own "amount owed" total (derived from it) stays honest, and
+  // the fixture's fees_settled flag follows the last outstanding share.
+  const markReceived = async (match: CollectMatch, player: CollectPlayer, next: boolean) => {
+    if (!teamId) return;
+    const key = `${match.matchId}:${player.player_id}`;
+    setMarkingPlayer(key);
+    const targetCol = match.kind === "tournament" ? "open_match_id" : "match_id";
+    await supabase.from("payment_collection_status")
+      .update({ received: next, credited_pence: next ? player.sharePence : 0, updated_at: new Date().toISOString() })
+      .eq(targetCol, match.matchId).eq("player_id", player.player_id);
+
+    const players = match.players.map((p) => p.player_id === player.player_id
+      ? { ...p, received: next, remainingPence: next ? 0 : p.sharePence }
+      : p);
+    const allReceived = players.every((p) => p.received);
+    setCollectMatches((prev) => prev.map((g) => g.matchId !== match.matchId ? g : {
+      ...g,
+      players,
+      paidCount: players.filter((p) => p.received).length,
+      totalDuePence: players.reduce((sum, p) => sum + p.remainingPence, 0),
+    }));
+
+    // "Everyone has paid" lives on matches.fees_settled for a game, and per
+    // entered team on open_match_teams.fees_settled for a tournament.
+    if (match.kind === "tournament") {
+      await supabase.from("open_match_teams").update({ fees_settled: allReceived })
+        .eq("open_match_id", match.matchId).eq("team_id", teamId);
+    } else {
+      await supabase.from("matches").update({ fees_settled: allReceived }).eq("id", match.matchId);
+    }
+    setMarkingPlayer(null);
   };
 
   // Remind one player about one match's fee via a direct message.
@@ -518,6 +565,11 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
 
   if (credits === null) return null;
 
+  // The badge counts fixtures still owed money, not every fixture listed —
+  // fully-paid ones stay in the sheet so a tick can be undone, but they aren't
+  // something the captain needs to act on.
+  const owedFixtureCount = collectMatches.filter((g) => g.totalDuePence > 0).length;
+
   return (
     <>
       {/* A fixed two-column grid rather than a wrapping row: the four pills are
@@ -546,12 +598,12 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
           )}
         </button>
         {role === "captain" && (
-          <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
+          <button onClick={() => { setRemindedPlayers(new Set()); setSelectedCollectMatch(null); setCollectTab("fixtures"); setShowCollect(true); if (teamId) loadCollectMatches(teamId); }}
             className="flex items-center justify-center gap-1.5 min-w-0 text-[13px] font-bold text-text-primary border border-border bg-surface px-3 py-2.5 rounded-full whitespace-nowrap">
             Payment Status
-            {collectMatches.length > 0 && (
+            {owedFixtureCount > 0 && (
               <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                {collectMatches.length}
+                {owedFixtureCount}
               </span>
             )}
           </button>
@@ -741,17 +793,37 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
         />
       )}
 
-      {/* Collect Payment modal — captain only. Drill-down: recent matches with
-          payments due → a match's players + pay status → remind unpaid players. */}
+      {/* Payment Status modal — captain only. Tracks money already asked for:
+          fixtures a request has been issued for (drill-down: fixture → its
+          players → mark paid / remind / drop), and the joining fee. Asking for
+          it in the first place is Settle Payments. */}
       {showCollect && (() => {
-        const selected = selectedCollectMatch ? collectMatches.find((m) => m.matchId === selectedCollectMatch) ?? null : null;
+        const selected = collectTab === "fixtures" && selectedCollectMatch
+          ? collectMatches.find((m) => m.matchId === selectedCollectMatch) ?? null
+          : null;
         return (
         <BottomSheet
-          title={selected ? (selected.kind === "tournament" ? selected.opponent : `vs ${selected.opponent}`) : "Collect Payment"}
-          subtitle={selected ? `${selected.date} · tap Remind to notify a player` : "Recent matches with payments due"}
+          title={selected ? (selected.kind === "tournament" ? selected.opponent : `vs ${selected.opponent}`) : "Payment Status"}
+          subtitle={selected
+            ? `${selected.date} · tap a status to mark it paid`
+            : "Who has paid what you've already asked for"}
           onClose={() => setShowCollect(false)}
         >
           <>
+            {/* Tabs, hidden while drilled into one fixture — that view has its
+                own way back up, and two levels of navigation at once reads as
+                a dead end. */}
+            {!selected && (
+              <div className="flex bg-surface border border-border rounded-btn p-[3px] gap-[3px] flex-shrink-0">
+                {([["fixtures", "Fixtures"], ["fee", "Joining fee"]] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => setCollectTab(id)}
+                    className={`flex-1 py-2 rounded-[9px] text-xs transition-colors ${collectTab === id ? "bg-accent text-white font-bold" : "text-text-secondary font-semibold"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Drill-down back link. The sheet header owns the title, so going
                 up a level is its own control rather than a chevron beside it. */}
             {selected && (
@@ -763,7 +835,9 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
             )}
 
             <div className="space-y-2">
-              {collectLoading ? (
+              {collectTab === "fee" && teamId ? (
+                <JoiningFeeStatusPanel teamId={teamId} viewerId={userId} />
+              ) : collectLoading ? (
                 <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
               ) : selected ? (
                 /* ── Players in the selected match ── */
@@ -771,6 +845,7 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                   const key = `${selected.matchId}:${p.player_id}`;
                   const busy = remindingPlayer === key;
                   const removing = removingPlayer === key;
+                  const marking = markingPlayer === key;
                   const reminded = remindedPlayers.has(key);
                   return (
                     <div key={p.player_id} className="flex items-center gap-2 bg-panel border border-border rounded-btn px-3.5 py-3">
@@ -779,14 +854,26 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                         <p className="text-[10px] text-text-secondary">£{(p.sharePence / 100).toFixed(2)} share</p>
                       </div>
                       {p.received ? (
-                        <span className="text-[11px] font-bold bg-success-bg text-accent-ink px-3 py-1 rounded-full flex-shrink-0">Paid</span>
+                        // A tick is undoable: cash counted twice, or the wrong
+                        // row tapped, is a mistake the captain should be able
+                        // to take back without asking anyone.
+                        <button onClick={() => markReceived(selected, p, false)} disabled={marking}
+                          title="Mark as still unpaid"
+                          className="text-[11px] font-bold bg-success-bg text-accent-ink px-3 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
+                          {marking ? "Saving…" : "Paid ✓"}
+                        </button>
                       ) : (
                         <>
-                          <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded || removing}
+                          <button onClick={() => markReceived(selected, p, true)} disabled={marking || busy || removing}
+                            title="Mark this share as received"
+                            className="text-[11px] font-bold bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
+                            {marking ? "Saving…" : "Mark paid"}
+                          </button>
+                          <button onClick={() => remindPlayer(selected, p)} disabled={busy || reminded || removing || marking}
                             className="text-[11px] font-bold bg-[#FDECEC] text-danger px-3 py-1 rounded-full flex-shrink-0 disabled:opacity-60">
                             {busy ? "Sending…" : reminded ? "Reminded ✓" : "Remind"}
                           </button>
-                          <button onClick={() => removePlayerFromCollection(selected, p)} disabled={removing || busy}
+                          <button onClick={() => removePlayerFromCollection(selected, p)} disabled={removing || busy || marking}
                             title="Remove from payment request — added by mistake"
                             className="text-text-secondary hover:text-red-600 flex-shrink-0 disabled:opacity-50">
                             {removing
@@ -799,9 +886,11 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                   );
                 })
               ) : collectMatches.length === 0 ? (
-                <p className="text-xs text-text-secondary text-center py-8">Everyone&apos;s paid up — no missing payments.</p>
+                <p className="text-xs text-text-secondary text-center py-8">
+                  Nothing requested yet. Issue a payment request for a fixture in Settle Payments and it shows up here.
+                </p>
               ) : (
-                /* ── Recent matches with payments due ── */
+                /* ── Fixtures a payment request has been issued for ── */
                 collectMatches.map((g) => {
                   const unpaid = g.players.length - g.paidCount;
                   return (
@@ -809,11 +898,17 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
                       className="w-full bg-panel border border-border rounded-[14px] p-3.5 text-left">
                       <div className="flex items-center gap-2">
                         <p className="flex-1 min-w-0 text-sm font-semibold truncate">{g.kind === "tournament" ? g.opponent : `vs ${g.opponent}`}</p>
-                        <span className="text-sm font-bold text-red-600 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
+                        {unpaid === 0 ? (
+                          <span className="text-[10px] font-bold bg-success-bg text-accent-ink px-2 py-0.5 rounded-full flex-shrink-0">All paid ✓</span>
+                        ) : (
+                          <span className="text-sm font-bold text-red-600 flex-shrink-0">£{(g.totalDuePence / 100).toFixed(2)}</span>
+                        )}
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                       </div>
                       <p className="text-[10px] text-text-secondary mt-1">
-                        {g.date} · {unpaid} player{unpaid !== 1 ? "s" : ""} still to pay · {g.paidCount}/{g.players.length} paid
+                        {g.date} · {unpaid === 0
+                          ? `${g.players.length}/${g.players.length} paid`
+                          : `${unpaid} player${unpaid !== 1 ? "s" : ""} still to pay · ${g.paidCount}/${g.players.length} paid`}
                       </p>
                     </button>
                   );

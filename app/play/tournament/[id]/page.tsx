@@ -612,7 +612,7 @@ export default function TournamentDetailPage() {
                     {myPlayingTeamId
                       && (fx.home_team_id === myPlayingTeamId || fx.away_team_id === myPlayingTeamId) && (
                       <a href={`/my-team/tournament-match/${fx.id}`}
-                        className="block w-full mt-2 py-2 rounded-lg border border-border text-[11px] font-semibold text-text-secondary text-center">
+                        className="block w-full mt-2 py-2 rounded-lg bg-accent/10 border border-accent/30 text-[11px] font-semibold text-accent-ink text-center">
                         {myPlayingTeamId === myTeamId ? "Set lineup & tactics" : "View lineup & details"}
                       </a>
                     )}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Uniter · Pilot tutorials</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#e6ede4;color:#14261b;font:16px Arial,sans-serif}
+    header{background:#fff;padding:16px 20px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #cbd8c9}
+    strong{font-size:24px;letter-spacing:-1px}select,button,a{font:inherit}select{max-width:100%;padding:10px;border-radius:9px;border:1px solid #bccbb9;background:#fff;color:inherit}
+    main{max-width:580px;margin:auto;padding:16px 12px 95px}img{width:100%;height:auto;display:block;box-shadow:0 4px 20px #173c2320;border-radius:8px}
+    nav{position:fixed;bottom:0;background:#fff;width:100%;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;justify-content:center;align-items:center;gap:18px;border-top:1px solid #cbd8c9}
+    button{background:#008000;color:white;border:0;border-radius:9px;padding:11px 18px;cursor:pointer}button:disabled{background:#cbd6c8;color:#50654c;cursor:default}a{color:#087238;font-weight:bold}#count{min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+    .links{display:flex;gap:18px;font-size:14px}.sr{position:absolute;left:-9999px}
+  </style>
+</head>
+<body>
+  <header><strong>UNITER/</strong><label><span class="sr">Choose your guide</span><select id="track"><option value="new-users">New users · 5 slides</option><option value="captains">Captains · 9 slides</option><option value="team-members">Team members · 6 slides</option></select></label><div class="links"><a id="pdf" href="Uniter-new-users.pdf">Open PDF</a><a href="https://unitr-omega.vercel.app/" target="_blank" rel="noopener">Open app ↗</a></div></header>
+  <main><img id="slide" src="images/new-users/01.jpg" alt="New users guide, slide 1 of 5"></main>
+  <nav aria-label="Slide controls"><button id="prev" disabled>← Previous</button><span id="count" aria-live="polite">1 / 5</span><button id="next">Next →</button></nav>
+  <script>
+    const totals={'new-users':5,captains:9,'team-members':6};
+    const track=document.querySelector('#track'),picture=document.querySelector('#slide'),prev=document.querySelector('#prev'),next=document.querySelector('#next');let i=1;
+    function show(){const t=track.value;picture.src='images/'+t+'/'+String(i).padStart(2,'0')+'.jpg';picture.alt=track.selectedOptions[0].text.split(' · ')[0]+' guide, slide '+i+' of '+totals[t];document.querySelector('#count').textContent=i+' / '+totals[t];document.querySelector('#pdf').href='Uniter-'+t+'.pdf';prev.disabled=i===1;next.disabled=i===totals[t];window.scrollTo(0,0);}
+    track.addEventListener('change',()=>{i=1;show()});prev.addEventListener('click',()=>{if(i>1){i--;show()}});next.addEventListener('click',()=>{if(i<totals[track.value]){i++;show()}});
+    document.addEventListener('keydown',e=>{if(e.target===track)return;if(e.key==='ArrowLeft')prev.click();if(e.key==='ArrowRight')next.click()});
+    let startX=null;picture.addEventListener('touchstart',e=>{startX=e.changedTouches[0].clientX},{passive:true});picture.addEventListener('touchend',e=>{if(startX===null)return;const dx=e.changedTouches[0].clientX-startX;if(Math.abs(dx)>60)(dx<0?next:prev).click();startX=null},{passive:true});
+  </script>
+</body>
+</html>

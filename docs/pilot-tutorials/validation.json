@@ -1,0 +1,25 @@
+{
+  "generated": "2026-09-09T14:18:51.086Z",
+  "slideSize": [
+    1080,
+    1600
+  ],
+  "layout": "No heading, instructions or footer overlaps detected.",
+  "guides": [
+    {
+      "guide": "new-users",
+      "slides": 5,
+      "pdfBytes": 872876
+    },
+    {
+      "guide": "captains",
+      "slides": 9,
+      "pdfBytes": 1681216
+    },
+    {
+      "guide": "team-members",
+      "slides": 6,
+      "pdfBytes": 999713
+    }
+  ]
+}

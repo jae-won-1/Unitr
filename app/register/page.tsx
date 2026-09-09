@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
 
 const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
-const experiences = ["Beginner", "Casual", "Intermediate", "Competitive", "Semi-Pro"];
+const experiences = ["Beginner", "Casual", "Intermediate", "Semi-Pro"];
 
 // Self-reported buckets rather than a birth date or a strict binary — same
 // reasoning as games_per_month: an approximate honest answer beats a

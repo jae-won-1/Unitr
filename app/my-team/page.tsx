@@ -123,7 +123,7 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
         <input type="search" placeholder="Search teams or locations..." className="w-full bg-surface border border-border rounded-btn pl-9 pr-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/50" />
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {["All", "Casual", "Competitive", "Semi-Pro"].map((f) => (
+        {["All", "Casual", "Intermediate", "Semi-Pro"].map((f) => (
           <button key={f} onClick={() => setFilter(f)} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${filter === f ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>{f}</button>
         ))}
       </div>
@@ -147,7 +147,7 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
                 <p className="text-xs text-text-secondary mt-0.5">{team.location}</p>
               </div>
             </div>
-            <span className={`text-xs font-medium px-2 py-1 rounded-lg flex-shrink-0 ${team.level === "Casual" ? "bg-blue-500/10 text-blue-600" : team.level === "Competitive" ? "bg-orange-500/10 text-orange-600" : "bg-purple-500/10 text-purple-600"}`}>{team.level}</span>
+            <span className={`text-xs font-medium px-2 py-1 rounded-lg flex-shrink-0 ${team.level === "Casual" ? "bg-blue-500/10 text-blue-600" : team.level === "Intermediate" ? "bg-orange-500/10 text-orange-600" : "bg-purple-500/10 text-purple-600"}`}>{team.level}</span>
           </div>
           {team.description && <p className="text-xs text-text-secondary mb-3">{team.description}</p>}
           <div className="flex items-center gap-2 mb-4 text-xs text-text-secondary">

@@ -239,7 +239,7 @@ function BookingConfirmed({ pitch, date, time, onDone }: { pitch: Pitch; date: s
         <p className="text-xs text-text-secondary mb-1">{pitch.address}</p>
         <p className="text-xs text-accent-ink font-medium mb-4">{date} · {time}</p>
         <div className="bg-surface border border-border rounded-btn p-3 mb-5 text-left space-y-1">
-          <div className="flex justify-between text-xs"><span className="text-text-secondary">Per player (inc. 5% fee)</span><span className="font-bold text-accent-ink">£{perPlayer}</span></div>
+          <div className="flex justify-between text-xs"><span className="text-text-secondary">Per player{UNITER_FEE_ENABLED ? ` (inc. ${UNITER_FEE_LABEL} fee)` : ""}</span><span className="font-bold text-accent-ink">£{perPlayer}</span></div>
           <p className="text-[10px] text-text-secondary">Charged automatically 3 hours after match confirmation via Stripe.</p>
         </div>
         <button onClick={onDone} className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm">Done</button>

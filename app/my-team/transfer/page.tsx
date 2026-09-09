@@ -19,7 +19,7 @@ import {
 // you to send something twice.
 
 const POSITIONS = ["All", "GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "RW", "LW", "ST"];
-const EXPERIENCES = ["All", "Casual", "Competitive", "Semi-Pro"];
+const EXPERIENCES = ["All", "Casual", "Semi-Pro"];
 
 function initials(name: string) {
   return name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();

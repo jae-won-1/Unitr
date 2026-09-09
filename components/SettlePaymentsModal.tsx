@@ -5,10 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
 import { outcomeOf, OUTCOME_TEXT } from "@/lib/match-results";
-import { fmtFee } from "@/lib/joining-fee";
+import { JoiningFeeAmountPanel } from "@/components/JoiningFeePanels";
 import BottomSheet from "@/components/BottomSheet";
 import { loadLeadership } from "@/lib/team-leadership";
-import { withFee } from "@/lib/uniter-fee";
+import { withFee, UNITER_FEE_ENABLED, UNITER_FEE_LABEL } from "@/lib/uniter-fee";
 
 // Settle Payments — per-fixture payment collection for the captain.
 //
@@ -141,11 +141,10 @@ async function loadTournamentEntries(teamId: string): Promise<HistoryFixture[]> 
 // column the payment_collection_status rows key off and where the "everyone
 // has paid" flag is stored.
 function PaymentCollectionPanel({
-  target, fixtureKey, teamId, teamPoolPence, label, date, settled, onSettledChange,
+  target, teamId, teamPoolPence, label, date, settled,
 }: {
-  target: CollectTarget; fixtureKey: string; teamId: string; teamPoolPence: number;
+  target: CollectTarget; teamId: string; teamPoolPence: number;
   label: string; date: string; settled: boolean;
-  onSettledChange: (fixtureKey: string, settled: boolean) => void;
 }) {
   const { user } = useAuth();
   const [expanded, setExpanded] = useState(false);
@@ -155,7 +154,6 @@ function PaymentCollectionPanel({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<CollectRow[]>([]);
   const [sending, setSending] = useState(false);
-  const [busyPlayer, setBusyPlayer] = useState<string | null>(null);
 
   // Which column identifies this charge, and what value it holds.
   const targetCol = target.kind === "match" ? "match_id" : "open_match_id";
@@ -270,52 +268,6 @@ function PaymentCollectionPanel({
     setSending(false);
   };
 
-  // "Everyone has paid" lives on matches.fees_settled for a game, and per
-  // entered team on open_match_teams.fees_settled for a tournament.
-  const writeSettled = async (value: boolean) => {
-    if (target.kind === "match") {
-      await supabase.from("matches").update({ fees_settled: value }).eq("id", target.matchId);
-    } else {
-      await supabase.from("open_match_teams").update({ fees_settled: value })
-        .eq("open_match_id", target.openMatchId).eq("team_id", teamId);
-    }
-  };
-
-  const toggleReceived = async (playerId: string) => {
-    const row = rows.find((r) => r.player_id === playerId);
-    if (!row) return;
-    setBusyPlayer(playerId);
-    const next = !row.received;
-    const updatedRows = rows.map((r) => r.player_id === playerId ? { ...r, received: next } : r);
-    setRows(updatedRows);
-    // Keep credited_pence in step with a manual toggle, so the player's own
-    // "amount owed" total (derived from credited_pence) stays accurate.
-    await supabase.from("payment_collection_status")
-      .update({ received: next, credited_pence: next ? row.share_pence : 0, updated_at: new Date().toISOString() })
-      .eq(targetCol, targetId).eq("player_id", playerId);
-
-    const allReceived = updatedRows.every((r) => r.received);
-    if (allReceived !== settled) {
-      await writeSettled(allReceived);
-      onSettledChange(fixtureKey, allReceived);
-    }
-    setBusyPlayer(null);
-  };
-
-  const handleRemove = async (playerId: string) => {
-    setBusyPlayer(playerId);
-    await supabase.from("payment_collection_status").delete().eq(targetCol, targetId).eq("player_id", playerId);
-    const updatedRows = rows.filter((r) => r.player_id !== playerId);
-    setRows(updatedRows);
-    setChecked((prev) => { const next = new Set(prev); next.delete(playerId); return next; });
-
-    const allReceived = updatedRows.length > 0 && updatedRows.every((r) => r.received);
-    if (allReceived !== settled) {
-      await writeSettled(allReceived);
-      onSettledChange(fixtureKey, allReceived);
-    }
-    setBusyPlayer(null);
-  };
 
   return (
     <div className="mt-3 bg-background border border-border rounded-xl p-3">
@@ -325,10 +277,10 @@ function PaymentCollectionPanel({
             className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
             <path d="M9 18l6-6-6-6"/>
           </svg>
-          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Collect Payment</p>
+          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Payment request</p>
         </div>
         {!requestSent ? (
-          <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">Collect Payment</span>
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">Not issued yet</span>
         ) : settled ? (
           <span className="text-[10px] font-semibold bg-green-500/10 text-green-600 border border-green-500/30 px-2 py-0.5 rounded-full">Paid ✓</span>
         ) : (
@@ -344,7 +296,7 @@ function PaymentCollectionPanel({
         ) : !requestSent ? (
           <div className="mt-3">
             <p className="text-[11px] text-text-secondary mb-3">
-              Total owed ({isTournament ? "entry fee" : "booking"} + 5% fee): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
+              Total owed ({isTournament ? "entry fee" : "booking"}{UNITER_FEE_ENABLED ? ` + ${UNITER_FEE_LABEL} fee` : ""}): <span className="text-text-primary font-semibold">£{(totalWithFee / 100).toFixed(2)}</span>
               {checked.size > 0 && <> · £{(totalWithFee / checked.size / 100).toFixed(2)}/player</>}
             </p>
             {(() => {
@@ -389,8 +341,15 @@ function PaymentCollectionPanel({
             </button>
           </div>
         ) : (
+          /* Already issued — this is the receipt for what was charged, not a
+             place to chase it. Marking payments off, reminding and removing a
+             player all live in Payment Status now, so a captain has one answer
+             to "who still owes me?" across every fixture rather than one per
+             card here. */
           <div className="mt-3 space-y-1.5">
-            <p className="text-[11px] text-text-secondary mb-1">Full squad</p>
+            <p className="text-[11px] text-text-secondary mb-1">
+              Requested from {rows.length} player{rows.length !== 1 ? "s" : ""} · £{(rows.reduce((sum, r) => sum + r.share_pence, 0) / 100).toFixed(2)} total
+            </p>
             {roster.map((p) => {
               const row = rows.find((r) => r.player_id === p.player_id);
               const name = p.player_id === user?.id ? "You" : p.name;
@@ -400,17 +359,9 @@ function PaymentCollectionPanel({
                   {row ? (
                     <>
                       <span className="text-xs font-semibold text-text-secondary flex-shrink-0">£{(row.share_pence / 100).toFixed(2)}</span>
-                      <button onClick={() => toggleReceived(p.player_id)} disabled={busyPlayer === p.player_id}
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 disabled:opacity-50 ${row.received ? "bg-accent/10 text-accent-ink border border-accent/20" : "bg-red-500/10 text-red-600 border border-red-500/20"}`}>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${row.received ? "bg-accent/10 text-accent-ink border border-accent/20" : "bg-red-500/10 text-red-600 border border-red-500/20"}`}>
                         {row.received ? "Paid ✓" : "Unpaid"}
-                      </button>
-                      {!row.received && (
-                        <button onClick={() => handleRemove(p.player_id)} disabled={busyPlayer === p.player_id}
-                          title="Remove from payment request"
-                          className="text-text-secondary hover:text-red-600 flex-shrink-0 disabled:opacity-50">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        </button>
-                      )}
+                      </span>
                     </>
                   ) : (
                     <span className="text-[10px] font-semibold text-text-secondary bg-surface border border-border px-2 py-0.5 rounded-full flex-shrink-0">Not charged</span>
@@ -418,6 +369,9 @@ function PaymentCollectionPanel({
                 </div>
               );
             })}
+            <p className="text-[11px] text-text-secondary pt-1">
+              Mark payments off, remind or drop a player in <span className="font-semibold text-text-primary">Payment Status</span>.
+            </p>
           </div>
         )
       )}
@@ -425,128 +379,16 @@ function PaymentCollectionPanel({
   );
 }
 
-// ── Joining fees (captain only) ──────────────────────────────────────────
-// Who has covered their one-off joining fee. The paid amounts are advanced
-// only by the server when a verified payment lands (supabase_joining_fees.sql)
-// — the captain reads them here and can nudge, not tick. Cash handed over in
-// person goes through Record Cash / record_cash_credit like any other credit.
-type FeeRow = {
-  playerId: string;
-  name: string;
-  duePence: number;
-  paidPence: number;
-};
-
-function JoiningFeesPanel({ teamId, captainId }: { teamId: string; captainId: string }) {
-  const [rows, setRows] = useState<FeeRow[]>([]);
-  const [remindedIds, setRemindedIds] = useState<Set<string>>(new Set());
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      const { data, error } = await supabase
-        .from("team_members")
-        .select("player_id, joining_fee_due_pence, joining_fee_paid_pence, profiles(full_name)")
-        .eq("team_id", teamId)
-        .eq("status", "approved");
-      if (error) return;   // joining-fees migration not run — panel stays hidden
-
-      // The captain owes the fee they set, like everyone else, and their copy
-      // of it is on `teams` rather than team_members
-      // (supabase_captain_joining_fee.sql). Read with select("*") so the row
-      // still comes back before that migration is run.
-      const { data: team } = await supabase
-        .from("teams").select("*").eq("id", teamId).maybeSingle();
-      const capDue = (team?.captain_joining_fee_due_pence as number | null) ?? 0;
-      const captainRow: FeeRow[] = capDue > 0 && team?.captain_id
-        ? [{
-            playerId: team.captain_id as string,
-            name: "You (captain)",
-            duePence: capDue,
-            paidPence: (team.captain_joining_fee_paid_pence as number | null) ?? 0,
-          }]
-        : [];
-
-      setRows(
-        [
-          ...captainRow,
-          ...(data ?? [])
-            .filter((m) => (m.joining_fee_due_pence ?? 0) > 0)
-            .map((m) => ({
-              playerId: m.player_id as string,
-              name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Unknown player",
-              duePence: (m.joining_fee_due_pence as number) ?? 0,
-              paidPence: (m.joining_fee_paid_pence as number) ?? 0,
-            })),
-        ]
-          .sort((a, b) => {
-            const aOwes = a.paidPence < a.duePence ? 0 : 1;
-            const bOwes = b.paidPence < b.duePence ? 0 : 1;
-            return aOwes - bOwes || a.name.localeCompare(b.name);
-          })
-      );
-    }
-    load();
-  }, [teamId]);
-
-  if (rows.length === 0) return null;
-
-  const remind = async (row: FeeRow) => {
-    setBusyId(row.playerId);
-    await supabase.from("messages").insert({
-      sender_id: captainId,
-      receiver_id: row.playerId,
-      type: "payment_reminder",
-      body: `Reminder: your ${fmtFee(row.duePence - row.paidPence)} joining fee is still due. Pay it via the Top Up button on Home — it goes into the team's credits for pitch and tournament fees. Until then you can't join or vote available for games.`,
-    });
-    setRemindedIds((prev) => new Set(prev).add(row.playerId));
-    setBusyId(null);
-  };
-
-  return (
-    <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-3">
-      <p className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-3">Joining fees</p>
-      <div className="space-y-2">
-        {rows.map((row) => {
-          const paid = row.paidPence >= row.duePence;
-          return (
-            <div key={row.playerId} className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{row.name}</p>
-                <p className="text-[11px] text-text-secondary">
-                  {paid
-                    ? `${fmtFee(row.duePence)} paid`
-                    : row.paidPence > 0
-                    ? `${fmtFee(row.paidPence)} of ${fmtFee(row.duePence)} paid`
-                    : `${fmtFee(row.duePence)} due`}
-                </p>
-              </div>
-              {paid ? (
-                <span className="text-[10px] font-semibold text-accent-ink bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">Paid ✓</span>
-              ) : row.playerId === captainId ? (
-                // The captain's own row: nobody to remind but themselves, so
-                // it says where to pay instead of offering a self-DM.
-                <span className="text-[10px] font-semibold text-red-600 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full flex-shrink-0">Top up on Home</span>
-              ) : (
-                <button
-                  onClick={() => remind(row)}
-                  disabled={busyId === row.playerId || remindedIds.has(row.playerId)}
-                  className="text-[11px] font-bold text-red-600 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-lg flex-shrink-0 disabled:opacity-50">
-                  {remindedIds.has(row.playerId) ? "Reminded ✓" : busyId === row.playerId ? "Sending…" : "Remind"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ── The fixture list itself ───────────────────────────────────────────────
 // Chrome-free so it can sit in a page or in the modal below.
+//
+// Two tabs, because a captain issues two kinds of charge: a share of a
+// fixture's cost, and the one-off joining fee. Both are *issuing* — deciding
+// who is charged what. Who has actually paid is Payment Status' job, next door
+// in the money row.
 export function SettlePaymentsList() {
   const { user } = useAuth();
+  const [tab, setTab] = useState<"fixtures" | "fee">("fixtures");
   const [fixtures, setFixtures] = useState<HistoryFixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCaptainViewer, setIsCaptainViewer] = useState(false);
@@ -664,18 +506,34 @@ export function SettlePaymentsList() {
     load();
   }, [user]);
 
-  const handleSettledChange = (fixtureKey: string, settled: boolean) => {
-    setFixtures((prev) => prev.map((f) => f.key === fixtureKey ? { ...f, settled } : f));
-  };
-
   if (loading) {
     return <div className="py-12 text-center"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>;
+  }
+
+  // Captains only: a player has no fee to set, and the fixtures they can see
+  // are the ones they're in.
+  const tabs = isCaptainViewer && teamId ? (
+    <div className="flex bg-surface border border-border rounded-btn p-[3px] gap-[3px] mb-3">
+      {([["fixtures", "Fixtures"], ["fee", "Joining fee"]] as const).map(([id, label]) => (
+        <button key={id} onClick={() => setTab(id)}
+          className={`flex-1 py-2 rounded-[9px] text-xs transition-colors ${tab === id ? "bg-accent text-white font-bold" : "text-text-secondary font-semibold"}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  // Permanent tab rather than one that appears with a fee already set — it's
+  // where the fee is set in the first place, so it has to be there when there
+  // isn't one.
+  if (tab === "fee" && isCaptainViewer && teamId) {
+    return <>{tabs}<JoiningFeeAmountPanel teamId={teamId} /></>;
   }
 
   if (fixtures.length === 0) {
     return (
       <>
-      {isCaptainViewer && teamId && user && <JoiningFeesPanel teamId={teamId} captainId={user.id} />}
+      {tabs}
       <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
         <div className="w-16 h-16 rounded-full bg-surface-2 border border-border flex items-center justify-center">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -689,7 +547,7 @@ export function SettlePaymentsList() {
 
   return (
     <div className="space-y-3">
-      {isCaptainViewer && teamId && user && <JoiningFeesPanel teamId={teamId} captainId={user.id} />}
+      {tabs}
       {fixtures.map((f) => {
         const m = f.matchRowId ? matchRows[f.matchRowId] : undefined;
         return (
@@ -751,13 +609,11 @@ export function SettlePaymentsList() {
                 target={f.kind === "match"
                   ? { kind: "match", matchId: f.matchRowId! }
                   : { kind: "tournament", openMatchId: f.openMatchId! }}
-                fixtureKey={f.key}
                 teamId={teamId}
                 teamPoolPence={f.teamPoolPence}
                 label={f.label}
                 date={f.date}
                 settled={f.settled}
-                onSettledChange={handleSettledChange}
               />
             )}
           </div>
@@ -768,10 +624,10 @@ export function SettlePaymentsList() {
 }
 
 // ── Popup form ────────────────────────────────────────────────────────────
-// Same shell as the Team Credits / Collect Payment popups it sits beside.
+// Same shell as the Team Credits / Payment Status popups it sits beside.
 export default function SettlePaymentsModal({ onClose }: { onClose: () => void }) {
   return (
-    <BottomSheet title="Settle Payments" subtitle="Upcoming and past fixtures for your team" onClose={onClose}>
+    <BottomSheet title="Settle Payments" subtitle="Issue what your squad owes — fixture shares and the joining fee" onClose={onClose}>
       <SettlePaymentsList />
     </BottomSheet>
   );

@@ -110,7 +110,7 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
         <div className="flex items-center gap-2 mt-2">
           <span className={`text-xs font-medium px-2 py-0.5 rounded-lg ${
             team.level === "Casual" ? "bg-blue-500/10 text-blue-600"
-            : team.level === "Competitive" ? "bg-orange-500/10 text-orange-600"
+            : team.level === "Intermediate" ? "bg-orange-500/10 text-orange-600"
             : "bg-purple-500/10 text-purple-600"
           }`}>{team.level}</span>
           <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">{team.format}</span>
