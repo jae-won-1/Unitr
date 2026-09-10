@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
-import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
@@ -144,9 +144,10 @@ export function useMyDues(teamId: string | null, userId: string) {
 }
 
 // ── Card entry step ───────────────────────────────────────────
-function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSecret, targetPcsId, skipDuesApply, onSuccess, onBack }: {
+function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSecret, targetPcsId, skipDuesApply, saveCardSlot, onSuccess, onBack }: {
   amount: number; teamId: string; userId: string; currentCredits: number; clientSecret: string;
   targetPcsId?: string;
+  saveCardSlot?: ReactNode;
   // A joining-fee payment: the deposit is applied to the fee server-side by
   // credit_from_payment, and must not tick off match-due bookkeeping here.
   skipDuesApply?: boolean;
@@ -187,6 +188,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSec
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={cardElementOptions} />
       </div>
+      {saveCardSlot}
       <TestModeNote />
       {payError && <p className="text-xs text-red-600 text-center">{payError}</p>}
       <button onClick={handlePay} disabled={!stripe || paying}
@@ -226,7 +228,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   const [duePaidFlash, setDuePaidFlash] = useState(false);
   const [topUpBusy, setTopUpBusy] = useState(false);
   const [success, setSuccess] = useState(false);
-  const saveCard = useSaveCardOffer(userId);
+  const saveCard = useSaveCardTickbox(userId);
 
   const setBalance = useCallback((pounds: number) => {
     setCredits(pounds);
@@ -401,7 +403,6 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
   };
 
   return (
-    <>
     <div className="fixed inset-0 z-[80] flex items-end justify-center" style={{ background: "rgba(11,21,38,0.55)" }} onClick={onClose}>
       {/* Bottom sheet, matching the rebrand's single overlay shape. */}
       <div className="w-full max-w-lg bg-surface rounded-t-[24px] px-5 pt-5 pb-6 max-h-[88dvh] overflow-y-auto"
@@ -438,11 +439,13 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
                 clientSecret={clientSecret}
                 targetPcsId={payTarget?.pcsId}
                 skipDuesApply={feeTargeted}
-                onSuccess={(newBalance, paymentIntentId) => saveCard.offer(paymentIntentId, async () => {
+                saveCardSlot={saveCard.checkbox}
+                onSuccess={async (newBalance, paymentIntentId) => {
+                  await saveCard.commit(paymentIntentId);
                   setBalance(newBalance);
                   setSuccess(true);
                   await Promise.all([reloadDues(), reloadFee()]);
-                })}
+                }}
                 onBack={() => { setClientSecret(null); setPayTarget(null); setFeeTargeted(false); }}
               />
             </Elements>
@@ -599,9 +602,5 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
         )}
       </div>
     </div>
-    {/* Outside the backdrop above — nested, its clicks would bubble into that
-        backdrop's onClose and dismiss the whole modal mid-prompt. */}
-    {saveCard.prompt}
-    </>
   );
 }

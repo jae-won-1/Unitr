@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +9,7 @@ import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import TopUpModal from "@/components/TopUpModal";
-import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { loadLedTeam } from "@/lib/team-leadership";
 import { authedPost } from "@/lib/authed-fetch";
 import { feeOn, UNITER_FEE_ENABLED, UNITER_FEE_LABEL, UNITER_FEE_RATE } from "@/lib/uniter-fee";
@@ -78,8 +78,9 @@ function Stars({ rating }: { rating: number }) {
 // ── Card form (must live inside <Elements>) ───────────────────
 // Collects card details and confirms the PaymentIntent. On success it hands
 // the intent id back up so the parent can finalise the booking.
-function CardBookingForm({ totalPence, clientSecret, working, onPaid, onError }: {
+function CardBookingForm({ totalPence, clientSecret, working, saveCardSlot, onPaid, onError }: {
   totalPence: number; clientSecret: string; working: boolean;
+  saveCardSlot?: ReactNode;
   onPaid: (intentId: string) => void; onError: (msg: string) => void;
 }) {
   const stripe = useStripe();
@@ -112,6 +113,7 @@ function CardBookingForm({ totalPence, clientSecret, working, onPaid, onError }:
   return (
     <div className="space-y-4">
       <PaymentElement options={cardElementOptions} />
+      {saveCardSlot}
       <button onClick={handlePay} disabled={busy || !stripe}
         className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
         {busy
@@ -176,10 +178,11 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, saveCardSlot, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
   pitch: Pitch; date: string; time: string;
   isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
   working: boolean; error: string | null;
+  saveCardSlot?: ReactNode;
   onCancel: () => void;
   onPayCredit: () => void;
   onCardPaid: (intentId: string) => void;
@@ -306,7 +309,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
           </div>
         ) : (
           <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
-            <CardBookingForm totalPence={cardTotalPence} clientSecret={clientSecret} working={working} onPaid={onCardPaid} onError={onError} />
+            <CardBookingForm totalPence={cardTotalPence} clientSecret={clientSecret} working={working} saveCardSlot={saveCardSlot} onPaid={onCardPaid} onError={onError} />
           </Elements>
         )}
       </div>
@@ -369,7 +372,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   const isCaptain = team !== null;
   // Card already on file — lets any card payment skip manual entry.
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
-  const saveCard = useSaveCardOffer(user?.id);
+  const saveCard = useSaveCardTickbox(user?.id);
 
   // Filters — pre-fill from the captain's chosen posting slot when the Book tab
   // is opened via "lock in a pitch first"; otherwise default the date to today
@@ -647,12 +650,10 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       ? { ...prev, [pitch.id]: prev[pitch.id].map((s) => s.time === time ? { ...s, status: "booked" } : s) }
       : prev);
     setPendingSlot(null);
-    // Card path only: offer to keep the card before the confirmation screen.
-    // The credit path never touched one. `offer` falls straight through for
-    // anyone who already has a card saved.
-    saveCard.offer(method === "card" ? intentId : null, () => {
-      setBookedInfo({ pitch, date, time, posted });
-    });
+    // Card path only — the credit path never touched a card. commit() is a
+    // no-op unless the payer ticked the box on the way in.
+    if (method === "card") await saveCard.commit(intentId);
+    setBookedInfo({ pitch, date, time, posted });
   };
 
   return (
@@ -868,6 +869,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           savedCard={savedCard}
           working={booking}
           error={error}
+          saveCardSlot={saveCard.checkbox}
           onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}
           onPayCredit={() => completeBooking("credit")}
           onCardPaid={(intentId) => completeBooking("card", intentId)}
@@ -905,7 +907,6 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
         />
       )}
 
-      {saveCard.prompt}
     </div>
   );
 }

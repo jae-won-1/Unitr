@@ -73,7 +73,12 @@ function watchFromServer(
   stripe: Stripe,
   clientSecret: string,
   signal: { done: boolean },
+  opts?: { redrive?: boolean },
 ): Promise<IntentResult> {
+  // Re-driving is for the confirm path, where the frozen loop is the only
+  // thing holding the challenge. resumeIntent() calls handleNextAction itself,
+  // so a second one here would stack two challenges on the same intent.
+  const redrive = opts?.redrive !== false;
   return new Promise((resolve) => {
     let busy = false;
     let wasHidden = false;
@@ -112,7 +117,7 @@ function watchFromServer(
         // the iframe's loop was frozen rather than simply still working. Once
         // only: handleNextAction mounts its own challenge, and firing it
         // repeatedly would stack them.
-        if (status === "requires_action" && wasHidden && !reDriven) {
+        if (redrive && status === "requires_action" && wasHidden && !reDriven) {
           reDriven = true;
           const after: IntentResult = await stripe.handleNextAction({ clientSecret });
           if (signal.done) return;
@@ -139,6 +144,86 @@ function watchFromServer(
     window.addEventListener("pageshow", onVisibility);
     window.addEventListener("focus", onVisibility);
   });
+}
+
+// What the server currently thinks, for either kind of intent. The client
+// secret says which call to make, so no caller has to track it.
+export async function retrieveIntent(stripe: Stripe, clientSecret: string): Promise<IntentResult> {
+  return isSetupSecret(clientSecret)
+    ? await stripe.retrieveSetupIntent(clientSecret)
+    : await stripe.retrievePaymentIntent(clientSecret);
+}
+
+export function statusOf(result: IntentResult | undefined): string | undefined {
+  return (result?.paymentIntent ?? result?.setupIntent)?.status;
+}
+
+export function isSettled(status: string | undefined): boolean {
+  return Boolean(status && SETTLED.has(status));
+}
+
+// Statuses where there is actually a challenge left to drive. Anything else —
+// succeeded, processing, canceled, requires_payment_method — is a finished
+// story, and handing it to handleNextAction only produces a spinner.
+const RESUMABLE = new Set(["requires_action", "requires_confirmation"]);
+
+// How long the payer is asked to wait before we stop pretending and say so.
+// The entry is NOT dropped on a timeout: the intent may still complete at the
+// bank, so the banner offers another look rather than a verdict.
+export const RESUME_TIMEOUT_MS = 45_000;
+
+export type ResumeResult = IntentResult & { timedOut?: boolean };
+
+// Picking a payment back up after the app lost track of it.
+//
+// The old version was a bare handleNextAction(), which is how a payer who had
+// ALREADY paid ended up on "Finishing your payment…" for ever: the intent was
+// no longer resumable, so Stripe mounted a 3D Secure frame that polled a
+// challenge nothing would ever answer, and the promise never settled. There was
+// no timeout and no second opinion, so the spinner was the end of the road.
+//
+// Three things fix that. The server is asked FIRST — a payment that already
+// succeeded is reported, never re-driven. A status with no challenge left in it
+// is returned as-is rather than handed to Stripe. And the drive itself races
+// the same server watcher the confirm path uses, plus a hard timeout, so this
+// function always returns.
+export async function resumeIntent(
+  stripe: Stripe,
+  clientSecret: string,
+  timeoutMs: number = RESUME_TIMEOUT_MS,
+): Promise<ResumeResult> {
+  let current: IntentResult;
+  try {
+    current = await retrieveIntent(stripe, clientSecret);
+  } catch (err) {
+    return { error: { message: (err as Error)?.message || "Couldn't check that payment." } as StripeError };
+  }
+  if (current.error) return current;
+
+  const status = statusOf(current);
+  // Already done, already dead, or never authenticated — either way there is
+  // nothing to drive, and the caller reports whatever the server said.
+  if (!status || !RESUMABLE.has(status)) return current;
+
+  const signal = { done: false };
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeout = new Promise<ResumeResult>((resolve) => {
+      timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
+    });
+    return await Promise.race([
+      stripe.handleNextAction({ clientSecret }),
+      watchFromServer(stripe, clientSecret, signal, { redrive: false }),
+      timeout,
+    ]);
+  } catch (err) {
+    // handleNextAction throws rather than returns on an integration error, and
+    // an unhandled rejection here is exactly the stuck spinner this replaces.
+    return { error: { message: (err as Error)?.message || "Couldn't finish that payment." } as StripeError };
+  } finally {
+    signal.done = true;
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // Stripe's contract for `fields.billingDetails: "never"` (lib/stripe-client.ts):

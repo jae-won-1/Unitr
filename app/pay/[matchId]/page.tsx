@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { saveCardFromIntent } from "@/components/SaveCardPrompt";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { authedPost } from "@/lib/authed-fetch";
 import { feeOn, UNITER_FEE_ENABLED, UNITER_FEE_LABEL } from "@/lib/uniter-fee";
 import TestModeNote from "@/components/TestModeNote";
@@ -163,13 +163,13 @@ function CheckoutForm({
   matchInfo,
   matchId,
   clientSecret,
-  showSavedCardOption,
+  saveCardSlot,
   onSuccess,
 }: {
   matchInfo: MatchInfo;
   matchId: string;
   clientSecret: string;
-  showSavedCardOption: boolean;
+  saveCardSlot?: ReactNode;
   onSuccess: (paymentIntentId: string) => void;
 }) {
   const stripe = useStripe();
@@ -258,13 +258,7 @@ function CheckoutForm({
         <PaymentElement options={cardElementOptions} />
       </div>
 
-      {!showSavedCardOption && (
-        <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3">
-          <p className="text-[11px] text-accent-ink leading-relaxed">
-            We&apos;ll ask if you want to save this card after payment, so next time you can skip this step.
-          </p>
-        </div>
-      )}
+      {saveCardSlot}
 
       <TestModeNote />
 
@@ -285,29 +279,6 @@ function CheckoutForm({
       <p className="text-[10px] text-text-secondary text-center">
         Secured by Stripe · Your card will be charged £{total.toFixed(2)}
       </p>
-    </div>
-  );
-}
-
-// ── "Save this card for next time?" prompt shown after a manual payment ───────
-function SaveCardPrompt({ onSave, onSkip, saving }: { onSave: () => void; onSkip: () => void; saving: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60dvh] text-center px-6">
-      <div className="w-16 h-16 rounded-full bg-accent/20 border-2 border-accent flex items-center justify-center mb-5">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-      </div>
-      <p className="text-lg font-bold mb-2">Payment Confirmed!</p>
-      <p className="text-sm text-text-secondary mb-6 max-w-xs">
-        Save this card so your next match payment is instant — no need to fill in card details again.
-      </p>
-      <div className="flex gap-2 w-full max-w-xs">
-        <button onClick={onSkip} disabled={saving} className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
-          No thanks
-        </button>
-        <button onClick={onSave} disabled={saving} className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
-          {saving ? "Saving…" : "Save Card"}
-        </button>
-      </div>
     </div>
   );
 }
@@ -348,8 +319,8 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
 
   const [savedCard, setSavedCard] = useState<SavedCard | null | undefined>(undefined);
   const [useManualEntry, setUseManualEntry] = useState(false);
-  const [saveCardPrompt, setSaveCardPrompt] = useState<{ paymentIntentId: string } | null>(null);
-  const [savingCard, setSavingCard] = useState(false);
+  // Asked in the card form, before paying — see components/SaveCardPrompt.tsx.
+  const saveCard = useSaveCardTickbox(user?.id);
 
   // Creates the Stripe Elements client secret for manual card entry. Lazy —
   // only called when there's no saved card, or the player picks "Change".
@@ -499,30 +470,12 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
     setPaid(true);
   };
 
-  const handleManualSuccess = (paymentIntentId: string) => {
-    if (savedCard) {
-      // Already had a saved card and chose to pay a different way — nothing new to save.
-      setPaid(true);
-    } else {
-      setSaveCardPrompt({ paymentIntentId });
-    }
-  };
-
-  const handleSaveCard = async () => {
-    if (!saveCardPrompt || !user) return;
-    setSavingCard(true);
-    // Shared with every other payment surface. The PaymentIntent was created
-    // with setup_future_usage: "off_session" and a customer, so Stripe has
-    // already attached the payment method — this just copies it to the profile.
+  const handleManualSuccess = async (paymentIntentId: string) => {
+    // The PaymentIntent was created with setup_future_usage: "off_session" and
+    // a customer, so Stripe has already attached the card — commit() only
+    // copies it onto the profile, and only if the payer ticked the box.
     // Non-fatal either way: the payment itself has already succeeded.
-    await saveCardFromIntent(user.id, saveCardPrompt.paymentIntentId);
-    setSavingCard(false);
-    setSaveCardPrompt(null);
-    setPaid(true);
-  };
-
-  const handleSkipSaveCard = () => {
-    setSaveCardPrompt(null);
+    await saveCard.commit(paymentIntentId);
     setPaid(true);
   };
 
@@ -530,7 +483,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
   const waitingOnClientSecret = showManualEntry && !clientSecret && !loadError;
 
   // Loading
-  if (matchInfo === undefined || savedCard === undefined || (matchInfo !== null && !paid && !saveCardPrompt && waitingOnClientSecret)) {
+  if (matchInfo === undefined || savedCard === undefined || (matchInfo !== null && !paid && waitingOnClientSecret)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -571,15 +524,6 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
             Get Test Keys →
           </a>
         </div>
-      </div>
-    );
-  }
-
-  // Save-card prompt (shown right after a successful manual payment)
-  if (saveCardPrompt) {
-    return (
-      <div className="flex flex-col min-h-screen pt-16 pb-20 px-4">
-        <SaveCardPrompt onSave={handleSaveCard} onSkip={handleSkipSaveCard} saving={savingCard} />
       </div>
     );
   }
@@ -658,7 +602,7 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
             matchInfo={matchInfo}
             matchId={params.matchId}
             clientSecret={clientSecret}
-            showSavedCardOption={!!savedCard}
+            saveCardSlot={saveCard.checkbox}
             onSuccess={handleManualSuccess}
           />
         </Elements>

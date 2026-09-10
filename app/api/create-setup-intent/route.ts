@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { getCaller, callerCustomerId, unauthorized } from "@/lib/api-auth";
-import { adminSupabase } from "@/lib/supabase-admin";
+import { getCaller, unauthorized } from "@/lib/api-auth";
+import { ensureStripeCustomer } from "@/lib/stripe-customer";
 
 // Card-on-file step 1: create (or reuse) a Stripe customer and open a SetupIntent
 // so the player can save a card for future off-session match settlement.
@@ -14,26 +14,14 @@ export async function POST(req: NextRequest) {
     if (!caller) return unauthorized();
 
     const { name } = await req.json().catch(() => ({ name: null }));
-    const customerId = await callerCustomerId(caller.id);
-    const email = caller.email;
 
-    let customer = customerId as string | undefined;
-    if (!customer) {
-      const created = await stripe.customers.create({
-        email: email ?? undefined,
-        name: name ?? undefined,
-        metadata: { app: "uniter", playerId: caller.id },
-      });
-      customer = created.id;
-      // Written now, not after the card saves. The profile form used to be the
-      // only thing that remembered this id, so a 3D Secure challenge that cost
-      // the payer their tab lost it — the next attempt created a second Stripe
-      // customer, and a card recovered by ResumePaymentBanner had no customer
-      // to record. Storing it here also means an abandoned setup leaves one
-      // reusable customer rather than an orphan per attempt.
-      await adminSupabase.from("profiles")
-        .update({ stripe_customer_id: customer }).eq("id", caller.id);
-    }
+    // Written as it is created, not after the card saves. The profile form used
+    // to be the only thing that remembered this id, so a 3D Secure challenge
+    // that cost the payer their tab lost it — the next attempt made a second
+    // Stripe customer, and a card recovered by ResumePaymentBanner had no
+    // customer to record. Now shared with the PaymentIntent routes, so a player
+    // has exactly one customer however they first reach Stripe.
+    const customer = await ensureStripeCustomer(caller.id, caller.email, name);
 
     const setupIntent = await stripe.setupIntents.create({
       customer,

@@ -21,6 +21,7 @@ import {
   type PendingPayment,
 } from "@/lib/pending-payment";
 import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
+import { resumeIntent, retrieveIntent, statusOf } from "@/lib/confirm-payment";
 import { useAuth } from "@/contexts/AuthContext";
 
 type View =
@@ -30,6 +31,7 @@ type View =
   | { state: "done"; entry: PendingPayment }          // paid, credit on its way
   | { state: "orphaned"; entry: PendingPayment }      // paid, but its follow-up write never ran
   | { state: "cardSaved" }                            // a card, saved and recorded
+  | { state: "stalled"; entry: PendingPayment }       // driven, and the bank still hasn't answered
   | { state: "failed"; message: string };
 
 function money(pence: number) {
@@ -125,26 +127,61 @@ export default function ResumePaymentBanner() {
     return () => { live = false; };
   }, [settle, finishCard]);
 
-  // Re-open the challenge the payer walked away from. handleNextAction picks up
-  // exactly where confirmPayment left off, so no card details are asked for
-  // again — the card is already attached to the intent.
+  // Re-open the challenge the payer walked away from.
+  //
+  // This used to be a bare handleNextAction(), and that is the spinner the
+  // payer got stuck on: an intent with no challenge left — because the payment
+  // had in fact already gone through — still made Stripe mount a 3D Secure
+  // frame, which then polled for an answer that was never coming. Nothing timed
+  // out and nothing asked the server, so "Finishing your payment…" was the end
+  // of the road on a payment that had already succeeded.
+  //
+  // resumeIntent() asks Stripe what the intent's status really is before
+  // driving anything, drives only what is actually resumable, and is bounded by
+  // a timeout — so this always lands somewhere the payer can act on.
   const resume = async (entry: PendingPayment) => {
     setView({ state: "working" });
     const stripe = await stripePromise;
     if (!stripe) { setView({ state: "resume", entry }); return; }
-    // handleNextAction drives a SetupIntent's challenge exactly as it drives a
-    // PaymentIntent's, so saving a card resumes through the same call.
-    const { paymentIntent, setupIntent, error } = await stripe.handleNextAction({ clientSecret: entry.clientSecret });
-    if (error) {
-      setView({ state: "failed", message: error.message ?? "Couldn't finish that payment." });
+
+    const result = await resumeIntent(stripe, entry.clientSecret);
+
+    // The bank hasn't answered yet. The intent may still complete, so the entry
+    // is kept and the payer is offered another look rather than a verdict.
+    if (result.timedOut) { setView({ state: "stalled", entry }); return; }
+    if (result.error) {
+      setView({ state: "failed", message: result.error.message ?? "Couldn't finish that payment." });
       return;
     }
-    if (entry.kind === "card") {
-      if (setupIntent?.status === "succeeded") { setView(await finishCard(setupIntent)); return; }
-      setView(settle(entry, setupIntent?.status));
+    const status = statusOf(result);
+    if (entry.kind === "card" && status === "succeeded") {
+      setView(await finishCard(result.setupIntent));
       return;
     }
-    setView(settle(entry, paymentIntent?.status));
+    setView(settle(entry, status));
+  };
+
+  // "Check again" from the stalled banner: read the status, drive nothing. The
+  // challenge has already been driven by this point — all that is left is to
+  // find out whether the bank got round to answering it.
+  const recheck = async (entry: PendingPayment) => {
+    setView({ state: "working" });
+    const stripe = await stripePromise;
+    if (!stripe) { setView({ state: "stalled", entry }); return; }
+    const result = await retrieveIntent(stripe, entry.clientSecret);
+    if (result.error) { setView({ state: "stalled", entry }); return; }
+    const status = statusOf(result);
+    if (entry.kind === "card" && status === "succeeded") {
+      setView(await finishCard(result.setupIntent));
+      return;
+    }
+    // Still mid-challenge: say so again rather than re-offering a button that
+    // would only re-mount the same challenge.
+    if (status === "requires_action" || status === "requires_confirmation") {
+      setView({ state: "stalled", entry });
+      return;
+    }
+    setView(settle(entry, status));
   };
 
   const dismiss = () => { clearPendingPayment(); setView({ state: "hidden" }); };
@@ -178,6 +215,32 @@ export default function ResumePaymentBanner() {
             <p className="text-[11px] text-text-secondary">It&apos;s on your profile, ready for auto-settlement.</p>
           </div>
           <button onClick={() => setView({ state: "hidden" })} className="text-xs font-semibold text-text-secondary px-2 flex-shrink-0">Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view.state === "stalled") {
+    return (
+      <div className={shell}>
+        <div className="max-w-lg mx-auto bg-surface border border-amber-500/40 shadow-card rounded-2xl px-4 py-3">
+          <p className="text-xs font-bold">Still waiting on your bank</p>
+          <p className="text-[11px] text-text-secondary mt-0.5 leading-snug">
+            {view.entry.kind === "card"
+              ? "Your card hasn't been approved yet. Nothing has been charged."
+              : `${view.entry.label} — we haven't had an answer yet. If your bank has approved it, the balance updates on its own.`}
+          </p>
+          <div className="flex gap-2 mt-3">
+            {/* Hidden, not cleared: the next load looks again. */}
+            <button onClick={() => setView({ state: "hidden" })}
+              className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold text-text-secondary">
+              Close
+            </button>
+            <button onClick={() => recheck(view.entry)}
+              className="flex-1 py-2 rounded-btn bg-accent text-white text-xs font-bold">
+              Check again
+            </button>
+          </div>
         </div>
       </div>
     );

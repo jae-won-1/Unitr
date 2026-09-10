@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
-import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import TestModeNote from "@/components/TestModeNote";
 import { confirmCardPayment } from "@/lib/confirm-payment";
@@ -12,8 +12,9 @@ import { confirmCardPayment } from "@/lib/confirm-payment";
 const PRESETS_POUNDS = [10, 20, 50, 100];
 
 // ── Card entry (inside <Elements>) ────────────────────────────
-function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, onSuccess, onBack }: {
+function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, saveCardSlot, onSuccess, onBack }: {
   amount: number; teamId: string; currentPence: number; clientSecret: string;
+  saveCardSlot?: ReactNode;
   onSuccess: (newBalancePence: number, paymentIntentId: string | null, pending: boolean) => void;
   onBack: () => void;
 }) {
@@ -59,6 +60,7 @@ function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, onSucce
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={cardElementOptions} />
       </div>
+      {saveCardSlot}
       <TestModeNote />
       {payError && <p className="text-xs text-red-600 text-center">{payError}</p>}
       <button onClick={handlePay} disabled={!stripe || paying}
@@ -86,7 +88,7 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null); // new balance pence, once paid
   const [pending, setPending] = useState(false);         // paid, webhook not seen yet
-  const saveCard = useSaveCardOffer(userId);
+  const saveCard = useSaveCardTickbox(userId);
 
   const effectiveAmount = customInput ? parseFloat(customInput) : selectedAmount;
 
@@ -112,7 +114,6 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
   };
 
   return (
-    <>
     <div className="fixed inset-0 z-[80] flex items-end justify-center" style={{ background: "rgba(11,21,38,0.55)" }} onClick={onClose}>
       {/* Bottom sheet, matching the rebrand's single overlay shape. */}
       <div className="w-full max-w-lg bg-surface rounded-t-[24px] px-5 pt-5 pb-6 max-h-[88dvh] overflow-y-auto"
@@ -177,8 +178,14 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
                   teamId={teamId}
                   currentPence={currentPence}
                   clientSecret={clientSecret}
-                  onSuccess={(newBalancePence, paymentIntentId, isPending) =>
-                    saveCard.offer(paymentIntentId, () => { setPending(isPending); setDone(newBalancePence); })}
+                  saveCardSlot={saveCard.checkbox}
+                  onSuccess={async (newBalancePence, paymentIntentId, isPending) => {
+                    // Copied off the intent that just paid, so ticking the box
+                    // costs the payer no second authentication.
+                    await saveCard.commit(paymentIntentId);
+                    setPending(isPending);
+                    setDone(newBalancePence);
+                  }}
                   onBack={() => setClientSecret(null)}
                 />
               </Elements>
@@ -187,9 +194,5 @@ export default function TopUpModal({ teamId, userId, currentPence, suggestedPenc
         )}
       </div>
     </div>
-    {/* Outside the backdrop above — nested, its clicks would bubble into that
-        backdrop's onClose and dismiss the whole top-up mid-prompt. */}
-    {saveCard.prompt}
-    </>
   );
 }

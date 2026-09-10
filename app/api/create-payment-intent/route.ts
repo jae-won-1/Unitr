@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, calcSplit } from "@/lib/stripe";
 import { feeWithin } from "@/lib/uniter-fee";
-import { getCaller, callerCustomerId, unauthorized } from "@/lib/api-auth";
+import { getCaller, unauthorized } from "@/lib/api-auth";
+import { ensureStripeCustomer } from "@/lib/stripe-customer";
 
 // Open a card payment for the caller's own share of a pitch. The payer and the
 // Stripe customer come from the session, not the body — the amount is still the
@@ -13,7 +14,6 @@ export async function POST(req: NextRequest) {
 
     const { pitchPricePerHour, playerCount, bookingId, amountPence } = await req.json();
     const playerId = caller.id;
-    const customerId = await callerCustomerId(caller.id);
     const email = caller.email;
 
     // Credit-replenishment path passes an exact pre-computed amount (the player's
@@ -31,14 +31,9 @@ export async function POST(req: NextRequest) {
 
     // Attach to a Stripe customer and mark the payment method for future
     // off-session reuse, so the card can be saved on the profile afterwards.
-    let customer = customerId as string | undefined;
-    if (!customer) {
-      const created = await stripe.customers.create({
-        email: email ?? undefined,
-        metadata: { app: "uniter" },
-      });
-      customer = created.id;
-    }
+    // The customer is persisted as it is created (lib/stripe-customer.ts) —
+    // one per player, not one per payment attempt.
+    const customer = await ensureStripeCustomer(caller.id, email);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalPerPlayer,
