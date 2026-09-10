@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { getCaller, isTeamMember, callerCustomerId, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCaller, isTeamMember, forbidden, unauthorized } from "@/lib/api-auth";
+import { ensureStripeCustomer } from "@/lib/stripe-customer";
 
 // Open a card payment that tops up a team's credit. The webhook credits the
 // team off this intent's metadata, so the metadata is written from the caller's
@@ -25,21 +26,13 @@ export async function POST(req: NextRequest) {
     }
 
     const playerId = caller.id;
-    const customerId = await callerCustomerId(caller.id);
-    const email = caller.email;
 
     // Attach to a Stripe customer and mark the card for future off-session
-    // reuse, so we can offer to save it once the payment succeeds. Reuse the
-    // caller's existing customer where they have one, rather than minting a
-    // second customer for the same player.
-    let customer = customerId as string | undefined;
-    if (!customer) {
-      const created = await stripe.customers.create({
-        email: email ?? undefined,
-        metadata: { app: "uniter" },
-      });
-      customer = created.id;
-    }
+    // reuse, so the payer can tick "save this card" before paying. The customer
+    // is resolved and PERSISTED by ensureStripeCustomer — minting one here and
+    // forgetting it gave a repeat payer a fresh customer per attempt, which
+    // left their saved card unchargeable off-session.
+    const customer = await ensureStripeCustomer(caller.id, caller.email);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountPence,

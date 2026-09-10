@@ -4,9 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { authedGet } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 
-// "Save this card for next time?" — offered once, after a player's first
-// successful card payment on any surface (match fee, team credit top-up,
-// ringer spot, direct pitch booking).
+// "Save this card for future payments" — a tick box in the card form, on
+// every surface that takes one (match fee, team credit top-up, ringer spot,
+// direct pitch booking).
+//
+// It used to be a popup AFTER the charge, and that is why the option went
+// missing from the payment tab: the popup only rendered for a player with no
+// card on file yet, so anyone whose profile already held a customer id never
+// saw it, and there was no other way to save a card while paying. Asking
+// before the charge also means the payer decides while they are looking at
+// the card, not while they are looking at a success screen.
 //
 // Saving writes stripe_customer_id + stripe_payment_method_id to the profile
 // (supabase_card_on_file.sql), which is what every surface already reads to
@@ -40,60 +47,20 @@ export async function saveCardFromIntent(userId: string, paymentIntentId: string
   }
 }
 
-// ── The prompt itself ─────────────────────────────────────────────────────
-// Renders above everything: it appears on top of payment popups that are
-// themselves z-[70]/z-[80], and the nav chrome floor is z-40.
-export function SaveCardPrompt({ onSave, onSkip, saving, title, blurb }: {
-  onSave: () => void; onSkip: () => void; saving: boolean;
-  title?: string; blurb?: string;
-}) {
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-scrim px-5">
-      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
-        <div className="w-14 h-14 rounded-full bg-accent/20 border-2 border-accent flex items-center justify-center mx-auto mb-4">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
-            <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-        </div>
-        <p className="text-lg font-bold mb-2">{title ?? "Payment confirmed"}</p>
-        <p className="text-sm text-text-secondary mb-6">
-          {blurb ?? "Save this card so your next payment is instant — no need to enter your details again."}
-        </p>
-        <div className="flex gap-2">
-          <button onClick={onSkip} disabled={saving}
-            className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary disabled:opacity-50">
-            No thanks
-          </button>
-          <button onClick={onSave} disabled={saving}
-            className="flex-1 py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
-            {saving ? "Saving…" : "Save card"}
-          </button>
-        </div>
-        <p className="text-[10px] text-text-secondary mt-3">You can remove it any time from your profile.</p>
-      </div>
-    </div>
-  );
-}
-
-// ── Drop-in wiring for a payment surface ──────────────────────────────────
-// Usage:
-//   const saveCard = useSaveCardOffer(userId);
-//   ...pass saveCard.customerId when creating the PaymentIntent...
-//   // after a manual-card payment succeeds:
-//   saveCard.offer(paymentIntent.id, () => { /* carry on as before */ });
-//   // and render, above the surface's own markup:
-//   {saveCard.prompt}
+// ── The tick box ──────────────────────────────────────────────────────────
+// Asked BEFORE paying, in the card form itself, rather than as a popup after
+// the charge. The popup only ever appeared for a player with no card saved yet,
+// and it appeared on top of a success screen — so on the surfaces where it was
+// suppressed there was no way to save a card at all, which is how "save this
+// card" went missing from the payment tab.
 //
-// `offer` runs `next` straight away for anyone who already has a card saved,
-// so the caller's success path is the same shape whether or not a prompt
-// appears — no branching at the call site.
-export function useSaveCardOffer(userId: string | undefined, opts?: { title?: string; blurb?: string }) {
-  // undefined until the profile lookup lands. Treated as "already has one"
-  // by `offer` so a prompt can never flash before we know the answer.
+// Unticked by default: this is consent to store a card, so it has to be the
+// payer's own act, not something they have to notice and undo.
+export function useSaveCardTickbox(userId: string | undefined, opts?: { label?: string }) {
+  // undefined until the profile lookup lands.
   const [hasSavedCard, setHasSavedCard] = useState<boolean | undefined>(undefined);
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ intentId: string; next: () => void } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [checked, setChecked] = useState(false);
 
   useEffect(() => {
     if (!userId) { setHasSavedCard(undefined); setCustomerId(null); return; }
@@ -109,32 +76,35 @@ export function useSaveCardOffer(userId: string | undefined, opts?: { title?: st
     return () => { live = false; };
   }, [userId]);
 
-  const offer = useCallback((paymentIntentId: string | null | undefined, next: () => void) => {
-    if (!userId || !paymentIntentId || hasSavedCard !== false) { next(); return; }
-    setPending({ intentId: paymentIntentId, next });
-  }, [userId, hasSavedCard]);
+  // Shown to anyone who hasn't already got a card on file. While the lookup is
+  // still in flight it renders anyway — a first-time payer is the common case,
+  // and hiding it until the answer lands is how it gets missed.
+  const checkbox = userId && hasSavedCard !== true ? (
+    <label className="flex items-start gap-2.5 px-1 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => setChecked(e.target.checked)}
+        className="mt-0.5 w-4 h-4 flex-shrink-0 accent-accent cursor-pointer"
+      />
+      <span className="text-xs text-text-secondary leading-snug">
+        {opts?.label ?? "Save this card for future payments"}
+        <span className="block text-[10px] text-text-secondary/70 mt-0.5">
+          Pay in one tap next time. You can remove it any time from your profile.
+        </span>
+      </span>
+    </label>
+  ) : null;
 
-  const handleSave = async () => {
-    if (!pending || !userId) return;
-    setSaving(true);
-    const ok = await saveCardFromIntent(userId, pending.intentId);
+  // Called once the payment has succeeded — the card is copied off the intent
+  // that just paid, so there is no second authentication. Never throws: the
+  // payment is already done and a failure here must not look like one.
+  const commit = useCallback(async (paymentIntentId: string | null | undefined): Promise<boolean> => {
+    if (!checked || !userId || !paymentIntentId || hasSavedCard === true) return false;
+    const ok = await saveCardFromIntent(userId, paymentIntentId);
     if (ok) setHasSavedCard(true);
-    setSaving(false);
-    const { next } = pending;
-    setPending(null);
-    next();
-  };
+    return ok;
+  }, [checked, userId, hasSavedCard]);
 
-  const handleSkip = () => {
-    if (!pending) return;
-    const { next } = pending;
-    setPending(null);
-    next();
-  };
-
-  const prompt = pending
-    ? <SaveCardPrompt onSave={handleSave} onSkip={handleSkip} saving={saving} title={opts?.title} blurb={opts?.blurb} />
-    : null;
-
-  return { offer, prompt, customerId, hasSavedCard };
+  return { checkbox, commit, checked, hasSavedCard, customerId };
 }

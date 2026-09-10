@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,7 +9,7 @@ import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import DateDial, { countByDate } from "@/components/DateDial";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
-import { useSaveCardOffer } from "@/components/SaveCardPrompt";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import TestModeNote from "@/components/TestModeNote";
 import { confirmCardPayment } from "@/lib/confirm-payment";
 import { loadLeadership } from "@/lib/team-leadership";
@@ -122,9 +122,10 @@ export function useRingerPosts(userId: string | undefined) {
 }
 
 // ── Checkout ──────────────────────────────────────────────────
-function RingerCheckoutForm({ post, clientSecret, onPaid, onCancel }: {
+function RingerCheckoutForm({ post, clientSecret, saveCardSlot, onPaid, onCancel }: {
   post: RingerPost;
   clientSecret: string;
+  saveCardSlot?: ReactNode;
   onPaid: (paymentIntentId: string) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -158,6 +159,7 @@ function RingerCheckoutForm({ post, clientSecret, onPaid, onCancel }: {
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={cardElementOptions} />
       </div>
+      {saveCardSlot}
       <TestModeNote />
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
@@ -257,7 +259,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RingerPost | null>(null);
   const [gate, setGate] = useState<GateTarget | null>(null);
-  const saveCard = useSaveCardOffer(user?.id);
+  const saveCard = useSaveCardTickbox(user?.id);
 
   const closeModal = () => {
     setTarget(null);
@@ -300,12 +302,11 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
       const data = await res.json();
       if (!data.ok) { setError(data.error ?? "Payment went through but the join failed."); return; }
       if (data.squadWarning) setError(data.squadWarning);
-      // Offer to keep the card before the confirmation screen — a ringer with
-      // no team has no other surface that would ever ask them.
-      saveCard.offer(paymentIntentId, () => {
-        setDone(target);
-        setClientSecret(null);
-      });
+      // Keep the card if they asked for it on the way in — a ringer with no
+      // team has no other surface that would ever offer.
+      await saveCard.commit(paymentIntentId);
+      setDone(target);
+      setClientSecret(null);
       await reload();
     } catch {
       // The charge succeeded — say so plainly rather than inviting a re-pay.
@@ -394,7 +395,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
               <div className="py-8 text-center"><div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto" /></div>
             ) : clientSecret ? (
               <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night", variables: { colorPrimary: "#0E7A3C", colorBackground: "#1a1a1a", colorText: "#ffffff", borderRadius: "12px" } } }}>
-                <RingerCheckoutForm post={target} clientSecret={clientSecret} onPaid={confirmJoin} onCancel={closeModal} />
+                <RingerCheckoutForm post={target} clientSecret={clientSecret} saveCardSlot={saveCard.checkbox} onPaid={confirmJoin} onCancel={closeModal} />
               </Elements>
             ) : (
               <div className="space-y-3">
@@ -407,7 +408,6 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
         </div>
       )}
 
-      {saveCard.prompt}
     </div>
   );
 }

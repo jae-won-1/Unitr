@@ -526,6 +526,33 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   a second customer. `/payment-return` reads **`setup_intent_client_secret`** as well as
   `payment_intent_client_secret`; reading only the latter told someone who had just authorised
   a card that we couldn't find their payment.
+- **Resuming a payment always asks the server first, and is always bounded**
+  (`resumeIntent` in `lib/confirm-payment.ts`). `ResumePaymentBanner` used to call
+  `handleNextAction` straight out, which is fine for an intent that still has a challenge
+  left and catastrophic for one that doesn't: Stripe mounts a 3D Secure frame that polls for
+  an answer nobody will ever send, the promise never settles, and "Finishing your payment…"
+  becomes the end of the road — on a payment that had, in fact, already succeeded. So the
+  intent's real status is retrieved before anything is driven, only `requires_action` /
+  `requires_confirmation` are driven at all, and the drive races the same server watcher the
+  confirm path uses against a 45s timeout. A timeout keeps the pending entry and offers
+  **Check again** rather than a verdict — the bank may still be deciding.
+- **One Stripe customer per player, written when it is created**
+  (`ensureStripeCustomer` in `lib/stripe-customer.ts`). Every intent route needs the payer's
+  customer, because `setup_future_usage: "off_session"` only attaches a card to one, and
+  off-session settlement charges `stripe_customer_id` + `stripe_payment_method_id` as a
+  **pair**. Three of the four routes used to mint a customer when the profile had none and
+  then throw the id away, so a player who paid four times had four customers holding one card
+  each and a profile pointing at none of them — which is how a saved card fails off-session
+  with "no such payment method for this customer". All four routes now go through the one
+  helper, which persists the id before the intent is created.
+- **"Save this card" is a tick box in the card form, not a prompt after the charge**
+  (`useSaveCardTickbox` in `components/SaveCardPrompt.tsx`). Unticked by default — it is
+  consent to store a card. The old popup only appeared for a player the profile lookup said
+  had no card yet, so a half-written customer id meant it never appeared at all and there was
+  no way to save a card while paying. Ticking it costs no second authentication: the card is
+  copied off the intent that just paid, via `commit(paymentIntent.id)` on the success path.
+  Every card surface renders `saveCard.checkbox` under its `PaymentElement` — the top-up
+  sheet, dues top-up, ringer checkout, pitch booking and `/pay/[matchId]`.
 - **Every API route authenticates its caller.** RLS is `using (true)` and the anon key is
   public, so the API routes are where authorisation actually happens. A route identifies the
   caller with `getCallerId` / `getCaller` from `lib/api-auth.ts` (the Supabase JWT in the

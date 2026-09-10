@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { getCaller, unauthorized } from "@/lib/api-auth";
 
 // Card payment for a ringer spot. The price is a flat fee paid to Uniter and
@@ -46,19 +47,11 @@ export async function POST(req: NextRequest) {
     const amount = Math.round(request.price_pence ?? 500);
 
     // Attach to a Stripe customer and mark the card for future off-session
-    // reuse, so the player can be offered "save this card" afterwards. The
-    // existing customer is read from the profile here rather than taken from
-    // the request body — the client already can't be trusted with the amount.
-    const { data: profile } = await adminSupabase
-      .from("profiles").select("stripe_customer_id").eq("id", playerId).maybeSingle();
-    let customer = (profile?.stripe_customer_id as string | null) ?? undefined;
-    if (!customer) {
-      const created = await stripe.customers.create({
-        email: email ?? undefined,
-        metadata: { app: "uniter" },
-      });
-      customer = created.id;
-    }
+    // reuse, so the player can tick "save this card" before paying. The
+    // customer is read from the profile (and written back the first time it is
+    // created) rather than taken from the request body — the client already
+    // can't be trusted with the amount.
+    const customer = await ensureStripeCustomer(playerId, email);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
