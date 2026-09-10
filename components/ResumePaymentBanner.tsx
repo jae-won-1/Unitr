@@ -34,6 +34,19 @@ type View =
   | { state: "stalled"; entry: PendingPayment }       // driven, and the bank still hasn't answered
   | { state: "failed"; message: string };
 
+// How long after starting a payment we assume it is still in flight rather than
+// abandoned, and how long we will quietly wait for it to settle before saying
+// anything. The 3D Secure approval typically lands within a second or two of
+// the payer returning from their banking app.
+const IN_FLIGHT_MS = 3 * 60 * 1000;
+const SETTLE_GRACE_MS = 20_000;
+const SETTLE_POLL_MS = 2_000;
+
+// Statuses with a challenge still outstanding — the only ones worth waiting on.
+function isResumable(status: string | undefined) {
+  return status === "requires_action" || status === "requires_confirmation";
+}
+
 function money(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
 }
@@ -101,28 +114,47 @@ export default function ResumePaymentBanner() {
       const stripe = await stripePromise;
       if (!stripe || !live) return;
 
-      if (entry.kind === "card") {
-        const { setupIntent, error: setupError } = await stripe.retrieveSetupIntent(entry.clientSecret);
-        if (!live) return;
-        if (setupError || !setupIntent) { clearPendingPayment(); return; }
-        if (setupIntent.status === "succeeded") {
-          const next = await finishCard(setupIntent);
-          if (live) setView(next);
-          return;
-        }
-        setView(settle(entry, setupIntent.status));
-        return;
-      }
-
-      const { paymentIntent, error } = await stripe.retrievePaymentIntent(entry.clientSecret);
+      let result = await retrieveIntent(stripe, entry.clientSecret);
       if (!live) return;
-      if (error || !paymentIntent) {
+      if (result.error || !(result.paymentIntent ?? result.setupIntent)) {
         // A secret Stripe won't recognise (wrong account, too old) is not worth
         // showing anyone — drop it rather than nagging about a ghost.
         clearPendingPayment();
         return;
       }
-      setView(settle(entry, paymentIntent.status));
+      let status = statusOf(result);
+
+      // A payment that has only just been started is almost certainly still in
+      // flight rather than abandoned. This banner used to take one reading and
+      // conclude from it for ever, which made it fire on the NORMAL 3D Secure
+      // path: the payer approves in their banking app, the tab is evicted and
+      // remounts, and Stripe is still reporting requires_action for the second
+      // or two it takes the approval to land. The payer came back to their
+      // credit topped up and a banner telling them the payment hadn't finished.
+      //
+      // So a fresh entry is waited out quietly — nothing is rendered — and only
+      // an intent still unfinished after that is worth raising. An old entry
+      // skips the wait: that is the genuine recovery case this exists for.
+      if (Date.now() - entry.startedAt < IN_FLIGHT_MS && isResumable(status)) {
+        const deadline = Date.now() + SETTLE_GRACE_MS;
+        while (live && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, SETTLE_POLL_MS));
+          if (!live) return;
+          result = await retrieveIntent(stripe, entry.clientSecret);
+          if (!live) return;
+          status = statusOf(result);
+          // requires_payment_method is terminal here too: the challenge was
+          // dismissed or declined, and waiting longer changes nothing.
+          if (!isResumable(status)) break;
+        }
+      }
+
+      if (entry.kind === "card" && status === "succeeded") {
+        const next = await finishCard(result.setupIntent);
+        if (live) setView(next);
+        return;
+      }
+      setView(settle(entry, status));
     })();
     return () => { live = false; };
   }, [settle, finishCard]);
