@@ -58,7 +58,10 @@ function CardSetupForm({ clientSecret, onSaved, onCancel }: {
     <div className="space-y-3">
       <div className="bg-surface border border-border shadow-card rounded-card p-4">
         <PaymentElement options={cardElementOptions} />
-        <p className="text-xs text-text-secondary mt-3">Remember this card for future use.</p>
+        <p className="text-xs text-text-secondary mt-3 leading-snug">
+          This card is saved to your profile so Uniter can charge your share of match
+          fees automatically. Nothing is charged now, and you can remove it any time.
+        </p>
       </div>
       <TestModeNote />
       {err && <p className="text-xs text-red-600">{err}</p>}

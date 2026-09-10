@@ -79,18 +79,29 @@ export function useSaveCardTickbox(userId: string | undefined, opts?: { label?: 
   // Shown to anyone who hasn't already got a card on file. While the lookup is
   // still in flight it renders anyway — a first-time payer is the common case,
   // and hiding it until the answer lands is how it gets missed.
+  // Deliberately loud: it replaces Stripe's own mandate line, which we suppress
+  // (terms.card: "never" in lib/stripe-client.ts), so this is now the ONLY place
+  // the payer is told their card may be kept. It has to carry that meaning and
+  // be impossible to miss — hence the filled panel rather than a grey footnote.
   const checkbox = userId && hasSavedCard !== true ? (
-    <label className="flex items-start gap-2.5 px-1 cursor-pointer select-none">
+    <label
+      className={`flex items-start gap-3 p-4 rounded-btn border-2 cursor-pointer select-none transition-colors ${
+        checked ? "border-accent bg-accent/10" : "border-border bg-surface-2"
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => setChecked(e.target.checked)}
-        className="mt-0.5 w-4 h-4 flex-shrink-0 accent-accent cursor-pointer"
+        className="mt-0.5 w-5 h-5 flex-shrink-0 accent-accent cursor-pointer"
       />
-      <span className="text-xs text-text-secondary leading-snug">
-        {opts?.label ?? "Save this card for future payments"}
-        <span className="block text-[10px] text-text-secondary/70 mt-0.5">
-          Pay in one tap next time. You can remove it any time from your profile.
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-text-primary">
+          {opts?.label ?? "Save this card for future payments"}
+        </span>
+        <span className="block text-xs text-text-secondary leading-snug mt-1">
+          Pay in one tap next time, and let Uniter charge your share of match fees
+          automatically. You can remove the card any time from your profile.
         </span>
       </span>
     </label>

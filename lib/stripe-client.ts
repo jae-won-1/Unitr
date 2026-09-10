@@ -29,4 +29,15 @@ export const cardElementOptions: StripePaymentElementOptions = {
   // don't.
   fields: { billingDetails: { name: "never", email: "never" } },
   wallets: { link: "never" },
+  // Stripe prints its own mandate line ("By providing your card information,
+  // you allow ... to charge your card for future payments") whenever the
+  // intent carries setup_future_usage. It is unconditional, so it told every
+  // payer their card was being kept even when they had not asked for that,
+  // and it sat below the card field where nobody read it.
+  //
+  // Suppressing it obliges us to collect that consent ourselves, which is
+  // exactly what the save-card tick box does — an explicit opt-in carrying
+  // the same wording, instead of a notice. See useSaveCardTickbox in
+  // components/SaveCardPrompt.tsx; do not turn this off without one.
+  terms: { card: "never" },
 };
