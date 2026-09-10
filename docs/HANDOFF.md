@@ -1,6 +1,28 @@
 ﻿# Uniter handoff
 
-## Latest completed work — 2026-09-09, Claude Code
+## Latest completed work — 2026-09-09, Codex
+
+Created three UNITER app icon concepts in `docs/app-icon-concepts/`: football,
+team huddle inside a crest, and community figures forming a U. Each PNG is an
+original 1254 × 1254 generated export. The folder includes an offline comparison
+page with 64 px / 48 px and circular-mask previews, plus the final prompt set.
+
+Revised the community U at the user's request as
+`uniter-community-huddle-v2.png`: five more realistic players leaning inward,
+arms visibly around shoulders, no blue accent, and a small football beside the
+U. Preserved the original PNG, saved the edit prompt and updated the comparison's
+third card. The revised export is also 1254 × 1254 and fully opaque.
+
+Used the built-in image generation tool. Regenerated an initial pass that had
+unwanted transparency; final images were visually inspected and all pixels
+checked as fully opaque. Playwright checks at 1200 px and 390 px confirmed all
+12 image instances loaded, three download links and no horizontal overflow.
+Inspected the desktop preview and small icons; `preview.png` captures that page.
+`git diff --check` passed. No application icons, manifest, dependencies or product
+behaviour changed; application type/lint/build checks are not applicable to these
+concept assets. Next step is selecting a direction before production icon exports.
+
+## Previous completed work — 2026-09-09, Claude Code
 
 Split **Settle Payments** (issuing what the squad owes) from **Payment Status**
 (tracking who has paid), which had been blurred: the Payment Status sheet opened

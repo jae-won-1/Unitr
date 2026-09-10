@@ -18,8 +18,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fmtKickoff } from "@/lib/match-dates";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import {
-  loadSquadAnswerCounts, loadUpcomingEvents,
-  type AnswerCounts, type UpcomingEvent,
+  loadSquadAnswers, loadUpcomingEvents,
+  type SquadAnswers, type UpcomingEvent,
 } from "@/lib/event-availability";
 
 export type { UpcomingEvent };
@@ -41,15 +41,15 @@ export function useEventAvailability(teamId: string | null, userId: string | und
   return { events, awaiting, loading, reload: load };
 }
 
-/** The squad's tally per game — captain-side only, so it loads separately. */
+/** The squad's answers per game — captain-side only, so they load separately. */
 export function useSquadAnswers(teamId: string | null, events: UpcomingEvent[]) {
-  const [counts, setCounts] = useState<Record<string, AnswerCounts>>({});
+  const [counts, setCounts] = useState<Record<string, SquadAnswers>>({});
 
   // Keyed on the event keys rather than the array, which is a new object on
   // every reload of the list and would otherwise re-query forever.
   const keys = events.map((e) => e.key).join(",");
   const load = useCallback(async () => {
-    setCounts(await loadSquadAnswerCounts(teamId, events));
+    setCounts(await loadSquadAnswers(teamId, events));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, keys]);
 
@@ -65,9 +65,15 @@ export default function AvailabilityList({
   userId: string;
   teamId: string;
   /** Given by the captain's surfaces only — a player sees their own answer, not the squad's. */
-  counts?: Record<string, AnswerCounts>;
+  counts?: Record<string, SquadAnswers>;
   onChanged?: () => void;
 }) {
+  // Which tallies are expanded into names. Hooks run before the empty-list
+  // bail-out, which is why the return sits below them.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (key: string) =>
+    setExpanded((open) => ({ ...open, [key]: !open[key] }));
+
   if (events.length === 0) return null;
 
   return (
@@ -83,10 +89,27 @@ export default function AvailabilityList({
                 {e.venueName ? ` · ${e.venueName}` : ""}
               </p>
               {counts && (
-                <p className="text-[10px] font-semibold text-text-secondary mt-1">
-                  <span className="text-accent-ink">{counts[e.key]?.confirmed ?? 0} available</span>
-                  {" · "}{counts[e.key]?.declined ?? 0} out
-                </p>
+                <button
+                  type="button"
+                  onClick={() => toggle(e.key)}
+                  disabled={answered(counts[e.key]) === 0}
+                  aria-expanded={!!expanded[e.key]}
+                  className="flex items-center gap-1 text-[10px] font-semibold text-text-secondary mt-1 disabled:cursor-default"
+                >
+                  <span className="text-accent-ink">
+                    {counts[e.key]?.confirmed.length ?? 0} available
+                  </span>
+                  <span>{"·"} {counts[e.key]?.declined.length ?? 0} out</span>
+                  {answered(counts[e.key]) > 0 && (
+                    <svg
+                      width="9" height="9" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                      className={`transition-transform ${expanded[e.key] ? "rotate-180" : ""}`}
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  )}
+                </button>
               )}
             </div>
             {e.myStatus === "pending" && (
@@ -95,6 +118,31 @@ export default function AvailabilityList({
               </span>
             )}
           </div>
+          {counts && expanded[e.key] && answered(counts[e.key]) > 0 && (
+            <div className="mb-2 rounded-btn bg-surface-2 border border-border px-2.5 py-2 space-y-2">
+              {NAMED_GROUPS.map(({ status, label, tone }) => {
+                const people = counts[e.key]?.[status] ?? [];
+                if (people.length === 0) return null;
+                return (
+                  <div key={status}>
+                    <p className="text-[9px] uppercase tracking-wide font-bold text-text-secondary mb-1">
+                      {label} {"·"} {people.length}
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {people.map((person) => (
+                        <span
+                          key={person.playerId}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full border ${tone}`}
+                        >
+                          {person.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <AvailabilityButtons
             matchId={e.target.matchId}
             openMatchId={e.target.openMatchId}
@@ -108,3 +156,13 @@ export default function AvailabilityList({
     </div>
   );
 }
+
+/** Nobody has answered yet — nothing to expand, so the tally stays inert. */
+function answered(a: SquadAnswers | undefined): number {
+  return (a?.confirmed.length ?? 0) + (a?.declined.length ?? 0);
+}
+
+const NAMED_GROUPS = [
+  { status: "confirmed", label: "Available", tone: "bg-accent/10 border-accent/30 text-accent-ink" },
+  { status: "declined", label: "Out", tone: "bg-red-500/10 border-red-500/30 text-red-600" },
+] as const;

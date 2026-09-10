@@ -310,9 +310,13 @@ outright never runs one, so committing the team is what raises the question:
 Everyone in the squad sees the same list, wherever they are: `AvailabilityList` on Home
 (inside `PlayerActionStrip` for players, `PollStatusTile` for the captain, who is a squad
 member too), and `AvailabilityButtons` on each Calendar card and in `FixtureDetailSheet`.
-The captain's copy carries the squad's tally per game (`loadSquadAnswerCounts`), and
+The captain's copy carries the squad's tally per game (`loadSquadAnswers`), and
 `/my-team/tournament-match/[fixtureId]` shows the same tally as a named list when the captain
-is picking a lineup for one of the tournament's games.
+is picking a lineup for one of the tournament's games. The tally on Home **is** the named
+list: `loadSquadAnswers` returns who answered, not just how many, and tapping
+"*n* available · *n* out" expands the two groups of names in place. It's one query per
+surface either way — the names ride along with the count rather than being fetched on the
+tap — and the line is inert until somebody has actually answered.
 
 Settle Payments reads the fixture's own answers first and falls back to the poll only when
 nobody answered the fixture (`SettlePaymentsModal`).

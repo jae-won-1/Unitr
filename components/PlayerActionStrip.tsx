@@ -83,12 +83,19 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           <p className="text-sm font-bold leading-tight">Top Up Team Credit</p>
           {/* The joining fee outranks match dues: until it's paid the player
               can't vote for games at all, so it's the thing to say first. */}
-          <p className={`text-[11px] mt-1 leading-tight ${owedPence + feeOwedPence > 0 ? "text-red-600 font-semibold" : "text-text-secondary"}`}>
-            {feeOwedPence > 0
-              ? `${fmtFee(feeOwedPence)} joining fee due`
-              : owedPence > 0
-              ? `You owe £${(owedPence / 100).toFixed(2)}`
-              : balancePence === null ? "Loading…" : `Team balance £${(balancePence / 100).toFixed(2)}`}
+          {owedPence + feeOwedPence > 0 && (
+            <p className="text-[11px] mt-1 leading-tight text-red-600 font-semibold">
+              {feeOwedPence > 0
+                ? `${fmtFee(feeOwedPence)} joining fee due`
+                : `You owe £${(owedPence / 100).toFixed(2)}`}
+            </p>
+          )}
+          {/* The balance stays on the button even when something is owed — what
+              the squad has in the pot is what a player comes here to check, and
+              hiding it behind a debt made it invisible to exactly the people who
+              need to know the pot is short. */}
+          <p className="text-[11px] mt-1 leading-tight text-text-secondary">
+            {balancePence === null ? "Loading…" : `Team balance £${(balancePence / 100).toFixed(2)}`}
           </p>
         </button>
       </div>

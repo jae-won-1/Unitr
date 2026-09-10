@@ -185,12 +185,13 @@ async function loadUpcomingTournaments(teamId: string, userId: string): Promise<
 // fixture. It's the matchday squad in miniature, and for a tournament it is the
 // only place that tally exists — /my-team/match/[matchId] has no counterpart
 // for an open_matches entry.
-export type AnswerCounts = { confirmed: number; declined: number };
+export type SquadAnswer = { playerId: string; name: string };
+export type SquadAnswers = { confirmed: SquadAnswer[]; declined: SquadAnswer[] };
 
-export async function loadSquadAnswerCounts(
+export async function loadSquadAnswers(
   teamId: string | null,
   events: UpcomingEvent[],
-): Promise<Record<string, AnswerCounts>> {
+): Promise<Record<string, SquadAnswers>> {
   if (!teamId || events.length === 0) return {};
 
   const matchIds = events.map((e) => e.target.matchId).filter(Boolean) as string[];
@@ -198,30 +199,44 @@ export async function loadSquadAnswerCounts(
 
   const [matchRows, openRows] = await Promise.all([
     matchIds.length
-      ? supabase.from("match_confirmations").select("match_id, status")
+      ? supabase.from("match_confirmations").select("match_id, status, player_id")
           .eq("team_id", teamId).in("match_id", matchIds)
-      : Promise.resolve({ data: [] as { match_id: string; status: string }[] }),
+      : Promise.resolve({ data: [] as { match_id: string; status: string; player_id: string }[] }),
     openMatchIds.length
-      ? supabase.from("match_confirmations").select("open_match_id, status")
+      ? supabase.from("match_confirmations").select("open_match_id, status, player_id")
           .eq("team_id", teamId).in("open_match_id", openMatchIds)
-      : Promise.resolve({ data: [] as { open_match_id: string; status: string }[] }),
+      : Promise.resolve({ data: [] as { open_match_id: string; status: string; player_id: string }[] }),
   ]);
 
-  const out: Record<string, AnswerCounts> = {};
-  const bump = (key: string, status: string) => {
+  const matches = (matchRows.data ?? []) as { match_id: string; status: string; player_id: string }[];
+  const opens = (openRows.data ?? []) as { open_match_id: string; status: string; player_id: string }[];
+
+  // Names come from a second query rather than an embed: the tally is read on
+  // Home for every upcoming fixture at once, and a PGRST200 would empty the
+  // whole line rather than just dropping a name.
+  const playerIds = [...new Set([...matches, ...opens].map((r) => r.player_id))];
+  const { data: people } = playerIds.length
+    ? await supabase.from("profiles").select("id, full_name").in("id", playerIds)
+    : { data: [] as { id: string; full_name: string | null }[] };
+  const nameById = new Map(
+    (people ?? []).map((p) => [p.id as string, (p.full_name as string | null) || "Player"]),
+  );
+
+  const out: Record<string, SquadAnswers> = {};
+  const add = (key: string, status: string, playerId: string) => {
     if (status !== "confirmed" && status !== "declined") return;
-    const c = out[key] ?? (out[key] = { confirmed: 0, declined: 0 });
-    c[status] += 1;
+    const a = out[key] ?? (out[key] = { confirmed: [], declined: [] });
+    a[status].push({ playerId, name: nameById.get(playerId) ?? "Player" });
   };
-  for (const r of (matchRows.data ?? []) as { match_id: string; status: string }[]) {
-    bump(`match:${r.match_id}`, r.status);
-  }
-  for (const r of (openRows.data ?? []) as { open_match_id: string; status: string }[]) {
-    bump(`tournament:${r.open_match_id}`, r.status);
+  for (const r of matches) add(`match:${r.match_id}`, r.status, r.player_id);
+  for (const r of opens) add(`tournament:${r.open_match_id}`, r.status, r.player_id);
+  // Stable, readable order — the captain is scanning for a name, not a rank.
+  for (const a of Object.values(out)) {
+    a.confirmed.sort((x, y) => x.name.localeCompare(y.name));
+    a.declined.sort((x, y) => x.name.localeCompare(y.name));
   }
   return out;
 }
-
 // ── Carrying a poll answer over to the real fixture ───────────────────
 // A poll asked "could you play Sat 18:00?" and the captain then booked exactly
 // that slot. Asking the same squad the same question again is busywork, and the
