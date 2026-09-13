@@ -51,6 +51,18 @@ better matchmaking and player-team matching, and eventually leagues.
 
 # As Built
 
+## Home-screen icon
+
+The installed web app uses the selected U and football artwork in the previous
+home-screen icon's bright `#00E676` green (the UI remains `#008000`).
+`assets/icons/` holds the source PNGs and edit prompts;
+`node scripts/generate-icons.mjs` exports the committed Apple touch icon (180 px),
+browser icon (512 px), and manifest icons (actual 192/512 px files). Android has a
+separate padded maskable export; `app/manifest.ts` selects it. `app/apple-icon.png`
+and `app/icon.png` supply Next.js metadata links automatically. The manifest keeps
+standalone launch mode. Icon generation is a manual development step, not a build
+dependency; changing a local icon requires deployment before users receive it.
+
 ## Navigation
 
 Bottom nav has **three** tabs, not five:

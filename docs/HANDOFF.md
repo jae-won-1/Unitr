@@ -1,6 +1,34 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-13, Claude Code
+## Latest completed work — 2026-09-13, Codex
+
+Installed the user's selected U/football home-screen artwork, recoloured with
+the built-in image tool. The user's follow-up replaces the UI-green version
+with the previous home-screen icon's bright `#00E676`, confirmed from the prior
+committed generator's `FG = [0x00, 0xe6, 0x76]`. The UI stays `#008000`. Source PNGs
+and both final prompts are in `assets/icons/`; generated rasters have small
+colour variations, rather than a strictly indexed palette.
+
+- Replaced `app/icon.png` (512 px) and `app/apple-icon.png` (180 px).
+- `app/manifest.ts` now points to actual 192/512 px exports in `public/icons/`,
+  plus a separately padded 512 px maskable icon. Standalone launch is preserved.
+- Replaced the old procedural U generator with a Playwright resizing script
+  consuming the approved source artwork. No dependency changes.
+- Type check, lint and production build passed. Existing four hook dependency
+  warnings and the stale Browserslist notice remain. Local production browser
+  checks confirmed the Apple/icon/manifest links, HTTP 200 for every icon and
+  matching declared dimensions. All exports are opaque; maskable foreground
+  radius measured 37.84% (within the 40% safe circle). Visually inspected exports.
+- User approved publishing this icon update to GitHub `main` for automatic
+  deployment. Deployment completion and physical phone installation have not
+  been verified; existing shortcuts may need removal and re-adding.
+  Preserved the prior handoff below.
+- Colour follow-up: replaced both source PNGs and regenerated all five exports.
+  Rechecked dimensions, opacity and mask-safe radius (37.84%); visually inspected
+  the new artwork. `git diff --check` passed. Only images/docs changed in this
+  follow-up, so prior type/lint/build results above were not rerun.
+
+## Previous completed work — 2026-09-13, Claude Code
 
 Security pass ahead of the pilot tournament. Six holes, all of them reachable
 from a browser with the anon key by skipping the API routes and talking to
