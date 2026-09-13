@@ -5,12 +5,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import InviteLinkPanel from "@/components/my-team/InviteLinkPanel";
 import CoCaptainsPanel from "@/components/my-team/CoCaptainsPanel";
+import TeamDetailsPanel from "@/components/my-team/TeamDetailsPanel";
 import { loadLeadership } from "@/lib/team-leadership";
 
-// Team Settings is cut back to the joining fee for now. The team profile
-// fields (history, play style, photo) still live on `teams` and are still
-// rendered by /my-team/[teamId] — only the editors are gone from this page,
-// so nothing already saved is lost.
+// Team Settings covers what the team told us at registration — name, location,
+// level, players per side, description (TeamDetailsPanel) — plus the invite
+// link, co-captains and the joining fee. The team profile fields (history,
+// play style, photo) still live on `teams` and are still rendered by
+// /my-team/[teamId]; only their editors are gone, so nothing saved is lost.
 type Team = {
   id: string;
   name: string;
@@ -91,9 +93,16 @@ export default function TeamSettingsPage() {
         </a>
         <div>
           <h1 className="text-xl font-extrabold">Team Settings</h1>
-          <p className="text-xs text-text-secondary mt-0.5">Invite link and joining fee for {team.name}</p>
+          <p className="text-xs text-text-secondary mt-0.5">Details, invite link and joining fee for {team.name}</p>
         </div>
       </header>
+
+      <TeamDetailsPanel
+        teamId={team.id}
+        // The name is in the header and on the invite panel, so a rename has to
+        // reach them without a reload.
+        onRenamed={(name) => setTeam((t) => (t ? { ...t, name } : t))}
+      />
 
       <InviteLinkPanel teamId={team.id} teamName={team.name} />
 

@@ -35,7 +35,13 @@ async function recordPaymentSuccess(matchInfo: MatchInfo, matchId: string, userI
     await supabase.from("player_payments")
       .update({ status: "paid", stripe_payment_intent_id: paymentIntentId, paid_at: new Date().toISOString() })
       .eq("id", matchInfo.paymentId);
-    await supabase.rpc("apply_replenishment", { p_payment_id: matchInfo.paymentId });
+    // Credit is applied server-side, against the PaymentIntent Stripe has just
+    // confirmed. This was a direct rpc("apply_replenishment") — a definer
+    // function granted to everyone, sitting next to a player_payments table
+    // that takes any insert from the browser, which together minted credit for
+    // free. The route re-checks the row is the payer's and that Stripe really
+    // took the money (supabase_pilot_security.sql §2).
+    await authedPost("/api/credit/apply-replenishment", { paymentId: matchInfo.paymentId });
   } else {
     await supabase.from("player_payments").upsert({
       booking_id: matchInfo.bookingId ?? matchId,

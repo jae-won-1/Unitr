@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { withOptionalColumn } from "@/lib/optional-column";
+import { playsPosition, positionLabel } from "@/lib/profile-options";
 
 type Player = {
   id: string;
   full_name: string;
+  /** Primary position; `positions` is everything they play. */
   position: string;
+  positions?: string[] | null;
   experience: string;
   location: string;
 };
@@ -37,7 +41,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </div>
           <div>
             <p className="font-bold text-lg">{player.full_name}</p>
-            <p className="text-sm text-text-secondary">{player.position} · {player.experience}</p>
+            <p className="text-sm text-text-secondary">{[positionLabel(player), player.experience].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
 
@@ -67,7 +71,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-text-secondary">Position</span>
-            <span className="font-semibold">{player.position || "—"}</span>
+            <span className="font-semibold">{positionLabel(player) || "—"}</span>
           </div>
         </div>
 
@@ -118,12 +122,27 @@ export default function PlayersPage() {
         // separately and put at the head of the list. That's the team's
         // captain, not the viewer — a co-captain is in the members query.
         const captainId = team.captain_id ?? user!.id;
-        const [{ data: captainProfile }, { data: members }] = await Promise.all([
-          supabase.from("profiles").select("id, full_name, position, experience, location").eq("id", captainId).maybeSingle(),
-          supabase.from("team_members")
-            .select("profiles(id, full_name, position, experience, location)")
-            .eq("team_id", team.id).eq("status", "approved"),
-        ]);
+        // Both queries want `positions`, and both fail together if the
+        // multi-select migration hasn't been run — so they are guarded as one.
+        const { data: squad } = await withOptionalColumn<{ captain: Player | null; members: unknown[] }>(
+          "positions",
+          async (include) => {
+            const cols = include
+              ? "id, full_name, position, positions, experience, location"
+              : "id, full_name, position, experience, location";
+            const [cap, mem] = await Promise.all([
+              supabase.from("profiles").select(cols).eq("id", captainId).maybeSingle(),
+              supabase.from("team_members").select(`profiles(${cols})`)
+                .eq("team_id", team.id).eq("status", "approved"),
+            ]);
+            return {
+              data: { captain: (cap.data as unknown as Player) ?? null, members: mem.data ?? [] },
+              error: cap.error ?? mem.error,
+            };
+          },
+        );
+        const captainProfile = squad?.captain ?? null;
+        const members = squad?.members ?? [];
 
         const memberProfiles = (members ?? []).map((row: any) => row.profiles).filter(Boolean) as Player[];
         const allProfiles = [
@@ -136,7 +155,8 @@ export default function PlayersPage() {
       });
   }, [user]);
 
-  const filtered = posFilter === "All" ? players : players.filter((p) => p.position === posFilter);
+  // Any position the player covers, not only their primary one.
+  const filtered = posFilter === "All" ? players : players.filter((p) => playsPosition(p, posFilter));
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-8">
@@ -198,7 +218,7 @@ export default function PlayersPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{player.full_name}</p>
-                <p className="text-xs text-text-secondary">{player.position} · {player.experience}</p>
+                <p className="text-xs text-text-secondary">{[positionLabel(player), player.experience].filter(Boolean).join(" · ")}</p>
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
             </button>

@@ -10,6 +10,11 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import TestModeNote from "@/components/TestModeNote";
+import EditProfileSheet from "@/components/EditProfileSheet";
+import {
+  AGE_GROUPS, FOOTBALL_TYPES, GENDERS, PLAY_FREQUENCIES, type ProfileFields,
+  loadProfileFields, optionLabel, playerPositions,
+} from "@/lib/profile-options";
 
 const stripeAppearance = {
   theme: "night" as const,
@@ -165,9 +170,58 @@ function PaymentMethodSection() {
 type Profile = {
   full_name: string;
   position: string | null;
+  positions?: string[] | null;
   location: string | null;
   experience: string | null;
+  games_per_month: string | null;
+  preferred_football_type: string | null;
+  age_group: string | null;
+  gender: string | null;
 };
+
+// What the profile knows about the player, in the shape the edit sheet reads
+// and writes. Nulls become empty strings: an unanswered question and a blank
+// answer are the same thing to a form.
+function editableFields(profile: Profile | null): ProfileFields {
+  return {
+    full_name: profile?.full_name ?? "",
+    positions: playerPositions(profile),
+    experience: profile?.experience ?? "",
+    games_per_month: profile?.games_per_month ?? "",
+    preferred_football_type: profile?.preferred_football_type ?? "",
+    age_group: profile?.age_group ?? "",
+    gender: profile?.gender ?? "",
+  };
+}
+
+// The answers that have nowhere else to appear. Registration asks all four and
+// nothing has ever shown them back, which makes an editor that changes them
+// feel like it did nothing. One row per answer, and a question the player
+// skipped is simply absent rather than printed as "—".
+function AboutYou({ profile }: { profile: Profile | null }) {
+  const rows = [
+    ["Age group", optionLabel(AGE_GROUPS, profile?.age_group)],
+    ["Gender", optionLabel(GENDERS, profile?.gender)],
+    ["Plays", optionLabel(PLAY_FREQUENCIES, profile?.games_per_month)],
+    ["Looking for", optionLabel(FOOTBALL_TYPES, profile?.preferred_football_type)],
+  ].filter(([, value]) => !!value) as [string, string][];
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section>
+      <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">About You</h3>
+      <div className="bg-surface border border-border shadow-card rounded-card p-4 divide-y divide-border">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+            <span className="text-xs text-text-secondary">{label}</span>
+            <span className="text-sm font-semibold text-right">{value}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 // Stats and video are switched off for the pilot. Greyed rather than deleted:
 // the house convention is that a missing element shifts everything around it
@@ -230,12 +284,19 @@ function useFriends(userId: string | undefined) {
   return friends;
 }
 
-function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; profile: Profile | null; teamName: string | null }) {
+function ProfileContent({ isCaptain, profile, teamName, onSaved }: {
+  isCaptain: boolean; profile: Profile | null; teamName: string | null;
+  onSaved?: (fields: ProfileFields) => void;
+}) {
   const { signOut, user } = useAuth();
   const name = profile?.full_name ?? "Player";
   const initials = name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  const subtitle = [profile?.position, profile?.location].filter(Boolean).join(" · ") || "No position set";
+  const positions = playerPositions(profile);
+  // Only the primary position on the one line under the name — the rest are
+  // chips below, where there's room for them.
+  const subtitle = [positions[0], profile?.location].filter(Boolean).join(" · ") || "No position set";
   const [modal, setModal] = useState<"friends" | null>(null);
+  const [editing, setEditing] = useState(false);
   const friends = useFriends(user?.id);
 
   // The stats sections below are disabled for the pilot, so nothing reads a
@@ -264,11 +325,11 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         {/* Only what the player actually told us. Preferred foot and years of
             experience were hardcoded strings and are gone — registration never
             asks for either. Position was hardcoded "CAM" too; it is real now. */}
-        {(profile?.position || profile?.experience) && (
+        {(positions.length > 0 || profile?.experience) && (
           <div className="flex gap-2 mt-3 flex-wrap justify-center">
-            {profile?.position && (
-              <span className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full font-medium">{profile.position}</span>
-            )}
+            {positions.map((pos) => (
+              <span key={pos} className="text-xs bg-accent/10 text-accent-ink border border-accent/30 px-3 py-1 rounded-full font-medium">{pos}</span>
+            ))}
             {profile?.experience && (
               <span className="text-xs bg-surface-2 text-text-secondary border border-border px-3 py-1 rounded-full font-medium">{profile.experience}</span>
             )}
@@ -286,11 +347,27 @@ function ProfileContent({ isCaptain, profile, teamName }: { isCaptain: boolean; 
         </div>
       </section>
 
-      <button className="w-full py-3 rounded-xl border border-accent text-accent-ink font-semibold text-sm">
-        Edit Profile
-      </button>
+      {/* Signed out there is no row to edit, so the button says so by being
+          absent — every other state gets the sheet. */}
+      {user && (
+        <button onClick={() => setEditing(true)}
+          className="w-full py-3 rounded-xl border border-accent text-accent-ink font-semibold text-sm">
+          Edit Profile
+        </button>
+      )}
+
+      <AboutYou profile={profile} />
 
       <PaymentMethodSection />
+
+      {editing && user && (
+        <EditProfileSheet
+          userId={user.id}
+          initial={editableFields(profile)}
+          onClose={() => setEditing(false)}
+          onSaved={(fields) => onSaved?.(fields)}
+        />
+      )}
 
       {/* Friends modal */}
       {modal === "friends" && (
@@ -383,11 +460,27 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("full_name, position, location, experience").eq("id", user.id).maybeSingle()
-      .then(({ data }) => { if (data) setProfile(data as Profile); });
+    // Everything the row has — the columns later migrations added are dropped
+    // from the select as a group when they aren't there yet.
+    loadProfileFields<Profile>(user.id).then((data) => { if (data) setProfile(data); });
     supabase.from("teams").select("name").eq("captain_id", user.id).maybeSingle()
       .then(({ data }) => { if (data) setTeamName(data.name as string); });
   }, [user]);
+
+  // The sheet has already written the row, so the page takes its word for it
+  // rather than re-reading the profile it just saved.
+  const applySaved = (fields: ProfileFields) =>
+    setProfile((prev) => ({
+      ...(prev ?? { location: null }),
+      full_name: fields.full_name,
+      position: fields.positions[0] ?? null,
+      positions: fields.positions,
+      experience: fields.experience || null,
+      games_per_month: fields.games_per_month || null,
+      preferred_football_type: fields.preferred_football_type || null,
+      age_group: fields.age_group || null,
+      gender: fields.gender || null,
+    } as Profile));
 
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
@@ -410,10 +503,10 @@ export default function ProfilePage() {
         </div>
       )}
       {role === "new_user" && user && (
-        <ProfileContent isCaptain={false} profile={profile} teamName={null} />
+        <ProfileContent isCaptain={false} profile={profile} teamName={null} onSaved={applySaved} />
       )}
       {role !== "new_user" && (
-        <ProfileContent isCaptain={role === "captain"} profile={profile} teamName={teamName} />
+        <ProfileContent isCaptain={role === "captain"} profile={profile} teamName={teamName} onSaved={applySaved} />
       )}
     </div>
   );

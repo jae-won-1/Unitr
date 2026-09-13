@@ -21,6 +21,7 @@ import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { fmtFee } from "@/lib/joining-fee";
+import { teamFormatLabel } from "@/lib/team-options";
 import { loadLedTeam } from "@/lib/team-leadership";
 import ManageMatchTab from "@/components/my-team/ManageMatchTab";
 import TacticsTab from "@/components/my-team/TacticsTab";
@@ -51,6 +52,7 @@ type Team = {
   location: string;
   level: string;
   format: string;
+  formats?: string[] | null;
   description: string;
   captain_id: string;
   member_count?: number;
@@ -151,7 +153,7 @@ function BrowseTeams({ onJoinRequest }: { onJoinRequest?: (teamId: string) => vo
           </div>
           {team.description && <p className="text-xs text-text-secondary mb-3">{team.description}</p>}
           <div className="flex items-center gap-2 mb-4 text-xs text-text-secondary">
-            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{team.format}</span>
+            <span className="bg-surface border border-border px-2 py-0.5 rounded-md">{teamFormatLabel(team)}</span>
             {/* Fee (or its absence) shown up front, so nobody discovers a
                 charge only after their join request is approved. */}
             <span className="bg-surface border border-border px-2 py-0.5 rounded-md">
@@ -267,7 +269,7 @@ function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean })
         <div className="min-w-0 flex-1">
           <p className="text-base font-extrabold truncate">{team.name}</p>
           <p className="text-xs font-medium text-text-secondary truncate mt-0.5">
-            {[team.location, team.level, team.format].filter(Boolean).join(" · ")}
+            {[team.location, team.level, teamFormatLabel(team)].filter(Boolean).join(" · ")}
           </p>
         </div>
       </div>

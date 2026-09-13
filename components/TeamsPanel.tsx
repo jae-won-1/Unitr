@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { fmtFee } from "@/lib/joining-fee";
+import { TEAM_FORMATS, teamFormatLabel, teamPlaysFormat } from "@/lib/team-options";
 
 // Team discovery list, laid out the way Plab lists recruiting teams: one row
 // per team, crest on the left, a single grey meta line underneath the name.
@@ -20,7 +21,10 @@ type Team = {
   name: string;
   location: string | null;
   level: string | null;
+  /** Primary format; `formats` is every size the team plays. The list selects
+   *  "*", so the array is simply absent until its migration is run. */
   format: string | null;
+  formats?: string[] | null;
   photo_url: string | null;
   joining_fee_pence?: number | null;
   members: number;
@@ -96,7 +100,7 @@ function Crest({ team }: { team: Team }) {
 function TeamRow({ team, onGuestTap }: { team: Team; onGuestTap?: (team: Team) => void }) {
   const meta = [
     team.location,
-    team.format,
+    teamFormatLabel(team),
     `${team.members} member${team.members === 1 ? "" : "s"}`,
     (team.joining_fee_pence ?? 0) > 0 ? `${fmtFee(team.joining_fee_pence ?? 0)} to join` : null,
   ]
@@ -161,8 +165,10 @@ export default function TeamsPanel() {
     () => [...new Set(teams.map((t) => t.location).filter(Boolean) as string[])].sort(),
     [teams]
   );
+  // Menu order (5s → 11s), not alphabetical, and every size any listed team
+  // plays rather than only the ones they play most.
   const formats = useMemo(
-    () => [...new Set(teams.map((t) => t.format).filter(Boolean) as string[])].sort(),
+    () => TEAM_FORMATS.filter((f) => teams.some((t) => teamPlaysFormat(t, f))),
     [teams]
   );
   const levels = useMemo(
@@ -174,7 +180,7 @@ export default function TeamsPanel() {
     const out = teams.filter(
       (t) =>
         (!area || t.location === area) &&
-        (!format || t.format === format) &&
+        (!format || teamPlaysFormat(t, format)) &&
         (!level || t.level === level)
     );
     out.sort((a, b) => (sort === "members" ? b.members - a.members : a.name.localeCompare(b.name)));

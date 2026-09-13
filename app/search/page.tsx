@@ -3,11 +3,15 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { withOptionalColumn } from "@/lib/optional-column";
+import { positionLabel } from "@/lib/profile-options";
+import { teamFormatLabel } from "@/lib/team-options";
 
 type Player = {
   id: string;
   full_name: string;
   position: string | null;
+  positions?: string[] | null;
   location: string | null;
   experience: string | null;
 };
@@ -18,6 +22,7 @@ type Team = {
   location: string;
   level: string;
   format: string;
+  formats?: string[] | null;
 };
 
 type Tab = "all" | "players" | "teams";
@@ -72,19 +77,37 @@ function SearchContent() {
     const timer = setTimeout(async () => {
       setLoading(true);
       const q = `%${query.trim()}%`;
-      const [{ data: playerData }, { data: teamData }] = await Promise.all([
-        supabase.from("profiles")
-          .select("id, full_name, position, location, experience")
-          .ilike("full_name", q)
-          .eq("account_type", "player")
-          .limit(20),
-        supabase.from("teams")
-          .select("id, name, location, level, format")
-          .ilike("name", q)
-          .limit(20),
-      ]);
-      setPlayers(playerData ?? []);
-      setTeams(teamData ?? []);
+      // profiles.positions and teams.formats ship in the same migration
+      // (supabase_multi_select_preferences.sql), so the pair is guarded once:
+      // either both are there or neither is, and without them each row still
+      // shows its primary position or format.
+      const { data } = await withOptionalColumn<{ players: Player[]; teams: Team[] }>(
+        ["positions", "formats"],
+        async (include) => {
+          const [p, t] = await Promise.all([
+            supabase.from("profiles")
+              .select(include
+                ? "id, full_name, position, positions, location, experience"
+                : "id, full_name, position, location, experience")
+              .ilike("full_name", q)
+              .eq("account_type", "player")
+              .limit(20),
+            supabase.from("teams")
+              .select(include ? "id, name, location, level, format, formats" : "id, name, location, level, format")
+              .ilike("name", q)
+              .limit(20),
+          ]);
+          return {
+            data: {
+              players: (p.data ?? []) as unknown as Player[],
+              teams: (t.data ?? []) as unknown as Team[],
+            },
+            error: p.error ?? t.error,
+          };
+        },
+      );
+      setPlayers(data?.players ?? []);
+      setTeams(data?.teams ?? []);
       setLoading(false);
     }, 300);
     return () => clearTimeout(timer);
@@ -167,7 +190,7 @@ function SearchContent() {
             <div className="space-y-2">
               {players.map((p) => {
                 const initials = p.full_name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                const subtitle = [p.position, p.location, p.experience].filter(Boolean).join(" · ") || "No info set";
+                const subtitle = [positionLabel(p), p.location, p.experience].filter(Boolean).join(" · ") || "No info set";
                 const followed = followedPlayers.has(p.id);
                 return (
                   <div key={p.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">
@@ -210,7 +233,7 @@ function SearchContent() {
             <div className="space-y-2">
               {teams.map((t) => {
                 const initials = t.name.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                const subtitle = [t.level, t.format, t.location].filter(Boolean).join(" · ");
+                const subtitle = [t.level, teamFormatLabel(t), t.location].filter(Boolean).join(" · ");
                 const followed = followedTeams.has(t.id);
                 return (
                   <div key={t.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">

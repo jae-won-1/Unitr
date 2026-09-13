@@ -181,13 +181,45 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/players` | Squad list → individual profiles |
 | `/my-team/transfer` | Transfer Market — two-sided player/team discovery, offers, join requests, friend requests |
 | `/my-team/tactics` | Team default formation + tactics board |
-| `/my-team/settings` | **Team Settings** — team history, play style, photo, joining fee, invite link, co-captains (was `/my-team/team-profile`) |
+| `/my-team/settings` | **Team Settings** — team details (name, location, level, players per side, description), joining fee, invite link, co-captains (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
 | `/my-team/history` | **Settle Payments** — issuing what the squad owes, not a results archive |
 | `/my-team/match/[matchId]` | Manage Match — overview / squad / payment / tactics / result tabs, plus ringer requests |
 | `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad |
 | `/my-team/tournament-match/[fixtureId]` | Manage Tournament Fixture — the same info / attendance / lineup / tactics surface for one game inside a tournament |
+
+#### Team details, and the two multi-select answers
+
+Everything `/my-team/create` asks at registration is editable afterwards in Team Settings
+(`components/my-team/TeamDetailsPanel.tsx`) — name, location, level, players per side,
+description. The equivalent for a player is the **Edit Profile** sheet on `/profile`
+(`components/EditProfileSheet.tsx`), which edits every answer registration collects: name,
+positions, experience, age group, gender, games per month, preferred type of football. Both
+are reached by people who already answered these questions once, in a hurry.
+
+Two of those answers are **several answers**, and both follow the same shape
+(`supabase_multi_select_preferences.sql`):
+
+| | Scalar (unchanged) | Array (the full answer) |
+|---|---|---|
+| Team | `teams.format` | `teams.formats` |
+| Player | `profiles.position` | `profiles.positions` |
+
+The scalar is the **primary** value and is always `array[1]`, written on every save. That is
+what keeps the change cheap: `teamSizeFromFormat` still sizes a tactics board from
+`teams.format`, a card with one line of room still prints one position, and nothing that
+never heard of the array had to be rewritten. `lib/team-options.ts` and
+`lib/profile-options.ts` are the only places either pair is read or written — they also hold
+the option lists the registration forms use, so the two forms can't drift — and both fall
+back to the scalar, so the app works before the migration is run and simply offers one
+choice. The filters that used to compare the scalar (Transfer Market, `/my-team/players`,
+`TeamsPanel`) now ask "does this row include the filter", so a CM/CAM player shows under
+both. `MembersTab` and `StatsTab` still read the primary only.
+
+`lib/optional-column.ts` is how a query or update names a column that may not exist yet:
+it runs the statement, and re-runs it without that column if Postgres objected to it by
+name. That is the house "missing migrations degrade" rule made reusable.
 
 #### Tournament fixtures
 
@@ -255,7 +287,8 @@ resulting bookings are listed on the Calendar, not here. A booked pitch can be t
   isn't enabled on this project.
   RLS here is deliberately stricter than the rest of the prototype's `using (true)`: only
   the squad can read a team's chat, and only a squad member who hasn't left can post.
-- `/profile` — profile info, saved payment method (Stripe SetupIntent), season stats, badges,
+- `/profile` — profile info, **Edit Profile** (every answer sign-up collected — see Team
+  details above), saved payment method (Stripe SetupIntent), season stats, badges,
   highlights. The stats are display-level; there's no ingestion pipeline behind them.
 
 ### Venue portal (`app/venue/*`)
@@ -426,7 +459,14 @@ Consequences worth knowing:
 Schema updates live as `supabase_*.sql` at the repo root and are applied by hand in
 the Supabase SQL editor. Many are designed to be idempotent, but check each file's
 dependencies and effects before running it; test/seed scripts also live here, and
-some core tables were created manually before these files existed. RLS is permissive
+some core tables were created manually before these files existed.
+
+Nothing in the repo records which of them a given database has seen, so
+**`node scripts/check-migrations.mjs`** asks the database instead: it parses every
+`supabase_*.sql` for the tables, columns and functions it creates and checks them
+against the live schema, which PostgREST serves in full from a single request. It
+sees **objects only** — RLS policies, grants and triggers are invisible to it, so a
+file that only tightens policies reports `?` rather than a verdict. RLS is permissive
 on many prototype tables, with stricter policies for areas such as profiles, team
 chat and tournament entry. Inspect the relevant SQL rather than assuming uniform access.
 
@@ -448,6 +488,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_refunds.sql` | `refund_credit`, `team_card_contributions`, refund columns on the ledger; run after `supabase_joining_fees.sql` |
 | `supabase_joining_fees.sql` | `teams.joining_fee_pence`, fee snapshot + paid tracking on `team_members`, approval-time DM, deposits applied to fee first (redefines `credit_from_payment` / `record_cash_credit`; run after `supabase_payment_integrity.sql`) |
 | `supabase_team_chat.sql` | `team_chat_messages` + per-person `team_chat_members` (muted / left / last read), `is_team_squad_member()`, `can_post_team_chat()`, and squad-only RLS; run after `supabase_joining_fees.sql` |
+| `supabase_multi_select_preferences.sql` | `teams.formats` + `profiles.positions` — the array beside each scalar, backfilled from it; the scalar stays the primary value. No dependencies |
 | `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |
 | `supabase_captain_joining_fee.sql` | `teams.captain_joining_fee_due_pence` / `_paid_pence`, the snapshot + notify triggers, and the captain branch of `apply_deposit_to_joining_fee`; run after `supabase_joining_fees.sql` |
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
@@ -457,6 +498,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
 | `supabase_tournament_match_tactics.sql` | `match_tactics.tournament_match_id` — a lineup targets a friendly **or** a tournament fixture; run after `supabase_match_tactics.sql` and `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
+| `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
 
 ## Conventions worth knowing
 
@@ -561,6 +603,16 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   `ownsPitch` or `isAdmin` from the same file. The browser side is `authedPost` /
   `authedDelete` / `authedGet` in `lib/authed-fetch.ts` — a plain `fetch("/api/…")` from a
   component is a bug, it will 401.
+- **The API routes are not the only door.** The anon key ships in the bundle, so anything the
+  browser can reach through PostgREST — every table with a permissive policy, every function
+  still granted to `authenticated` — is reachable without touching a route at all. A new
+  `security definer` function is granted to PUBLIC the moment it is created: **revoke it**
+  unless it checks its own caller, or the route guarding it is decoration. `refund_event_buyin`
+  and `apply_replenishment` were both reachable that way, and both minted money
+  (`supabase_pilot_security.sql`). The matching rule for tables: if a column decides who may
+  act (`profiles.account_type`, `teams.captain_id`) or how much is owed
+  (`price_per_team_pence`, the joining-fee snapshots), a server route reading it is trusting
+  something the client can write.
 - **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
   the amount all come from the session and the database. `/api/connect/venue-transfer` is the
   sharp end: it moves real money out of the platform balance, so it caps every transfer at

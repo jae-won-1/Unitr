@@ -4,51 +4,26 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
+import {
+  AGE_GROUPS, EXPERIENCE_LEVELS, FOOTBALL_TYPES, GENDERS, PLAY_FREQUENCIES, POSITIONS,
+} from "@/lib/profile-options";
 
-const positions = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW", "ST"];
-const experiences = ["Beginner", "Casual", "Intermediate", "Semi-Pro"];
-
-// Self-reported buckets rather than a birth date or a strict binary — same
-// reasoning as games_per_month: an approximate honest answer beats a
-// precise-looking one. Closed sets so they can eventually back the "Age" /
-// "Gender" filters TeamsPanel already shows, greyed, with no data behind
-// them. Kept in sync with supabase_player_demographics.sql.
-const ageGroups = [
-  { value: "under-18", label: "Under 18" },
-  { value: "18-24", label: "18–24" },
-  { value: "25-34", label: "25–34" },
-  { value: "35-44", label: "35–44" },
-  { value: "45+", label: "45+" },
-];
-
-const genders = [
-  { value: "male", label: "Male" },
-  { value: "female", label: "Female" },
-  { value: "non_binary", label: "Non-binary" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
-];
-
-// How much football someone actually plays, which is a different question from
-// how good they are. Buckets rather than a number because the answer is a
-// self-reported estimate — the stored value is the `value`, the label is only
-// ever shown. Kept in sync with supabase_play_frequency.sql.
-const playFrequencies = [
-  { value: "1-2", label: "1–2 games" },
-  { value: "3-5", label: "3–5 games" },
-  { value: "6-9", label: "6–9 games" },
-  { value: "10+", label: "10+ games" },
-];
-
-// What a player is here for, which is the question player-team matching turns
-// on — experience says how good someone is, this says what they actually want.
-// "casual" means no team at all: fill-in games only, which is a legitimate end
-// state rather than an unfinished signup. Stored as the short key so the copy
-// can change without a data migration; see supabase_preferred_football_type.sql.
-const footballTypes = [
-  { value: "casual", label: "No team", hint: "Casual kickabouts and fill-in games" },
-  { value: "friendly", label: "Team friendlies", hint: "Regular matches with a team" },
-  { value: "competitive", label: "Competitive team matches", hint: "Leagues and tournaments" },
-];
+// Every option list lives in lib/profile-options.ts, because /profile now lets
+// a player change each of these answers afterwards and two copies of the same
+// list would eventually offer two different sets of choices. The reasoning
+// behind each — why buckets rather than a number, why short keys rather than
+// the labels — is on the migrations that added the columns
+// (supabase_player_demographics.sql, supabase_play_frequency.sql,
+// supabase_preferred_football_type.sql).
+//
+// Sign-up still asks for one position; the editor is where a player lists the
+// rest. One question is enough to get somebody through a registration form.
+const positions = POSITIONS;
+const experiences = EXPERIENCE_LEVELS;
+const ageGroups = AGE_GROUPS;
+const genders = GENDERS;
+const playFrequencies = PLAY_FREQUENCIES;
+const footballTypes = FOOTBALL_TYPES;
 
 // Pilot testing is London-only, so the location question is not worth asking
 // yet — every answer would be the same. Profiles still carry a location (the

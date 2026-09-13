@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { fmtFee } from "@/lib/joining-fee";
+import { teamFormats } from "@/lib/team-options";
 
 type Team = {
   id: string;
@@ -11,6 +12,7 @@ type Team = {
   location: string;
   level: string;
   format: string;
+  formats?: string[] | null;
   description: string;
   captain_id: string;
   history: string | null;
@@ -113,7 +115,11 @@ export default function TeamProfilePage({ params }: { params: { teamId: string }
             : team.level === "Intermediate" ? "bg-orange-500/10 text-orange-600"
             : "bg-purple-500/10 text-purple-600"
           }`}>{team.level}</span>
-          <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">{team.format}</span>
+          {/* A badge per size the team plays — a squad that fields both 5s and
+              11s is telling a prospective player something about their week. */}
+          {teamFormats(team).map((f) => (
+            <span key={f} className="text-xs font-medium px-2 py-0.5 rounded-lg bg-surface-2 border border-border text-text-secondary">{f}</span>
+          ))}
           {team.play_style && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-lg bg-accent/10 text-accent-ink">{team.play_style}</span>
           )}

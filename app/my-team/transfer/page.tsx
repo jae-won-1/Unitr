@@ -8,6 +8,8 @@ import {
   type MarketPlayer, type MarketTeam, type MarketEdges, type Viewer,
   type InboxOffer, type InboxFriend,
 } from "@/lib/transfer-market";
+import { playsPosition, positionLabel } from "@/lib/profile-options";
+import { teamFormatLabel } from "@/lib/team-options";
 
 // Two-sided discovery. Players browse teams to find somewhere to play; captains
 // browse players to fill gaps in the squad. Same page, same search, one toggle —
@@ -69,7 +71,9 @@ function PlayerCard({ player, edges, viewer, onAction }: {
     setBusy(false);
   };
 
-  const meta = [player.position, player.location, player.experience].filter(Boolean).join(" · ");
+  // Every position they play, not just the primary — a captain scouting cover
+  // for two slots is looking for exactly that.
+  const meta = [positionLabel(player), player.location, player.experience].filter(Boolean).join(" · ");
 
   return (
     <div className="bg-surface border border-border shadow-card rounded-card p-4">
@@ -147,7 +151,7 @@ function TeamCard({ team, edges, viewer, onAction }: {
   // specifically — one team at a time either way.
   const alreadyPlacedElsewhere = !!viewer?.myTeamId && viewer.myTeamId !== team.id;
 
-  const meta = [team.location, team.format, team.level, `${team.members} member${team.members === 1 ? "" : "s"}`]
+  const meta = [team.location, teamFormatLabel(team), team.level, `${team.members} member${team.members === 1 ? "" : "s"}`]
     .filter(Boolean).join(" · ");
 
   const run = async () => {
@@ -335,7 +339,8 @@ export default function TransferMarketPage() {
   }, [tab, debounced, user?.id]);
 
   const visiblePlayers = players.filter((p) =>
-    (posFilter === "All" || p.position === posFilter) &&
+    // Any position the player covers, not only their primary one.
+    (posFilter === "All" || playsPosition(p, posFilter)) &&
     (expFilter === "All" || p.experience === expFilter)
   );
 

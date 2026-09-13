@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { actingCaptainId, loadLeadership } from "@/lib/team-leadership";
+import { withOptionalColumn } from "@/lib/optional-column";
 
 // Data layer for the Transfer Market. Kept out of the page because every card
 // needs the viewer's *relationship* to the row it renders, not just the row —
@@ -9,7 +10,10 @@ import { actingCaptainId, loadLeadership } from "@/lib/team-leadership";
 export type MarketPlayer = {
   id: string;
   full_name: string;
+  /** Primary position. Everything they play is `positions` — read the pair
+   *  through lib/profile-options.ts, which falls back to this one. */
   position: string | null;
+  positions?: string[] | null;
   location: string | null;
   experience: string | null;
   teamName: string | null; // null = free agent, the ones captains are hunting
@@ -20,7 +24,9 @@ export type MarketTeam = {
   name: string;
   location: string | null;
   level: string | null;
+  /** Primary format; every format the team plays is `formats`. */
   format: string | null;
+  formats?: string[] | null;
   captain_id: string;
   members: number;
 };
@@ -86,13 +92,19 @@ async function teamNamesForPlayers(playerIds: string[]): Promise<Map<string, str
 }
 
 export async function searchPlayers(query: string, viewerId: string | undefined): Promise<MarketPlayer[]> {
-  let q = supabase.from("profiles")
-    .select("id, full_name, position, location, experience")
-    .eq("account_type", "player")
-    .limit(30);
-  if (query.trim()) q = q.ilike("full_name", `%${query.trim()}%`);
+  // `positions` is dropped from the select when the multi-select migration
+  // hasn't been run; the position filter then matches the primary one.
+  const { data } = await withOptionalColumn<MarketPlayer[]>("positions", (include) => {
+    let q = supabase.from("profiles")
+      .select(include
+        ? "id, full_name, position, positions, location, experience"
+        : "id, full_name, position, location, experience")
+      .eq("account_type", "player")
+      .limit(30);
+    if (query.trim()) q = q.ilike("full_name", `%${query.trim()}%`);
+    return q as unknown as PromiseLike<{ data: MarketPlayer[] | null; error: { message: string } | null }>;
+  });
 
-  const { data } = await q;
   const rows = (data ?? []).filter((p) => p.id !== viewerId);
   const teamNames = await teamNamesForPlayers(rows.map((p) => p.id));
 
@@ -100,12 +112,15 @@ export async function searchPlayers(query: string, viewerId: string | undefined)
 }
 
 export async function searchTeams(query: string): Promise<MarketTeam[]> {
-  let q = supabase.from("teams")
-    .select("id, name, location, level, format, captain_id")
-    .limit(30);
-  if (query.trim()) q = q.ilike("name", `%${query.trim()}%`);
-
-  const { data: rows } = await q;
+  const { data: rows } = await withOptionalColumn<MarketTeam[]>("formats", (include) => {
+    let q = supabase.from("teams")
+      .select(include
+        ? "id, name, location, level, format, formats, captain_id"
+        : "id, name, location, level, format, captain_id")
+      .limit(30);
+    if (query.trim()) q = q.ilike("name", `%${query.trim()}%`);
+    return q as unknown as PromiseLike<{ data: MarketTeam[] | null; error: { message: string } | null }>;
+  });
   if (!rows || rows.length === 0) return [];
 
   // One tally for every approved membership rather than a count per team.

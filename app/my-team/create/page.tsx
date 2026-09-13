@@ -4,9 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
+import { TEAM_FORMATS, TEAM_LEVELS } from "@/lib/team-options";
 
-const levels = ["Casual", "Intermediate", "Semi-Pro"];
-const formats = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
+// Shared with Team Settings (lib/team-options.ts), which edits these same
+// answers afterwards — a team that later plays 5s as well as 11s says so
+// there, where players per side is a multi-select.
+const levels = TEAM_LEVELS;
+const formats = TEAM_FORMATS;
 
 export default function CreateTeamPage() {
   const router = useRouter();

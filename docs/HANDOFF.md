@@ -1,6 +1,121 @@
-﻿# Uniter handoff
+# Uniter handoff
 
-## Latest completed work — 2026-09-09, Codex
+## Latest completed work — 2026-09-13, Claude Code
+
+Security pass ahead of the pilot tournament. Six holes, all of them reachable
+from a browser with the anon key by skipping the API routes and talking to
+PostgREST directly. **Nothing in the payment flow changed for a user**, and no
+existing row was touched — every fix blocks a write the app never makes.
+
+- **New SQL — `supabase_pilot_security.sql`** (idempotent, **not yet run**),
+  with a verification checklist and a rollback block at the foot of the file:
+  1. `refund_event_buyin` and 2. `apply_replenishment` are revoked from
+  `authenticated` and granted to `service_role`. Both were `security definer`,
+  neither checked its caller, and both were callable from devtools — the first
+  returned a team's tournament buy-in to credit while leaving the entry in
+  place, the second minted credit against a self-inserted `player_payments` row.
+  3. `profiles.account_type` is immutable from a client session (a trigger; an
+  INSERT may carry only `player` or `venue_manager`), so nobody can promote
+  themselves past `isAdmin()`. 4. `open_matches` and `tournament_invitations`
+  writes now belong to the organiser — `/api/tournaments/join` reads the buy-in
+  and the discount off those tables and was right to; the tables were wrong to
+  let a captain write them. 5. The joining-fee snapshots on `team_members`, and
+  `teams.captain_id` plus the captain's copy of the fee, are guarded by triggers
+  that allow only the two paths that legitimately move them (the webhook, where
+  `auth.uid()` is null, and `record_cash_credit`, which is already captain-only);
+  `teams` writes are restricted to leaders. 6. `messages` is readable only by
+  its sender and recipient — DMs were world-readable while team chat was not.
+- **New route — `app/api/credit/apply-replenishment/route.ts`**: the honest
+  caller of the now-revoked RPC. Authenticates the caller, confirms the row is
+  theirs and unapplied, retrieves the PaymentIntent from Stripe and requires
+  `succeeded`, that it is the caller's own payment (metadata `playerId` or their
+  customer id) and that it covers `total_pence`, and that no other row has
+  already been credited against it. Same model as the webhook: credit follows a
+  verified payment.
+- **`app/pay/[matchId]/page.tsx`** — one line: the direct
+  `rpc("apply_replenishment")` became `authedPost("/api/credit/apply-replenishment")`.
+  The pay screen is otherwise untouched.
+
+### Validation
+`npx tsc --noEmit` clean; `npx next build` compiles, `/api/credit/apply-replenishment`
+registered, only the pre-existing `react-hooks/exhaustive-deps` warnings. **The SQL
+has not been run** — apply it in the Supabase editor and work the verification block
+at the foot of the file (seven writes that should now fail, five flows that should
+still work).
+
+### Known-remaining, deliberately not done
+- **`team_members` still takes any insert**, so a user can write themselves an
+  `approved` membership in any team — which also defeats the squad-only RLS on
+  team chat. Fixing it means `join_team_by_invite` has to mark its own inserts as
+  legitimate, i.e. redefining that function; not worth doing to a live invite
+  flow without asking.
+- **`profiles` is world-readable, `stripe_customer_id` / `stripe_payment_method_id`
+  / card brand + last4 included.** A `pm_…` id is not chargeable without the
+  secret key, but it is PII. The fix is to move those four columns to a table with
+  own-row RLS and update the five read sites — a data migration, not a mid-pilot
+  change.
+- **`split_pitch_fee`, `release_hold`, `reimburse_secured_pitch`** are the same
+  class of unguarded definer function as §1 and §2, but they are called from
+  `ChallengePanel` in the browser, so they need caller guards rather than a
+  revoke. Friendlies, not the pilot.
+- **No security headers** (`next.config.js` is empty) — HSTS, `X-Frame-Options`,
+  `Referrer-Policy`, `X-Content-Type-Options` are worth adding; a CSP is not,
+  it risks Stripe's iframes.
+- **Next 14.2.5** has known CVEs. There is no `middleware.ts`, so CVE-2025-29927
+  has nothing to bypass here. A patch bump within 14.2 is low-risk.
+- **No rate limiting** on any API route.
+
+
+## Previous completed work — 2026-09-12, Claude Code
+
+Made the registration answers editable afterwards, for both a team and a player,
+and turned two of them into multi-selects.
+
+- **Team Settings** (`/my-team/settings`) gained
+  `components/my-team/TeamDetailsPanel.tsx`: name, location, level, players per
+  side and description — everything `/my-team/create` asks. Players per side is
+  a **multi-select** here; a rename updates the page header and invite panel
+  without a reload. The joining-fee block, invite link and co-captains panel are
+  unchanged. Reachable by a co-captain too (`loadLeadership().canManage`), like
+  the rest of the page.
+- **Profile** (`/profile`): the Edit Profile button did nothing at all before and
+  now opens `components/EditProfileSheet.tsx` — full name, **positions
+  (multi-select)**, experience, age group, gender, games per month, preferred
+  type of football. A new "About You" card shows the four answers that had never
+  been displayed anywhere, so an edit visibly changes something. The chip row
+  under the avatar lists every position; the line under the name keeps the
+  primary one.
+- **New SQL — `supabase_multi_select_preferences.sql`** (idempotent, no
+  dependencies, **not yet run**): adds `teams.formats` and `profiles.positions`,
+  backfilled from the scalars. The scalar stays the *primary* value and is
+  rewritten on every save, so `teamSizeFromFormat`, the tactics boards and every
+  unmigrated reader keep working untouched.
+- **New libs**: `lib/team-options.ts` and `lib/profile-options.ts` own the option
+  lists (now imported by `/register` and `/my-team/create`, so the forms can't
+  drift) and are the only place either scalar/array pair is read or written.
+  `lib/optional-column.ts` runs a statement that names a possibly-missing column
+  and re-runs it without that column if Postgres objects — the house
+  "missing migrations degrade" rule, reusable.
+- **Filters now match any value**: Transfer Market, `/my-team/players` and
+  `TeamsPanel`. Display sites updated: both team pages, the market cards, search.
+  `MembersTab` / `StatsTab` still show the primary position only — their selects
+  are already nested inside the `is_co_captain` fallback and weren't worth
+  compounding.
+
+`CLAUDE.md` updated: new "Team details, and the two multi-select answers" section,
+the `/my-team/settings` and `/profile` rows, and the data-model table.
+
+### Validation
+
+- `npx tsc --noEmit`: clean. `npx next build`: exit 0. `npm run lint`: no new
+  warnings (the pre-existing `react-hooks/exhaustive-deps` ones remain).
+- **Not exercised in a browser, and the migration has not been run**: nothing was
+  saved against real data, so the save paths, the backfill and the
+  degrade-without-the-column fallbacks are reasoned, not observed. Running
+  `supabase_multi_select_preferences.sql` is the next step, then saving a team's
+  details and a profile once each.
+
+## Previous completed work — 2026-09-09, Codex
 
 Created three UNITER app icon concepts in `docs/app-icon-concepts/`: football,
 team huddle inside a crest, and community figures forming a U. Each PNG is an
