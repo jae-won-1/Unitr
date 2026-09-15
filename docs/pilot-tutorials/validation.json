@@ -1,25 +1,25 @@
 {
-  "generated": "2026-09-09T14:18:51.086Z",
+  "generated": "2026-09-13T22:44:31.987Z",
   "slideSize": [
     1080,
     1600
   ],
-  "layout": "No heading, instructions or footer overlaps detected.",
+  "layout": "One screenshot per slide; no text overlaps, horizontal overflow or out-of-bounds crops/highlights.",
   "guides": [
     {
       "guide": "new-users",
       "slides": 5,
-      "pdfBytes": 872876
+      "pdfBytes": 797792
     },
     {
       "guide": "captains",
-      "slides": 9,
-      "pdfBytes": 1681216
+      "slides": 10,
+      "pdfBytes": 1397029
     },
     {
       "guide": "team-members",
       "slides": 6,
-      "pdfBytes": 999713
+      "pdfBytes": 1094927
     }
   ]
 }

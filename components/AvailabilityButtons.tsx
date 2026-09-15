@@ -20,7 +20,9 @@
 // entries have neither and get nothing back.
 
 import { useState, useEffect } from "react";
-import { fmtFee, getJoiningFeeStatus } from "@/lib/joining-fee";
+import {
+  loadAvailabilityGate, owedSummary, type AvailabilityGate,
+} from "@/lib/availability-gate";
 import { readMyStatus, writeMyStatus, type ConfirmStatus } from "@/lib/event-availability";
 
 export type { ConfirmStatus };
@@ -46,19 +48,19 @@ export function AvailabilityButtons({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const [feeOwedPence, setFeeOwedPence] = useState(0);
+  const [gate, setGate] = useState<AvailabilityGate | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [current, fee] = await Promise.all([
+      const [current, owing] = await Promise.all([
         readMyStatus({ matchId, openMatchId }, playerId),
-        getJoiningFeeStatus(teamId, playerId),
+        loadAvailabilityGate(teamId, playerId),
       ]);
       if (cancelled) return;
       if (current === null) setError(true);
       else setStatus(current);
-      setFeeOwedPence(fee.owedPence);
+      setGate(owing);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -66,6 +68,8 @@ export function AvailabilityButtons({
 
   async function set(next: ConfirmStatus) {
     if (busy) return;
+    // Saying you're out is always allowed; only claiming a place is gated.
+    if (next === "confirmed" && gate?.blocked) return;
     // Tapping the active choice again clears back to pending, so "I haven't
     // decided" stays reachable after an accidental tap.
     const target = status === next ? "pending" : next;
@@ -96,50 +100,55 @@ export function AvailabilityButtons({
 
   const pad = size === "sm" ? "py-1.5 text-[11px]" : "py-2 text-xs";
 
-  // House rule: a player who hasn't paid their joining fee can't join or vote
-  // available for games. Greyed rather than hidden, per the QuickNav
-  // convention — the buttons stay so the layout doesn't shift, with the
-  // reason written where they'd have tapped.
-  if (feeOwedPence > 0) {
-    return (
-      <div>
-        <div className="flex gap-2 opacity-40 pointer-events-none" aria-disabled>
-          <span className={`flex-1 ${pad} rounded-btn border bg-surface border-border text-text-secondary font-semibold text-center`}>Available</span>
-          <span className={`flex-1 ${pad} rounded-btn border bg-surface border-border text-text-secondary font-semibold text-center`}>Unavailable</span>
-        </div>
-        <p className="text-[11px] text-red-600 font-semibold mt-1.5">
-          Pay your {fmtFee(feeOwedPence)} joining fee (Top Up on Home) to vote for games.
-        </p>
-      </div>
-    );
-  }
+  // House rule: a player who owes the team money — their joining fee, their
+  // share of games they've already played, or both — can't take a place in a
+  // game (lib/availability-gate.ts). That bites on ONE of the two answers.
+  // Blocking "Unavailable" too made the squad's picture worse rather than
+  // better — a player in arrears who genuinely can't play had no way to say
+  // so, so the captain read their silence as "hasn't replied" and chased
+  // someone who was never going to be there. Ruling yourself out costs the
+  // team nothing and claims nothing, so it stays open to everyone.
+  //
+  // Greyed rather than hidden, per the QuickNav convention — Available keeps
+  // its slot so the row doesn't shift, with the reason written under it.
+  const blocked = !!gate?.blocked;
 
   return (
-    <div className="flex gap-2">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => set("confirmed")}
-        className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
-          status === "confirmed"
-            ? "bg-[#E7F8EC] border-[1.5px] border-accent-ink text-accent-ink font-bold"
-            : "bg-surface border-border text-text-secondary font-semibold"
-        }`}
-      >
-        Available
-      </button>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => set("declined")}
-        className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
-          status === "declined"
-            ? "bg-red-50 border-[1.5px] border-danger text-danger font-bold"
-            : "bg-surface border-border text-text-secondary font-semibold"
-        }`}
-      >
-        Unavailable
-      </button>
+    <div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy || blocked}
+          onClick={() => set("confirmed")}
+          className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
+            blocked
+              ? "bg-surface border-border text-text-secondary font-semibold opacity-40"
+              : status === "confirmed"
+                ? "bg-[#E7F8EC] border-[1.5px] border-accent-ink text-accent-ink font-bold"
+                : "bg-surface border-border text-text-secondary font-semibold"
+          }`}
+        >
+          Available
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => set("declined")}
+          className={`flex-1 ${pad} rounded-btn border transition-colors disabled:opacity-60 ${
+            status === "declined"
+              ? "bg-red-50 border-[1.5px] border-danger text-danger font-bold"
+              : "bg-surface border-border text-text-secondary font-semibold"
+          }`}
+        >
+          Unavailable
+        </button>
+      </div>
+      {blocked && (
+        <p className="text-[11px] text-red-600 font-semibold mt-1.5">
+          Pay {owedSummary(gate!)} (Top Up on Home) to vote available.
+          You can still say you&apos;re unavailable.
+        </p>
+      )}
     </div>
   );
 }

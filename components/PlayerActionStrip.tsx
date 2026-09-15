@@ -81,13 +81,17 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
             </svg>
           </div>
           <p className="text-sm font-bold leading-tight">Top Up Team Credit</p>
-          {/* The joining fee outranks match dues: until it's paid the player
-              can't vote for games at all, so it's the thing to say first. */}
+          {/* Either debt stops the player voting available (lib/availability-gate.ts),
+              so when both exist the line names both — saying only "joining fee
+              due" sent someone to pay it and left them still unable to vote,
+              with nothing on screen explaining why. */}
           {owedPence + feeOwedPence > 0 && (
             <p className="text-[11px] mt-1 leading-tight text-red-600 font-semibold">
-              {feeOwedPence > 0
-                ? `${fmtFee(feeOwedPence)} joining fee due`
-                : `You owe £${(owedPence / 100).toFixed(2)}`}
+              {feeOwedPence > 0 && owedPence > 0
+                ? `${fmtFee(feeOwedPence)} fee + ${fmtFee(owedPence)} match fees due`
+                : feeOwedPence > 0
+                  ? `${fmtFee(feeOwedPence)} joining fee due`
+                  : `You owe ${fmtFee(owedPence)}`}
             </p>
           )}
           {/* The balance stays on the button even when something is owed — what

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -12,6 +12,8 @@ import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-reven
 import { loadLedTeam, loadLeadership } from "@/lib/team-leadership";
 import { useRole } from "@/contexts/RoleContext";
 import { takeDownEvent } from "@/lib/take-down-event";
+import { withOptionalColumn } from "@/lib/optional-column";
+import { TimePicker } from "@/components/DateTimePickers";
 
 // Event detail + management — tournaments, leagues and admin-hosted friendlies
 // (all open_matches rows). The organiser (the hosting team's captain, the venue
@@ -57,10 +59,20 @@ type Fixture = {
   home_score: number | null;
   away_score: number | null;
   status: string;
+  duration_minutes: number | null;
 };
 
 const timeToMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
 const minToTime = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+// How long a game runs, and how long the teams get between games. The
+// organiser is asked for both before a schedule is generated — kickoffs are
+// laid out at start + i × (match + break) rather than by dividing the booked
+// block up, so the timetable matches what was actually agreed with the venue.
+const DEFAULT_MATCH_MINUTES = 20;
+const DEFAULT_BREAK_MINUTES = 5;
+const fmtDuration = (mins: number) =>
+  mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ""}` : `${mins} min`;
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -103,6 +115,11 @@ export default function TournamentDetailPage() {
   const [mHome, setMHome] = useState("");
   const [mAway, setMAway] = useState("");
   const [mTime, setMTime] = useState("");
+
+  // Schedule shape, asked of the organiser before generating (see the
+  // constants above). Kept as strings so the fields can be cleared while typing.
+  const [matchMinutes, setMatchMinutes] = useState(String(DEFAULT_MATCH_MINUTES));
+  const [breakMinutes, setBreakMinutes] = useState(String(DEFAULT_BREAK_MINUTES));
 
   // Result entry (organiser): per-fixture score drafts.
   const [scoreDraft, setScoreDraft] = useState<Record<string, { h: string; a: string }>>({});
@@ -171,10 +188,17 @@ export default function TournamentDetailPage() {
     }
     setRoster(pool);
 
-    const { data: fx } = await supabase.from("tournament_matches")
-      .select("id, slot_index, scheduled_time, home_team_id, home_team_name, away_team_id, away_team_name, referee_player_id, referee_name, referee_team_name, home_score, away_score, status")
-      .eq("open_match_id", params.id).order("slot_index", { ascending: true });
-    setFixtures((fx ?? []) as Fixture[]);
+    // duration_minutes arrives with supabase_tournament_fixture_duration.sql;
+    // without it the schedule still reads, just without a finish time.
+    const { data: fx } = await withOptionalColumn<Fixture[]>("duration_minutes", async (include) => {
+      const r = await supabase.from("tournament_matches")
+        .select(include
+          ? "id, slot_index, scheduled_time, home_team_id, home_team_name, away_team_id, away_team_name, referee_player_id, referee_name, referee_team_name, home_score, away_score, status, duration_minutes"
+          : "id, slot_index, scheduled_time, home_team_id, home_team_name, away_team_id, away_team_name, referee_player_id, referee_name, referee_team_name, home_score, away_score, status")
+        .eq("open_match_id", params.id).order("slot_index", { ascending: true });
+      return { data: (r.data ?? []) as unknown as Fixture[], error: r.error };
+    });
+    setFixtures((fx ?? []).map((f) => ({ ...f, duration_minutes: f.duration_minutes ?? null })));
 
     // Saved event ratings — table may not exist yet (migration not run): the
     // query just errors and data stays null, so this degrades silently.
@@ -227,6 +251,33 @@ export default function TournamentDetailPage() {
   // Cosmetic noun for copy — the page manages all three event shapes.
   const noun = t?.match_type === "league" ? "League" : t?.match_type === "match" ? "Friendly" : "Tournament";
 
+  // The timetable the current settings would produce: the round-robin pairings,
+  // and where they land in the day. Computed up front so the organiser sees the
+  // finish time (and any overrun of the booked block) before generating.
+  const plan = useMemo(() => {
+    const pairs: [JoinedTeam, JoinedTeam][] = [];
+    for (let i = 0; i < teams.length; i++)
+      for (let j = i + 1; j < teams.length; j++)
+        pairs.push([teams[i], teams[j]]);
+
+    const match = Number(matchMinutes);
+    const brk = Number(breakMinutes);
+    const valid = Number.isFinite(match) && match >= 5 && Number.isFinite(brk) && brk >= 0;
+    const slot = match + brk;
+
+    const startMin = t ? timeToMin(t.start_time) : 0;
+    const endMin = t ? timeToMin(t.end_time) : 0;
+    // The last game needs no break after it, so n games take n·slot − break.
+    const finishMin = pairs.length && valid ? startMin + pairs.length * slot - brk : startMin;
+    const overrunMin = valid ? Math.max(0, finishMin - endMin) : 0;
+    // The longest match that would still fit the block at this break length.
+    const fitMatch = pairs.length && Number.isFinite(brk) && brk >= 0
+      ? Math.floor((endMin - startMin + brk) / pairs.length) - brk
+      : 0;
+
+    return { pairs, match, brk, valid, slot, startMin, finishMin, overrunMin, fitMatch };
+  }, [teams, matchMinutes, breakMinutes, t]);
+
   // Pick a random referee from a team not playing in this fixture.
   const pickReferee = (homeId: string, awayId: string): RosterPlayer | null => {
     const eligible = roster.filter((p) => p.team_id !== homeId && p.team_id !== awayId);
@@ -243,20 +294,15 @@ export default function TournamentDetailPage() {
   });
 
   // Random round-robin: every team plays every other once, in a shuffled order,
-  // spread evenly across the booked block, each with a random referee.
+  // laid out from the block's start at the length and break the organiser gave,
+  // each with a random referee.
   const generateRandom = async () => {
     if (!t || teams.length < 2) return;
+    if (!plan.valid) { setError("Set a match length of at least 5 minutes and a break of 0 or more."); return; }
     setBusy(true); setError(null);
 
-    const pairs: [JoinedTeam, JoinedTeam][] = [];
-    for (let i = 0; i < teams.length; i++)
-      for (let j = i + 1; j < teams.length; j++)
-        pairs.push([teams[i], teams[j]]);
-    const order = shuffle(pairs);
-
+    const order = shuffle(plan.pairs);
     const startMin = timeToMin(t.start_time);
-    const endMin = timeToMin(t.end_time);
-    const slot = order.length > 0 ? Math.max(15, Math.floor((endMin - startMin) / order.length)) : 30;
 
     const rows = order.map(([home, away], i) => {
       const ref = pickReferee(home.team_id, away.team_id);
@@ -264,7 +310,8 @@ export default function TournamentDetailPage() {
         open_match_id: t.id,
         round_label: "Group",
         slot_index: i,
-        scheduled_time: minToTime(startMin + i * slot),
+        scheduled_time: minToTime(startMin + i * plan.slot),
+        duration_minutes: plan.match,
         home_team_id: home.team_id, home_team_name: home.team_name,
         away_team_id: away.team_id, away_team_name: away.team_name,
         referee_player_id: ref?.player_id ?? null,
@@ -277,7 +324,9 @@ export default function TournamentDetailPage() {
 
     // Replace any existing schedule.
     await supabase.from("tournament_matches").delete().eq("open_match_id", t.id);
-    const { error: insErr } = await supabase.from("tournament_matches").insert(rows);
+    const { error: insErr } = await withOptionalColumn("duration_minutes", (include) =>
+      supabase.from("tournament_matches").insert(
+        include ? rows : rows.map(({ duration_minutes, ...rest }) => rest)));
     if (insErr) { setBusy(false); setError(insErr.code === "42P01" ? "Run supabase_tournament_schedule.sql in Supabase first." : insErr.message); return; }
 
     // Notify every assigned referee.
@@ -300,14 +349,21 @@ export default function TournamentDetailPage() {
     const away = teams.find((x) => x.team_id === mAway)!;
     const ref = pickReferee(home.team_id, away.team_id);
     const slot_index = fixtures.length;
-    const { error: insErr } = await supabase.from("tournament_matches").insert({
+    const row = {
       open_match_id: t.id, round_label: "Group", slot_index,
       scheduled_time: mTime || null,
+      // The same match length the generator would use, so one fixture added by
+      // hand doesn't read as a game of unknown length next to the rest.
+      duration_minutes: plan.valid ? plan.match : null,
       home_team_id: home.team_id, home_team_name: home.team_name,
       away_team_id: away.team_id, away_team_name: away.team_name,
       referee_player_id: ref?.player_id ?? null, referee_name: ref?.name ?? null,
       referee_team_id: ref?.team_id ?? null, referee_team_name: ref?.team_name ?? null,
       status: "scheduled",
+    };
+    const { error: insErr } = await withOptionalColumn("duration_minutes", (include) => {
+      const { duration_minutes, ...rest } = row;
+      return supabase.from("tournament_matches").insert(include ? row : rest);
     });
     if (insErr) { setBusy(false); setError(insErr.code === "42P01" ? "Run supabase_tournament_schedule.sql in Supabase first." : insErr.message); return; }
     if (ref) await supabase.from("notifications").insert(notifyReferee(ref, home.team_name, away.team_name, mTime || null));
@@ -547,11 +603,57 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
-            <button onClick={generateRandom} disabled={busy || teams.length < 2}
+            {/* How long a game runs, and how long teams get between games.
+                Asked before generating: kickoffs are laid out from these, so
+                the timetable is the organiser's, not an even division of the
+                booked block. */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1.5">Match length (min)</label>
+                <input type="number" min="5" step="5" inputMode="numeric" value={matchMinutes}
+                  onChange={(e) => setMatchMinutes(e.target.value)}
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1.5">Break between (min)</label>
+                <input type="number" min="0" step="5" inputMode="numeric" value={breakMinutes}
+                  onChange={(e) => setBreakMinutes(e.target.value)}
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent/50" />
+              </div>
+            </div>
+
+            {/* What those settings would produce, before anything is written. */}
+            {plan.pairs.length > 0 && (
+              <div className="-mt-1 bg-background border border-border rounded-xl px-3 py-2.5">
+                {plan.valid ? (
+                  <>
+                    <p className="text-xs font-semibold">
+                      {plan.pairs.length} game{plan.pairs.length === 1 ? "" : "s"} · {minToTime(plan.startMin)} – {minToTime(plan.finishMin)}
+                    </p>
+                    <p className="text-[11px] text-text-secondary mt-0.5">
+                      {fmtDuration(plan.match)} each, {plan.brk === 0 ? "back to back" : `${fmtDuration(plan.brk)} between`} · pitch booked till {t.end_time}
+                    </p>
+                    {plan.overrunMin > 0 && (
+                      <p className="text-[11px] text-amber-600 font-semibold mt-1.5">
+                        Runs {fmtDuration(plan.overrunMin)} past the booked block.
+                        {plan.fitMatch >= 5 && (
+                          <button type="button" onClick={() => setMatchMinutes(String(plan.fitMatch))}
+                            className="ml-1.5 underline">Fit to {fmtDuration(plan.fitMatch)} games</button>
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] text-text-secondary">Set a match length of at least 5 minutes and a break of 0 or more.</p>
+                )}
+              </div>
+            )}
+
+            <button onClick={generateRandom} disabled={busy || teams.length < 2 || !plan.valid}
               className="w-full py-2.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               {busy ? <><svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Working…</> : "Generate random schedule"}
             </button>
-            <p className="text-[11px] text-text-secondary -mt-2">Round-robin — every team plays each other once. Referees are drawn randomly from teams sitting out each game and notified.</p>
+            <p className="text-[11px] text-text-secondary -mt-2">Round-robin — every team plays each other once, starting at {t.start_time}. Referees are drawn randomly from teams sitting out each game and notified.</p>
 
             {/* Manual add */}
             <div className="border-t border-border pt-3">
@@ -566,9 +668,12 @@ export default function TournamentDetailPage() {
                   {teams.filter((tm) => tm.team_id !== mHome).map((tm) => <option key={tm.team_id} value={tm.team_id}>{tm.team_name}</option>)}
                 </select>
               </div>
-              <div className="flex gap-2">
-                <input type="time" value={mTime} onChange={(e) => setMTime(e.target.value)}
-                  className="flex-1 bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+              <div className="flex gap-2 items-start">
+                <div className="flex-1">
+                  {/* The app's clock dial, with minutes — a fixture inside a
+                      block rarely kicks off on the hour. */}
+                  <TimePicker value={mTime} onChange={setMTime} selectedDate={t.match_date} minuteStep={5} label="Kick-off" />
+                </div>
                 <button onClick={addManualFixture} disabled={busy || !mHome || !mAway}
                   className="px-4 py-2.5 rounded-xl bg-surface border border-border text-sm font-semibold disabled:opacity-50">Add</button>
               </div>
@@ -589,7 +694,14 @@ export default function TournamentDetailPage() {
                 return (
                   <div key={fx.id} className="bg-background border border-border rounded-xl px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-text-secondary w-12 flex-shrink-0">{fx.scheduled_time ?? `#${i + 1}`}</span>
+                      <span className="w-14 flex-shrink-0 leading-tight">
+                        <span className="block text-[10px] font-bold text-text-secondary">{fx.scheduled_time ?? `#${i + 1}`}</span>
+                        {fx.scheduled_time && fx.duration_minutes ? (
+                          <span className="block text-[9px] text-text-secondary/70">
+                            till {minToTime(timeToMin(fx.scheduled_time) + fx.duration_minutes)}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="flex-1 text-right text-sm font-semibold truncate">{fx.home_team_name}</span>
                       <span className={`text-xs font-bold px-2 ${played ? "text-accent-ink" : "text-text-secondary"}`}>
                         {played ? `${fx.home_score}–${fx.away_score}` : "vs"}

@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
 const FORMATS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const LEVELS = ["Mixed", "Casual", "Competitive"];
@@ -137,18 +138,21 @@ export default function AdminCreateEventPage() {
         </div>
       </div>
 
+      {/* The app's own date + clock dials, not the browser's native inputs —
+          staff book these on a phone like everyone else, and a block that
+          starts at :30 needs the minute ring. */}
       <div className="grid grid-cols-3 gap-2">
         <div className="col-span-1">
           <label className={labelCls}>Date</label>
-          <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+          <DatePicker value={date} onChange={setDate} />
         </div>
         <div>
           <label className={labelCls}>Start</label>
-          <input type="time" className={inputCls} value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <TimePicker value={startTime} onChange={setStartTime} selectedDate={date} minuteStep={5} label="Start time" />
         </div>
         <div>
           <label className={labelCls}>End</label>
-          <input type="time" className={inputCls} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <TimePicker value={endTime} onChange={setEndTime} selectedDate={date} minuteStep={5} label="End time" />
         </div>
       </div>
 

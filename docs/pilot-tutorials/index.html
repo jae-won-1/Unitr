@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Uniter · Pilot tutorials</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;background:#e6ede4;color:#14261b;font:16px Arial,sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:#008000;color:#063b1e;font:16px Arial,sans-serif}
     header{background:#fff;padding:16px 20px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #cbd8c9}
     strong{font-size:24px;letter-spacing:-1px}select,button,a{font:inherit}select{max-width:100%;padding:10px;border-radius:9px;border:1px solid #bccbb9;background:#fff;color:inherit}
     main{max-width:580px;margin:auto;padding:16px 12px 95px}img{width:100%;height:auto;display:block;box-shadow:0 4px 20px #173c2320;border-radius:8px}
@@ -15,11 +15,11 @@
   </style>
 </head>
 <body>
-  <header><strong>UNITER/</strong><label><span class="sr">Choose your guide</span><select id="track"><option value="new-users">New users · 5 slides</option><option value="captains">Captains · 9 slides</option><option value="team-members">Team members · 6 slides</option></select></label><div class="links"><a id="pdf" href="Uniter-new-users.pdf">Open PDF</a><a href="https://unitr-omega.vercel.app/" target="_blank" rel="noopener">Open app ↗</a></div></header>
+  <header><strong>UNITER/</strong><label><span class="sr">Choose your guide</span><select id="track"><option value="new-users">New users · 5 slides</option><option value="captains">Captains · 10 slides</option><option value="team-members">Team members · 6 slides</option></select></label><div class="links"><a id="pdf" href="Uniter-new-users.pdf">Open PDF</a><a href="https://unitr-omega.vercel.app/" target="_blank" rel="noopener">Open app ↗</a></div></header>
   <main><img id="slide" src="images/new-users/01.jpg" alt="New users guide, slide 1 of 5"></main>
   <nav aria-label="Slide controls"><button id="prev" disabled>← Previous</button><span id="count" aria-live="polite">1 / 5</span><button id="next">Next →</button></nav>
   <script>
-    const totals={'new-users':5,captains:9,'team-members':6};
+    const totals={'new-users':5,captains:10,'team-members':6};
     const track=document.querySelector('#track'),picture=document.querySelector('#slide'),prev=document.querySelector('#prev'),next=document.querySelector('#next');let i=1;
     function show(){const t=track.value;picture.src='images/'+t+'/'+String(i).padStart(2,'0')+'.jpg';picture.alt=track.selectedOptions[0].text.split(' · ')[0]+' guide, slide '+i+' of '+totals[t];document.querySelector('#count').textContent=i+' / '+totals[t];document.querySelector('#pdf').href='Uniter-'+t+'.pdf';prev.disabled=i===1;next.disabled=i===totals[t];window.scrollTo(0,0);}
     track.addEventListener('change',()=>{i=1;show()});prev.addEventListener('click',()=>{if(i>1){i--;show()}});next.addEventListener('click',()=>{if(i<totals[track.value]){i++;show()}});

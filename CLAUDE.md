@@ -315,6 +315,29 @@ any player route.
 `/admin` is the hub of every event this admin hosts, `/admin/create` posts one, and
 `/admin/posts` moderates the teams' match posts (take-down via `/api/posts/take-down`).
 
+`/admin/create` uses the app's own `DatePicker` / `TimePicker` for the date and the
+block's start and end, not the browser's native `date`/`time` inputs — staff post these
+from a phone like everyone else, and the native controls read differently on every
+browser. The two clocks run with `minuteStep={5}`, because a booked block is not always
+a whole hour.
+
+### Generating a schedule
+
+The organiser of an event (`/play/tournament/[id]`) is asked **how long a match runs**
+and **how long the break between matches is** before generating one. Kickoffs are laid
+out as `start + i × (match + break)` — the booked block is no longer divided by the
+number of fixtures, which produced slots nobody had agreed with the venue. The panel
+shows what the settings would produce (`n games · 18:00 – 20:25`) before anything is
+written, and if that runs past the booked end time it says by how much and offers the
+longest match length that still fits.
+
+The **break** only decides where kickoffs land and isn't stored. The **match length**
+is a fact about each game, so it is written to `tournament_matches.duration_minutes`
+(`supabase_tournament_fixture_duration.sql`) and every viewer's schedule shows a finish
+time under the kickoff. A fixture added by hand takes the same length, and its kickoff
+is picked on the same clock dial as everywhere else. Without the migration the schedule
+still generates — the finish time is simply absent.
+
 **Taking Uniter's own event down.** An admin-hosted event is cancelled from the event page
 itself (`/play/tournament/[id]`), where staff see a take-down box under the organiser
 controls. It goes through `/api/events/take-down`, which flips `open_matches.status` to
@@ -365,6 +388,35 @@ tap — and the line is inert until somebody has actually answered.
 
 Settle Payments reads the fixture's own answers first and falls back to the poll only when
 nobody answered the fixture (`SettlePaymentsModal`).
+
+### Voting available is gated; voting unavailable never is
+
+A player who owes the team money can't put themselves forward for a game. Two debts count,
+and `lib/availability-gate.ts` is the only place either is weighed:
+
+1. their **joining fee** (`lib/joining-fee.ts`), and
+2. their **share of games already played** — outstanding `payment_collection_status` rows
+   (`included`, not `received`) for that team. Settle Payments only issues a request for who
+   *did* play, so every open row is a past game and no date filter is needed.
+
+Both are the same charge in the end — paying either is a top-up into team credit — so they're
+asked for in one breath and paid through the same Top Up button. `owedSummary()` names
+whichever apply, so no two surfaces describe the debt differently.
+
+**Only the "available" half is gated.** Ruling yourself out claims no place and costs the team
+nothing, and blocking it turned a real "I can't play" into a silence the captain read as
+"hasn't replied" and chased. So Available greys out with the reason under it while Unavailable
+stays live (`AvailabilityButtons`); on the poll, picking dates is the gated half and
+"unavailable for any of these" always sends (`AvailabilityModal`). A blocked player can still
+**deselect** a date they'd already picked, because the "none of these" answer is only reachable
+with nothing selected — leaving it disabled trapped them with an answer they could neither send
+nor clear.
+
+The gate is **client-side only**: nothing in RLS or an API route enforces it, exactly as before.
+Every card in a list asks the same question at the same moment, so `loadAvailabilityGate`
+shares the **in-flight** promise per `teamId:playerId`. Never a settled one — the answer
+changes the instant the player pays, and a cached "still owes" would leave the buttons greyed
+after they had.
 
 ## Payment model
 
@@ -427,7 +479,7 @@ Variants:
   snapshotted onto `team_members.joining_fee_due_pence` at approval (trigger), and
   `joining_fee_paid_pence` is advanced **only inside** `credit_from_payment` /
   `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
-  can't join or vote available for games (`AvailabilityButtons`, `AvailabilityModal`). The fee
+  can't join, and can't vote **available** for games — see Voting available below. The fee
   splits across the money row like every other charge: the **amount** is set in Settle
   Payments → Joining fee (and still in Team Settings and at registration), **who has paid it**
   is Payment Status → Joining fee. Both panels live in `components/JoiningFeePanels.tsx`.
@@ -509,6 +561,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
 | `supabase_tournament_match_tactics.sql` | `match_tactics.tournament_match_id` — a lineup targets a friendly **or** a tournament fixture; run after `supabase_match_tactics.sql` and `supabase_tournament_schedule.sql` |
+| `supabase_tournament_fixture_duration.sql` | `tournament_matches.duration_minutes` — how long one fixture runs, from the organiser's match length; run after `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
 
@@ -534,6 +587,13 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   formation belonging to another size renders as that size's default (`resolveFormation`)
   rather than drawing eleven dots on a 5-a-side board; saves write the resolved key. Slot
   order inside a formation is still history — adding formations is safe, reordering is not.
+- **Times are picked on the app's dial, never a native `<input type="time">`.**
+  `components/DateTimePickers.tsx` is the only time control, and by default it returns a
+  **whole hour** — pitch slots, poll dates and venue opening rules all are one, and every
+  caller relies on it. Pass `minuteStep` (5 is the only value used) to ask for minutes as
+  well: the dial then runs hours-first, minutes-second like a phone's clock picker, with a
+  tappable `9:30 AM` read-out to go back. Off by default, so nothing that wants an hour can
+  be handed `:37`.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.

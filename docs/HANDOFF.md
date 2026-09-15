@@ -1,6 +1,120 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-13, Codex
+## Latest completed work — 2026-09-15, Claude Code: schedule shape + the app's clock in admin
+
+Two admin-facing changes, in one session.
+
+**1. Generating a schedule asks how long the games are.** The organiser panel on
+`/play/tournament/[id]` now takes a **match length** and a **break between
+matches**, and lays kickoffs out at `start + i × (match + break)`. It used to
+divide the booked block by the number of fixtures, so an 11-pair round-robin in a
+three-hour block produced 16-minute slots nobody had agreed with the venue.
+
+- `app/play/tournament/[id]/page.tsx` — two number fields (defaults 20 / 5) and a
+  `plan` memo holding the pairings and where they land. A preview line shows
+  `n games · 18:00 – 20:25` before anything is written; an overrun of the booked
+  end time is called out in amber with a one-tap "fit to N-min games", which is
+  the longest match that still fits at the chosen break. Generate is disabled
+  below a 5-minute match. The manual add takes the same length, so one fixture
+  added by hand doesn't read as a game of unknown length.
+- The break shapes kickoffs only and isn't stored. The match length is written to
+  `tournament_matches.duration_minutes` and the fixture list shows a finish time
+  under each kickoff, for everyone — not just the organiser who typed it.
+- **New migration `supabase_tournament_fixture_duration.sql`** (one nullable
+  column; run after `supabase_tournament_schedule.sql`). **Not yet applied.**
+  Until it is, generating still works and the finish times are simply absent —
+  the read and both inserts go through `withOptionalColumn`.
+- `lib/optional-column.ts` — `Result`'s error type gained an optional `code`, so a
+  caller can still tell a missing *table* (42P01, "run the migration") from a real
+  failure. No behaviour change.
+
+**2. Admin time entry uses the app's own dial.** `/admin/create` had native
+`<input type="date">` / `type="time"`, which read differently on every browser;
+the fixture kick-off field on the tournament page had the same. All four are now
+the app's `DatePicker` / `TimePicker`.
+
+- `components/DateTimePickers.tsx` — `TimePicker` gained an optional
+  `minuteStep`. Default behaviour is **unchanged and still whole-hour**, which
+  its existing callers (pitch slots, poll dates, venue opening rules) rely
+  on. With `minuteStep={5}` the dial runs hours-first, minutes-second like a
+  phone's clock picker, with a tappable `9:30 AM` read-out to go back. Past-time
+  blocking follows: an hour greys out only when nothing inside it is still
+  reachable, and a minute when that exact time has gone.
+
+`npx tsc --noEmit` clean, `next lint` clean on the three changed files, and
+`npm run build` succeeded. Not exercised in a browser this session — in
+particular the two-stage dial and the overrun warning have not been clicked.
+
+## Previous completed work — 2026-09-15, Claude Code: the availability gate, both halves
+
+Two changes to who may answer "am I playing?", in one session.
+
+**1. Voting unavailable is no longer gated at all.** An unpaid joining fee used
+to grey out *both* buttons, so a player who owed money couldn't tell their
+captain they were out — the captain read that silence as "hasn't replied" and
+chased someone who was never going to play. Ruling yourself out claims no place,
+so it's open to everyone now.
+
+**2. Unsettled match fees join the joining fee as a condition for voting
+available.** Previously only the joining fee blocked it; outstanding dues from
+games already played did not.
+
+- New `lib/availability-gate.ts` — the only place the rule lives.
+  `loadAvailabilityGate(teamId, playerId)` returns `{ feeOwedPence,
+  duesOwedPence, blocked }`, plus `useAvailabilityGate` and `owedSummary()` so
+  no two surfaces name the debt differently. The dues read is deliberately
+  narrower than `useMyDues` (which resolves opponents and dates for a payable
+  list, and lives in a Stripe-importing file): it sums `share_pence -
+  credited_pence` over `payment_collection_status` rows that are `included` and
+  not `received`, scoped to the team. Degrades to "owes nothing" on error, per
+  the house rule. Concurrent callers share the **in-flight** promise only —
+  every card in a list asks at once, but a settled cache would leave the buttons
+  greyed after the player paid.
+- `components/AvailabilityButtons.tsx` — per-button gate: Available disabled and
+  at 40%, Unavailable live. `set()` also refuses a `confirmed` write while
+  blocked, so the guard doesn't depend on the disabled attribute.
+- `components/AvailabilityModal.tsx` — on the poll, picking dates is the gated
+  half; "unavailable for any of these dates" always sends. A blocked player can
+  still deselect an existing pick, because the none-of-these option only unlocks
+  with nothing selected.
+- Copy corrected where the old rule was stated to players:
+  `TeamCreditsBar` (both the fee and the dues notices now say the unavailable
+  answer is still open) and `PlayerActionStrip` (names both debts when both are
+  owed — it previously showed only the fee, sending a player to pay it and
+  leaving them still blocked with nothing on screen explaining why).
+
+No schema change and no new migration: this rule has always been client-side
+only, with no RLS policy or API route behind it. A determined browser could
+always write a `confirmed` row through PostgREST — that was true before these
+changes and is unchanged by them.
+
+`npx tsc --noEmit` clean; `next lint` clean on all five files. Not exercised in
+a browser this session.
+
+## Previous completed work — 2026-09-13, Codex: pilot tutorial redesign
+
+Redesigned all three `docs/pilot-tutorials/` guides from the user's app-store
+examples: one benefit and one real screenshot per slide, 108 px headlines,
+consistent UI green / cream / yellow, prominent navigation routes, shared pitch
+lines and progress bars. Tightened the crops and reduced the copy to one action
+plus a short note. Invites and co-captains have separate captain slides;
+team-member post-game top-up remains combined. Counts are now 5 / 10 / 6.
+
+Reused the redacted September 8–9 captures. Live browser capture is unavailable
+in this session. Corrected payment navigation against current source and excluded
+obsolete settlement headings/5% wording from the selected crops. Refreshed PDFs,
+JPEGs, source HTML, offline viewer and shareable ZIP. No app code or live data
+changed; no GitHub push was requested.
+
+Validation: export checks passed for one image per slide, crop/highlight bounds,
+text overflow and spacing. `verify.cjs` passed PDF/JPEG counts, image decoding,
+rendered branding/footer pixels, viewer navigation and mobile/desktop width.
+PDF.js extracted every headline, navigation route and app link from all 21 PDF
+pages. Visual review covers all slide layouts and focused final crops. Added
+`preview.cjs` and `preview.jpg` for a four-card design preview. Application
+type/lint/build checks are not applicable to this artifact-only change.
+
+## Previous completed work — 2026-09-13, Codex
 
 Installed the user's selected U/football home-screen artwork, recoloured with
 the built-in image tool. The user's follow-up replaces the UI-green version

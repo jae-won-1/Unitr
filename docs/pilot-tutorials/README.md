@@ -2,17 +2,26 @@
 
 Three role-specific guides made from the deployed app at
 https://unitr-omega.vercel.app/, captured on 8 September 2026. Captain revisions on 9 September use a fresh
-Home capture and the two screenshots supplied by the user.
+Home capture and the two screenshots supplied by the user. Redesigned on
+13 September 2026 using those saved captures; no new live screenshots were taken.
+
+The redesign follows the user's app-store references: one benefit and one real
+screenshot per slide, 108 px headlines, Uniter UI green (`#008000`), cream
+(`#f7f9f3`) and yellow (`#e6f060`). Matching pitch lines, route banners and progress
+bars connect the set. Crops remove unrelated interface and empty space; one
+short action follows each screenshot. Invites and co-captains now have separate
+captain slides. The team-member guide retains one post-game top-up slide.
 
 ## Ready to share
 
 - `Uniter-new-users.pdf`: 5 slides, for people creating or joining a team.
-- `Uniter-captains.pdf`: 9 slides, from team setup through tournament payments.
+- `Uniter-captains.pdf`: 10 slides, from team setup through tournament payments.
 - `Uniter-team-members.pdf`: 6 slides, for availability, lineups and contributions.
 - `images/`: the same slides as numbered 1080 × 1600 JPEGs, grouped by audience.
 - `index.html`: an offline viewer with a role selector, previous/next buttons,
   keyboard navigation and touch swipe. Keep it beside the images and PDFs.
 - `Uniter-pilot-tutorials.zip`: the PDFs, images, viewer and this README together.
+- `preview.jpg`: four captain slides side by side to preview the design.
 
 Send the appropriate PDF as a document attachment in a group chat or email.
 For a chat carousel, select that role's numbered images in order. The app URL
@@ -37,8 +46,8 @@ entry, charge, transfer, refund, message, payment request, poll, promotion or
 team membership was submitted to create these guides. Opening the existing
 direct message can mark it read.
 
-The player has an unpaid joining fee, so the availability slide shows the real
-disabled state and explains how to unlock it. No live poll exists; the guide
+The captured player had an unpaid joining fee, so the availability slide shows
+that disabled state and explains how to unlock it. No live poll was captured; the guide
 uses the supplied Availability screenshot and explains player poll responses in text.
 There is a saved game lineup, but no saved general team tactics. The final
 team-member slide explains topping up after each game using the top-up screen.
@@ -56,6 +65,8 @@ Playwright dependencies installed, run:
 
 ```powershell
 node docs/pilot-tutorials/build.cjs
+node docs/pilot-tutorials/verify.cjs
+node docs/pilot-tutorials/preview.cjs
 ```
 
 This regenerates the three PDFs, three standalone source HTML decks, JPEGs and
@@ -63,13 +74,15 @@ This regenerates the three PDFs, three standalone source HTML decks, JPEGs and
 decks are print layouts; use `index.html` for responsive viewing. Repackage the
 ZIP after rebuilding. Keep the viewer's slide totals in step with content edits.
 
-The generator checks that headings, route labels, body copy and footers do not
-overlap. Exported slides were visually inspected and PDF page counts checked;
+The generator checks one screenshot per slide, crop/highlight bounds, horizontal
+text overflow, and heading, route, body and footer spacing. Exports were visually
+inspected and PDF page counts checked;
 the viewer was checked at mobile and desktop sizes. No application code or
 dependency changes were needed.
 
-Observed product issue: the deployed settlement screen still says
-“entry fee + 5% fee” while displaying a £50 total for the £50 entry. Current
-source has a zero fee constant. The guide uses the displayed total and does
-not claim a 5% rate; the stale interface label remains visible in the genuine
-screenshot. Resolve that wording in a separate app change.
+Payment routes were checked against the current local implementation: Settle
+Payments → Fixtures issues requests; Payment Status tracks fixtures and joining
+fees. The old full settlement captures predate that separation. The redesigned
+guide uses the unchanged request controls and Home's Payment Status button,
+excluding the obsolete heading and 5% fee text. Live browser access was
+unavailable during the redesign, so it does not certify the current deployment.

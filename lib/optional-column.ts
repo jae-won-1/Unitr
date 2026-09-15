@@ -8,7 +8,9 @@
 // `run` is handed the flag and builds the statement itself rather than being
 // given a prebuilt query, because a Supabase builder can only be awaited once.
 
-type Result<T> = { data: T | null; error: { message: string } | null };
+// `code` rides along so a caller can still tell a missing *table* (42P01, "run
+// the migration") apart from a real failure after the retry.
+type Result<T> = { data: T | null; error: { message: string; code?: string } | null };
 
 export async function withOptionalColumn<T>(
   column: string | string[],

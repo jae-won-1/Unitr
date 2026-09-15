@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
+import { owedSummary, useAvailabilityGate } from "@/lib/availability-gate";
 import AvailabilityList, { type UpcomingEvent } from "@/components/AvailabilityList";
 
 // Answering the captain's availability poll without leaving home. Same options,
@@ -89,13 +89,20 @@ export default function AvailabilityModal({
 
   const showEvents = events.length > 0 && !!teamId;
 
-  // Unpaid joining fee blocks voting — same rule AvailabilityButtons applies
-  // to the fixture answers rendered further down this sheet.
-  const { owedPence: feeOwedPence, loading: feeLoading } = useJoiningFee(teamId, userId);
-  const feeBlocked = !feeLoading && feeOwedPence > 0;
+  // Money owed to the team — joining fee, unsettled match fees, or both —
+  // blocks putting yourself FORWARD, the same half-rule AvailabilityButtons
+  // applies to the fixture answers rendered further down this sheet
+  // (lib/availability-gate.ts). On a poll the two halves are picking dates
+  // (claiming a place) and "unavailable for any of these" (claiming nothing),
+  // so a player in arrears can still send the second: the captain gets a real
+  // answer instead of a silence they'd otherwise chase.
+  const gate = useAvailabilityGate(teamId, userId);
+  const blocked = !gate.loading && gate.blocked;
+  // A blocked player's only sendable answer is "none of these".
+  const blocksAnswer = blocked && !noneWork;
 
   const submit = async () => {
-    if (!request || feeBlocked) return;
+    if (!request || blocksAnswer) return;
     setSubmitting(true);
     setError(null);
     const ids = noneWork ? [] : selected;
@@ -113,7 +120,7 @@ export default function AvailabilityModal({
     onSubmitted(ids);
   };
 
-  const canSubmit = (selected.length > 0 || noneWork) && !submitting && !feeBlocked;
+  const canSubmit = (selected.length > 0 || noneWork) && !submitting && !blocksAnswer;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-scrim px-4" onClick={onClose}>
@@ -140,12 +147,13 @@ export default function AvailabilityModal({
                 : "Confirm whether you can play the games your team already has booked in."}
             </p>
 
-            {feeBlocked && (
+            {blocked && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-4">
                 <p className="text-xs text-red-600 font-semibold">
-                  Your {fmtFee(feeOwedPence)} joining fee is still due. Pay it via the Top Up
-                  button on Home to join and vote available for games — it goes into the
-                  team&rsquo;s credits for pitch and tournament fees.
+                  You still owe {owedSummary(gate)}. Pay it via the Top Up button on Home
+                  to vote available for games — it goes into the team&rsquo;s credits for
+                  pitch and tournament fees. You can still tell your captain you&rsquo;re
+                  unavailable.
                 </p>
               </div>
             )}
@@ -174,7 +182,11 @@ export default function AvailabilityModal({
             <div className="space-y-2 mb-4">
               {request.date_options.map((opt) => {
                 const picked = selected.includes(opt.id);
-                const disabled = noneWork;
+                // An unpaid player can drop a date they'd already picked — the
+                // "none of these" answer is only reachable with nothing
+                // selected, so taking picks away has to stay possible — but
+                // can't add one.
+                const disabled = noneWork || (blocked && !picked);
                 return (
                   <button
                     key={opt.id}

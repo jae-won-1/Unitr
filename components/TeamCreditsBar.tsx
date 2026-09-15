@@ -634,7 +634,8 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
             {role === "captain"
               ? "The fee you set applies to you too — top up that much to put it into the team's credit."
               : "Top up that much to pay it into the team's credit."}{" "}
-            Until it&apos;s paid you can&apos;t vote available for games.
+            Until it&apos;s paid you can&apos;t vote available for games — though you can
+            still say you&apos;re unavailable.
           </p>
         </div>
       )}
@@ -643,6 +644,8 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <p className="text-[11px] text-yellow-600">
             Your previous matches haven&apos;t been paid off. Top up your required amount above.
+            Until they are you can&apos;t vote available for games — though you can still say
+            you&apos;re unavailable.
           </p>
         </div>
       )}
