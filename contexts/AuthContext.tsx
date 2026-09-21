@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { hardNavigate } from "@/lib/hard-navigate";
 
 type AuthContextType = {
   user: User | null;
@@ -47,11 +48,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // user-scoped state the app is holding (role, team, cached queries) instead
   // of leaving it for the next person to sign in on this device. If Supabase
   // errors we still leave — the local session is gone either way.
+  //
+  // The leaving itself is in lib/hard-navigate so this file can be shared
+  // verbatim with the mobile app, which has no window to assign to.
   const signOut = async (redirectTo = "/") => {
     try {
       await supabase.auth.signOut();
     } finally {
-      window.location.assign(redirectTo);
+      hardNavigate(redirectTo);
     }
   };
 
