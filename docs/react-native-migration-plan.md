@@ -162,6 +162,60 @@ queries, rendered with `View`/`Text`/`Image` + NativeWind classes instead of JSX
 7. **Store submission** — Play internal testing track first (review in hours), TestFlight
    second (review in days), then public release.
 
+## Phase 0 outcome (done — 2026-09-21)
+
+Scaffolded `mobile/` on Expo SDK 57 (RN 0.86, React 19; the web app stays on React 18 in its
+own dependency tree). `web-fallback` tag cut and pushed at `667f757`. Root `tsconfig.json`
+now excludes `mobile` — its `include` was `**/*.ts`, which would otherwise typecheck RN files
+against the web's DOM config. Web app re-typechecked clean after that change.
+
+**The bridge works.** `mobile/src/app/index.tsx` imports `@shared/lib/match-dates` — the same
+file `app/calendar/page.tsx` uses — and Metro bundles it: 11/11 checks pass, executed from the
+shared module. Shared logic is confirmed shared by identity, not copied.
+
+Three things worth keeping:
+
+- **Metro must use `resolver.blockList`, not `disableHierarchicalLookup`.** The goal is to
+  stop Metro walking up into the web app's React 18. `disableHierarchicalLookup: true` does
+  that but is too blunt — it also breaks *nested* resolution inside `mobile/node_modules`.
+  Concretely: npm hoists `semver@6` to the top while `react-native-reanimated` needs `semver@7`
+  from its own nested copy; with hierarchical lookup off, reanimated gets v6, finds no
+  `semver/functions/satisfies` (a v7-only path) and the bundle dies with an error that looks
+  nothing like its cause. Blocking the one parent directory keeps nested resolution intact.
+- **Never assert exact formatted date strings.** `toLocaleDateString` with `weekday: "short"`
+  renders `"Sat 13 Jun"` on Node 24 and `"Sat, 13 Jun"` in browsers — the separator moves with
+  the engine's ICU version, and Hermes is a third data point. `fmtKickoff` output is therefore
+  matched on its meaningful parts, not character-for-character. Any later UI test over dates
+  should do the same.
+- **Hermes `Intl` — VERIFIED on device, 12/12.** The desk run only proved Node (Expo's static
+  web render) has full ICU, which says nothing about the phone; only `hermesc` (the compiler)
+  ships in `node_modules`, so it could not be settled off-device. Run through Expo Go on a
+  real handset, **all 12 checks pass** — including both Intl checks below. Hermes on SDK 57
+  therefore has the ICU support `lib/match-dates.ts` needs, and the date logic is correct on
+  device no matter which timezone a player opens the app from.
+
+  Kept here because the reasoning is what makes the result meaningful, and because a future
+  SDK bump or a switch to a slimmer Hermes build could reintroduce either failure. There is
+  exactly one `timeZone` usage in the whole codebase — `lib/match-dates.ts:60` — and it leans
+  on Intl twice, with very different stakes:
+
+  1. **The `sv-SE` locale — blocking, and unaffected by where the app is used.** Swedish
+     formatting is chosen because it yields a sortable `"YYYY-MM-DD HH:mm:ss"`. If Hermes
+     lacks the locale and falls back to en-US (`"1/15/2026, 12:00:00 PM"`), the string
+     comparison in `isKickoffPast` inverts — `"2026-…" < "1/15/…"` is false — and **nothing is
+     ever past**. `GameFeed` stops filtering played games, `event-availability` keeps every
+     finished fixture in Upcoming, `SuggestionsStrip` suggests games that already happened,
+     and the event take-down button never hides after kickoff, which is a refund path. This
+     fails in London exactly as badly as anywhere else.
+  2. **The `timeZone` option — not blocking while the app is UK-only.** If Hermes ignores it,
+     the fallback is device-local time, and for players in London on UK-set phones that *is*
+     Europe/London. Checked anyway because it costs nothing and becomes load-bearing the
+     moment anyone opens the app from another timezone.
+
+  Minor, same family: `lib/event-revenue.ts:102` formats money with
+  `toLocaleString(undefined, { minimumFractionDigits: 2 })`. If Hermes ignores those options,
+  £12.50 renders as "£12.5" — cosmetic, but on money, so worth a look on device.
+
 ## Non-coding prerequisites (the user's side, not Claude Code's)
 
 - **Apple Developer Program** ($99/yr) — start immediately, longest lead time in the whole

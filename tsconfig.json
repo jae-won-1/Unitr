@@ -23,5 +23,6 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "//": "mobile/ is the Expo app. It has its own tsconfig with RN types and its own React Native module resolution; leaving it in the include glob above would typecheck it against this DOM config and fail the web build.",
+  "exclude": ["node_modules", "mobile"]
 }
