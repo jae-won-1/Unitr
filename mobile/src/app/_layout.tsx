@@ -1,8 +1,16 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
+} from '@expo-google-fonts/poppins';
 
 // Both providers are the WEB APP'S OWN FILES, imported unchanged from the repo
 // root — not ports. RoleContext needed no adjustment at all (it is pure logic
@@ -12,7 +20,7 @@ import * as SplashScreen from 'expo-splash-screen';
 // implementation for both clients.
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { RoleProvider, useRole } from '@/contexts/RoleContext';
-import { theme } from '~/theme';
+import { colors } from '~/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,6 +36,7 @@ function Gate({ children }: { children: React.ReactNode }) {
   const { role, roleLoading } = useRole();
   const segments = useSegments();
   const router = useRouter();
+  const theme = colors[useColorScheme() === 'dark' ? 'dark' : 'light'];
 
   // Role only matters once there is someone to have a role.
   const waiting = authLoading || (!!session && roleLoading);
@@ -58,8 +67,8 @@ function Gate({ children }: { children: React.ReactNode }) {
 
   if (waiting) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg }}>
-        <ActivityIndicator color={theme.greenBright} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background }}>
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
@@ -67,15 +76,33 @@ function Gate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  const scheme = useColorScheme();
+  const theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+
+  // Matches app/layout.tsx's next/font/google Poppins config: weights
+  // 400–800. Web fonts and RN fonts load through entirely different
+  // mechanisms, so this is the one screen-shell piece that has no shared
+  // source to import — everything it loads still names the same typeface and
+  // weights, not a substitute.
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
+  });
+
+  if (!fontsLoaded) return null; // splash screen is still showing
+
   return (
     <AuthProvider>
       <RoleProvider>
-        <StatusBar style="light" />
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <Gate>
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: theme.bg },
+              contentStyle: { backgroundColor: theme.background },
               animation: 'fade',
             }}
           />

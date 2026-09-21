@@ -49,6 +49,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Sign in / create account | `app/login`, `app/register` | `008f735` | Phase 1 — email+password only; the registration questionnaire lands with the profile screens |
 | Root gate + venue notice | `contexts/RoleContext.tsx` | `008f735` | Phase 1 — done. Venue portal deliberately out of v1 |
 | Tab shell (Home/Calendar/My Team) | `components/BottomNav.tsx` | `008f735` | Phase 1 — done |
+| Theme (colors, radii, shadow, font) | `tailwind.config.ts`, `app/globals.css`, `app/layout.tsx` | `008f735` | Phase 1 — done. See `src/theme.ts`; dark mode is an addition, the web app has none |
 | Home | `app/page.tsx`, `components/GameFeed.tsx` | — | **not started** (Phase 2) |
 | Calendar | `app/calendar/page.tsx` | — | **not started** (Phase 2) |
 | My Team | `app/my-team/page.tsx` | — | **not started** (Phase 2 · 4) |

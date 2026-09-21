@@ -12,21 +12,24 @@
 import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { theme } from '~/theme';
+import { fonts } from '~/theme';
+import { useTheme } from '~/use-theme';
 
 export default function TabsLayout() {
+  const theme = useTheme();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.greenBright,
-        tabBarInactiveTintColor: theme.textFaint,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: {
           backgroundColor: theme.surface,
           borderTopColor: theme.border,
         },
-        tabBarLabelStyle: { fontSize: 11 },
-        sceneStyle: { backgroundColor: theme.bg },
+        tabBarLabelStyle: { fontSize: 11, fontFamily: fonts.medium },
+        sceneStyle: { backgroundColor: theme.background },
       }}>
       <Tabs.Screen
         name="index"

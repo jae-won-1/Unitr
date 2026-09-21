@@ -10,7 +10,8 @@ import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/contexts/RoleContext';
-import { theme } from '~/theme';
+import { fonts, radius, cardShadow } from '~/theme';
+import { useTheme } from '~/use-theme';
 
 const ROLE_BLURB: Record<string, string> = {
   new_user: 'No team yet — Home will show teams to join and the Fill In feed.',
@@ -21,6 +22,8 @@ const ROLE_BLURB: Record<string, string> = {
 };
 
 export default function Home() {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
   const { user, signOut } = useAuth();
   const { role, roleLoading, isCoCaptain } = useRole();
 
@@ -52,31 +55,44 @@ export default function Home() {
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: theme.bg },
-  content: { padding: 22, paddingTop: 64, gap: 6 },
-  hello: { color: theme.textDim, fontSize: 13 },
-  email: { color: theme.text, fontSize: 21, fontWeight: '700', marginBottom: 20 },
-  card: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 13,
-    padding: 17,
-    gap: 7,
-  },
-  cardLabel: { color: theme.textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
-  role: { color: theme.greenBright, fontSize: 22, fontWeight: '800' },
-  co: { color: theme.textDim, fontSize: 13, fontWeight: '600' },
-  blurb: { color: theme.textDim, fontSize: 13, lineHeight: 20 },
-  note: { color: theme.textFaint, fontSize: 12, lineHeight: 18, marginTop: 18 },
-  signOut: {
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 26,
-  },
-  signOutText: { color: theme.danger, fontSize: 14, fontWeight: '600' },
-});
+const makeStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    page: { flex: 1, backgroundColor: theme.background },
+    content: { padding: 22, paddingTop: 64, gap: 6 },
+    hello: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },
+    email: {
+      color: theme.textPrimary,
+      fontFamily: fonts.bold,
+      fontSize: 21,
+      marginBottom: 20,
+    },
+    card: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
+      padding: 17,
+      gap: 7,
+      ...cardShadow,
+    },
+    cardLabel: {
+      color: theme.textSecondary,
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    role: { color: theme.accentInk, fontFamily: fonts.extrabold, fontSize: 22 },
+    co: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
+    blurb: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20 },
+    note: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, marginTop: 18 },
+    signOut: {
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.btn,
+      paddingVertical: 13,
+      alignItems: 'center',
+      marginTop: 26,
+    },
+    signOutText: { color: theme.danger, fontFamily: fonts.semibold, fontSize: 14 },
+  });

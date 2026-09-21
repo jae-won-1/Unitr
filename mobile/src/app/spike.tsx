@@ -1,4 +1,10 @@
-// PHASE 0 BRIDGE SPIKE — delete once Phase 1 puts a real screen here.
+// PHASE 0 BRIDGE SPIKE — a developer diagnostic, not a real app screen.
+//
+// NOT reachable from sign-in or the tabs — only by navigating to /spike by
+// hand. Deliberately styled as an engineering console (dark, monospace
+// detail lines) rather than in the app's brand theme, so it always reads as
+// "diagnostics", never as an actual screen. If this is what you saw when
+// first opening the app in Expo Go, the real thing is at /sign-in.
 //
 // This screen exists to answer one question before any porting work is built on
 // top of it: does the mobile app actually get to run the web app's business

@@ -27,9 +27,13 @@ import {
 import { router } from 'expo-router';
 
 import { supabase } from '@/lib/supabase';
-import { theme } from '~/theme';
+import { fonts, radius, cardShadow } from '~/theme';
+import { useTheme } from '~/use-theme';
 
 export default function SignIn() {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,7 +96,7 @@ export default function SignIn() {
             autoComplete="email"
             keyboardType="email-address"
             placeholder="you@example.com"
-            placeholderTextColor={theme.textFaint}
+            placeholderTextColor={theme.textSecondary}
             editable={!busy}
           />
 
@@ -105,7 +109,7 @@ export default function SignIn() {
             autoCapitalize="none"
             autoComplete={creating ? 'new-password' : 'current-password'}
             placeholder={creating ? 'At least 6 characters' : 'Your password'}
-            placeholderTextColor={theme.textFaint}
+            placeholderTextColor={theme.textSecondary}
             editable={!busy}
             onSubmitEditing={submit}
             returnKeyType="go"
@@ -142,44 +146,65 @@ export default function SignIn() {
   );
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: theme.bg },
-  content: { flexGrow: 1, justifyContent: 'center', padding: 24, gap: 6 },
-  brand: { color: theme.greenBright, fontSize: 34, fontWeight: '800', textAlign: 'center' },
-  tagline: {
-    color: theme.textDim,
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 26,
-  },
-  card: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 18,
-  },
-  label: { color: theme.textDim, fontSize: 12, marginBottom: 6, marginTop: 10 },
-  input: {
-    backgroundColor: theme.bg,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    color: theme.text,
-    fontSize: 15,
-  },
-  error: { color: theme.danger, fontSize: 13, marginTop: 14, lineHeight: 18 },
-  notice: { color: theme.greenBright, fontSize: 13, marginTop: 14, lineHeight: 18 },
-  button: {
-    backgroundColor: theme.green,
-    borderRadius: 9,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  buttonPressed: { opacity: 0.75 },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  toggle: { color: theme.textDim, fontSize: 13, textAlign: 'center', marginTop: 22 },
-});
+const makeStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    page: { flex: 1, backgroundColor: theme.background },
+    content: { flexGrow: 1, justifyContent: 'center', padding: 24, gap: 6 },
+    brand: {
+      color: theme.accent,
+      fontFamily: fonts.extrabold,
+      fontSize: 34,
+      textAlign: 'center',
+    },
+    tagline: {
+      color: theme.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      textAlign: 'center',
+      marginBottom: 26,
+    },
+    card: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
+      padding: 18,
+      ...cardShadow,
+    },
+    label: {
+      color: theme.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      marginBottom: 6,
+      marginTop: 10,
+    },
+    input: {
+      backgroundColor: theme.panel,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.btn,
+      paddingHorizontal: 13,
+      paddingVertical: 12,
+      color: theme.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+    },
+    error: { color: theme.danger, fontFamily: fonts.regular, fontSize: 13, marginTop: 14, lineHeight: 18 },
+    notice: { color: theme.accentInk, fontFamily: fonts.regular, fontSize: 13, marginTop: 14, lineHeight: 18 },
+    button: {
+      backgroundColor: theme.accent,
+      borderRadius: radius.btn,
+      paddingVertical: 15,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    buttonPressed: { opacity: 0.8 },
+    buttonText: { color: '#fff', fontFamily: fonts.semibold, fontSize: 15 },
+    toggle: {
+      color: theme.textSecondary,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      textAlign: 'center',
+      marginTop: 22,
+    },
+  });

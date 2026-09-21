@@ -7,7 +7,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { theme } from '~/theme';
+import { fonts, radius } from '~/theme';
+import { useTheme } from '~/use-theme';
 
 export function PhaseStub({
   icon,
@@ -20,9 +21,12 @@ export function PhaseStub({
   phase: string;
   children: string;
 }) {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
+
   return (
     <View style={styles.wrap}>
-      <Ionicons name={icon} size={38} color={theme.textFaint} />
+      <Ionicons name={icon} size={38} color={theme.textSecondary} />
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{children}</Text>
       <View style={styles.badge}>
@@ -32,24 +36,26 @@ export function PhaseStub({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 34,
-    gap: 12,
-    backgroundColor: theme.bg,
-  },
-  title: { color: theme.text, fontSize: 19, fontWeight: '700' },
-  body: { color: theme.textDim, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  badge: {
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginTop: 6,
-  },
-  badgeText: { color: theme.textFaint, fontSize: 11, fontWeight: '600' },
-});
+const makeStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    wrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 34,
+      gap: 12,
+      backgroundColor: theme.background,
+    },
+    title: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 19 },
+    body: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+    badge: {
+      backgroundColor: theme.panel,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      marginTop: 6,
+    },
+    badgeText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 11 },
+  });

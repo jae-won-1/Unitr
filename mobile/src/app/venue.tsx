@@ -10,16 +10,19 @@ import { Pressable, StyleSheet, Text, View, Linking } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { theme } from '~/theme';
+import { fonts, radius } from '~/theme';
+import { useTheme } from '~/use-theme';
 
 const PORTAL = 'https://unitr-omega.vercel.app/venue';
 
 export default function Venue() {
+  const theme = useTheme();
+  const styles = makeStyles(theme);
   const { signOut } = useAuth();
 
   return (
     <View style={styles.wrap}>
-      <Ionicons name="business-outline" size={40} color={theme.textFaint} />
+      <Ionicons name="business-outline" size={40} color={theme.textSecondary} />
       <Text style={styles.title}>Venue account</Text>
       <Text style={styles.body}>
         Bookings, pitches, customers and payouts are on the web app for now. The venue portal
@@ -27,7 +30,7 @@ export default function Venue() {
       </Text>
 
       <Pressable
-        style={({ pressed }) => [styles.button, pressed && { opacity: 0.75 }]}
+        style={({ pressed }) => [styles.button, pressed && { opacity: 0.8 }]}
         onPress={() => Linking.openURL(PORTAL)}>
         <Text style={styles.buttonText}>Open the venue portal</Text>
       </Pressable>
@@ -39,24 +42,25 @@ export default function Venue() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 34,
-    gap: 13,
-    backgroundColor: theme.bg,
-  },
-  title: { color: theme.text, fontSize: 20, fontWeight: '700' },
-  body: { color: theme.textDim, fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  button: {
-    backgroundColor: theme.green,
-    borderRadius: 9,
-    paddingVertical: 14,
-    paddingHorizontal: 26,
-    marginTop: 8,
-  },
-  buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  signOut: { color: theme.textFaint, fontSize: 13, marginTop: 14 },
-});
+const makeStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    wrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 34,
+      gap: 13,
+      backgroundColor: theme.background,
+    },
+    title: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 20 },
+    body: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, textAlign: 'center' },
+    button: {
+      backgroundColor: theme.accent,
+      borderRadius: radius.btn,
+      paddingVertical: 14,
+      paddingHorizontal: 26,
+      marginTop: 8,
+    },
+    buttonText: { color: '#fff', fontFamily: fonts.semibold, fontSize: 15 },
+    signOut: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13, marginTop: 14 },
+  });
