@@ -41,7 +41,14 @@ import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { kindTints } from '~/kind-style';
 import { FixtureDetailSheet } from '~/components/fixture-detail-sheet';
+import { CalendarSheet } from '~/components/calendar-sheet';
 import { useIsDark, useTheme } from '~/use-theme';
+
+// "2026-10-04" → "Sun 4 Oct", for the pill once a date is picked.
+function fmtDayLabel(key: string): string {
+  const d = new Date(`${key}T12:00:00`);
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
 
 type Filter = 'all' | EntryKind;
 
@@ -138,6 +145,9 @@ export default function Calendar() {
   const [filter, setFilter] = useState<Filter>('all');
   const [open, setOpen] = useState<CalendarEntry | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [gridOpen, setGridOpen] = useState(false);
+  /** Scope both sections to one date, or null for everything. */
+  const [dateKey, setDateKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -164,7 +174,9 @@ export default function Calendar() {
   // A player has no posts of their own, so the chip would filter to nothing.
   const chips = FILTERS.filter((f) => f.key !== 'my_post' || isCaptain);
 
-  const shown = entries.filter((e) => filter === 'all' || e.kind === filter);
+  const shown = entries.filter(
+    (e) => (filter === 'all' || e.kind === filter) && (!dateKey || e.date === dateKey),
+  );
   const upcoming = shown.filter((e) => e.isUpcoming).sort(compareEntries);
   const past = shown.filter((e) => !e.isUpcoming).sort(compareEntries);
 
@@ -192,13 +204,24 @@ export default function Calendar() {
           theme={theme}
           styles={styles}
         />
-        {/* The month-grid sheet is not ported yet. Greyed rather than hidden,
-            per the house convention — a missing element shifts everything
-            around it and breaks muscle memory. */}
-        <View style={[styles.datePill, styles.datePillOff]}>
-          <Ionicons name="calendar-outline" size={15} color={theme.textSecondary} />
-          <Text style={styles.datePillText}>Calendar</Text>
-        </View>
+        {/* Scoped to a date, the pill takes the success tint so the filter is
+            visible without reading it — the same signal the web pill uses. */}
+        <Pressable
+          onPress={() => setGridOpen(true)}
+          style={({ pressed }) => [
+            styles.datePill,
+            dateKey && styles.datePillOn,
+            pressed && { opacity: 0.75 },
+          ]}>
+          <Ionicons
+            name="calendar-outline"
+            size={15}
+            color={dateKey ? theme.accentInk : theme.textSecondary}
+          />
+          <Text style={[styles.datePillText, dateKey && styles.datePillTextOn]}>
+            {dateKey ? fmtDayLabel(dateKey) : 'Calendar'}
+          </Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -288,6 +311,17 @@ export default function Calendar() {
         )}
       />
 
+      {gridOpen && (
+        <CalendarSheet
+          // The grid shows every entry regardless of the kind filter, so a date
+          // is never shown as empty just because a chip is narrowing the list.
+          entries={entries}
+          selected={dateKey}
+          onSelect={setDateKey}
+          onClose={() => setGridOpen(false)}
+        />
+      )}
+
       {user && (
         <FixtureDetailSheet
           entry={open}
@@ -363,8 +397,9 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       paddingHorizontal: 14,
       paddingVertical: 10,
     },
-    datePillOff: { opacity: 0.45 },
+    datePillOn: { backgroundColor: theme.successBg, borderColor: theme.successBorder },
     datePillText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
+    datePillTextOn: { color: theme.accentInk },
     list: { padding: 20, paddingBottom: 40, gap: 26 },
     section: { gap: 10 },
     sectionTitle: {
