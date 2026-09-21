@@ -8,9 +8,13 @@
 // "Corner routine" — visible to the whole squad and pullable into any fixture
 // from Manage Match > Tactics.
 //
-// Presets hold shape and instructions, not players. A preset outlives any given
-// squad list, and pinning names into it would mean every transfer quietly
-// corrupted the plan. Player assignment happens per-fixture, on the lineup board.
+// A preset holds shape, instructions, and — optionally — the players in it.
+// Naming players was left out at first because a preset outlives any given squad
+// list and a transfer would quietly corrupt the plan. It's in now because a shape
+// with nobody in it isn't the tactic a captain actually has in mind, and the
+// corruption worry is handled by resolving every assigned id against the CURRENT
+// squad at render time: somebody who has left leaves an empty slot, never a ghost
+// name, and re-saving drops them.
 //
 // Captains author. Players read.
 
@@ -31,6 +35,9 @@ export type TeamTactic = {
   style: string | null;
   pressing: string | null;
   notes: string | null;
+  /** { [formationSlotIndex]: player_id } — the same shape as match_tactics.lineup,
+   *  so loading a preset into a fixture is a straight copy. */
+  lineup: Record<number, string>;
 };
 
 const MISSING_TABLE_MSG = "Saved tactics aren't set up yet — run supabase_team_tactics.sql.";
@@ -39,48 +46,181 @@ const MISSING_TABLE_MSG = "Saved tactics aren't set up yet — run supabase_team
 export async function loadTeamTactics(teamId: string): Promise<TeamTactic[] | null> {
   const { data, error } = await supabase
     .from("team_tactics")
-    .select("id, team_id, title, situation, formation, style, pressing, notes")
+    .select("id, team_id, title, situation, formation, style, pressing, notes, lineup")
     .eq("team_id", teamId)
     .order("created_at", { ascending: false });
   // null means "the table isn't there", which the caller renders as a disabled
   // explanation. An empty array means "no presets yet" — a different message.
   if (error) return null;
-  return (data ?? []) as TeamTactic[];
+  return ((data ?? []) as TeamTactic[]).map((t) => ({ ...t, lineup: t.lineup ?? {} }));
 }
 
-// ── Pitch preview ─────────────────────────────────────────────────────
-function PitchPreview({ formation }: { formation: string }) {
+// ── The squad a preset can name ───────────────────────────────────────
+export type SquadOption = { id: string; name: string; position: string | null };
+
+/**
+ * Everyone who could be put on the board: the captain plus every approved
+ * member. The captain has no team_members row of their own, so they're fetched
+ * and prepended — and teams.captain_id → profiles has no registered FK, so that
+ * has to be a second query rather than an embedded select.
+ */
+export async function loadSquadOptions(teamId: string): Promise<SquadOption[]> {
+  const { data: team } = await supabase
+    .from("teams").select("captain_id").eq("id", teamId).maybeSingle();
+  const { data: rows } = await supabase
+    .from("team_members")
+    .select("player_id, profiles(full_name, position)")
+    .eq("team_id", teamId)
+    .eq("status", "approved");
+
+  const out: SquadOption[] = [];
+  if (team?.captain_id) {
+    const { data: cap } = await supabase
+      .from("profiles").select("full_name, position").eq("id", team.captain_id).maybeSingle();
+    out.push({ id: team.captain_id, name: cap?.full_name ?? "Captain", position: cap?.position ?? null });
+  }
+  const members = (rows ?? []) as unknown as {
+    player_id: string; profiles: { full_name: string | null; position: string | null } | null;
+  }[];
+  for (const r of members) {
+    if (r.player_id === team?.captain_id) continue;
+    out.push({ id: r.player_id, name: r.profiles?.full_name ?? "Player", position: r.profiles?.position ?? null });
+  }
+  return out;
+}
+
+// ── Pitch board ───────────────────────────────────────────────────────
+// Same construction as the fixture lineup boards (Manage Match, Manage
+// Tournament Fixture): an SVG for the markings, HTML buttons positioned over it
+// for the players, so a slot is a real tap target rather than a 5px circle.
+function LineupBoard({
+  formation, lineup, nameById, onSlotTap,
+}: {
+  formation: string;
+  lineup: Record<number, string>;
+  /** Names of players still in the squad. An id missing here renders empty. */
+  nameById: Map<string, string>;
+  onSlotTap?: (slot: number) => void;
+}) {
   // A preset carries no size of its own — the formation key is the size, since
-  // keys are unique across them. A 2-3-1 preview gets seven dots, not eleven.
+  // keys are unique across them. A 2-3-1 board gets seven dots, not eleven.
   const slots = slotsFor(formation, sizeOfFormation(formation));
   return (
-    <svg viewBox="0 0 100 130" className="w-full rounded-xl bg-[#0d2818] border border-border">
-      <rect x="1" y="1" width="98" height="128" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
-      <line x1="1" y1="65" x2="99" y2="65" stroke="#2a4a35" strokeWidth="0.5" />
-      <circle cx="50" cy="65" r="12" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
-      <rect x="30" y="1" width="40" height="16" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
-      <rect x="30" y="113" width="40" height="16" fill="none" stroke="#2a4a35" strokeWidth="0.5" />
-      {slots.map((s, i) => (
-        <g key={i}>
-          <circle cx={s.x} cy={(s.y / 100) * 130} r="5" fill="#0E7A3C" />
-          <text x={s.x} y={(s.y / 100) * 130 + 1.8} textAnchor="middle" fontSize="3.4" fontWeight="700" fill="#000">
-            {s.position}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <div
+      className="relative w-full rounded-xl overflow-hidden"
+      style={{ paddingBottom: "130%", background: "linear-gradient(180deg,#1a5c1a 0%,#1e6b1e 25%,#1a5c1a 50%,#1e6b1e 75%,#1a5c1a 100%)" }}
+    >
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 130" preserveAspectRatio="none">
+        <rect x="5" y="5" width="90" height="120" rx="1" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+        <line x1="5" y1="65" x2="95" y2="65" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+        <circle cx="50" cy="65" r="10" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+        <rect x="22" y="5" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+        <rect x="22" y="107" width="56" height="18" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.5" />
+      </svg>
+      {slots.map((pos, i) => {
+        const name = nameById.get(lineup[i] ?? "") ?? "";
+        const initials = name ? name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "";
+        return (
+          <button
+            key={i} type="button" disabled={!onSlotTap}
+            onClick={() => onSlotTap?.(i)}
+            className="absolute flex flex-col items-center gap-0.5"
+            style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%,-50%)" }}
+          >
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg border-2 ${
+              name ? "bg-white border-white/80" : "bg-black/30 border-dashed border-white/50"}`}>
+              <span className={`text-[10px] font-bold leading-none ${name ? "text-text-primary" : "text-white/80"}`}>
+                {name ? initials : pos.position}
+              </span>
+            </div>
+            <span className="text-[9px] font-semibold text-white drop-shadow-md bg-black/40 rounded px-1 truncate max-w-[52px] text-center">
+              {name ? name.split(" ")[0] : pos.position}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Player picker ─────────────────────────────────────────────────────
+// z-[70], not the house z-[60]: this one opens on top of the editor sheet,
+// which is itself z-[60], and at equal z it would paint underneath it.
+function SlotPicker({
+  slots, squad, lineup, slot, onPick, onClear, onClose,
+}: {
+  slots: { position: string }[];
+  squad: SquadOption[];
+  lineup: Record<number, string>;
+  slot: number;
+  onPick: (playerId: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  // The scrim stops propagation as well as closing: this renders inside the
+  // editor sheet, whose own scrim would otherwise close the editor underneath.
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-scrim"
+      onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[70dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
+        <div className="p-4 flex flex-col gap-2 overflow-hidden">
+          <div className="flex items-center justify-between flex-shrink-0">
+            <p className="font-bold text-base">Assign {slots[slot]?.position}</p>
+            <button type="button" onClick={onClose} aria-label="Close">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div className="space-y-2 overflow-y-auto">
+            {lineup[slot] && (
+              <button type="button" onClick={onClear}
+                className="w-full text-left px-3 py-2.5 rounded-xl border border-red-500/30 text-red-600 text-sm font-semibold">
+                Clear this position
+              </button>
+            )}
+            {squad.length === 0 && (
+              <p className="text-sm text-text-secondary py-2">No squad members yet — approve some players first.</p>
+            )}
+            {squad.map((p) => {
+              const assignedEntry = Object.entries(lineup).find(([, pid]) => pid === p.id);
+              const here = assignedEntry !== undefined && Number(assignedEntry[0]) === slot;
+              const init = p.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              return (
+                <button key={p.id} type="button" onClick={() => onPick(p.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left ${
+                    here ? "bg-accent/10 border-accent" : "bg-surface-2 border-border"}`}>
+                  <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-semibold text-text-secondary">{init}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm truncate">{p.name}</p>
+                    {p.position && <p className="text-[11px] text-text-secondary">{p.position}</p>}
+                  </div>
+                  {assignedEntry !== undefined && (
+                    <span className="text-[10px] text-text-secondary flex-shrink-0">
+                      {here ? "Here" : slots[Number(assignedEntry[0])]?.position}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ── Editor ────────────────────────────────────────────────────────────
 function TacticEditor({
-  teamId, userId, existing, teamSize, onDone, onCancel,
+  teamId, userId, existing, teamSize, squad, onDone, onCancel,
 }: {
   teamId: string;
   userId: string;
   existing: TeamTactic | null;
   /** The team's own format, which a new setup starts on. */
   teamSize: TeamSize;
+  squad: SquadOption[];
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -96,8 +236,19 @@ function TacticEditor({
   const [style, setStyle] = useState<string | null>(existing?.style ?? null);
   const [pressing, setPressing] = useState<string | null>(existing?.pressing ?? null);
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [lineup, setLineup] = useState<Record<number, string>>(existing?.lineup ?? {});
+  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const slots = slotsFor(formation, size);
+  const nameById = new Map(squad.map((p) => [p.id, p.name]));
+  // Only slots that exist on this board, and only players still in the squad —
+  // what the captain is looking at is what gets written.
+  const visibleLineup = Object.fromEntries(
+    Object.entries(lineup).filter(([i, pid]) => Number(i) < slots.length && nameById.has(pid))
+  ) as Record<number, string>;
+  const assignedCount = Object.keys(visibleLineup).length;
 
   async function save() {
     if (!title.trim()) { setError("Give this setup a name so you can find it later."); return; }
@@ -112,6 +263,9 @@ function TacticEditor({
       style,
       pressing,
       notes: notes.trim() || null,
+      // A squad that failed to load would otherwise wipe a lineup the captain
+      // never touched, so the pruned version is only trusted when there is one.
+      lineup: squad.length > 0 ? visibleLineup : lineup,
       updated_at: new Date().toISOString(),
     };
 
@@ -162,7 +316,10 @@ function TacticEditor({
             <div className="flex flex-wrap gap-2 mb-4">
               {TEAM_SIZES.map((n) => (
                 <button key={n} type="button"
-                  onClick={() => { setSize(n); setFormation(defaultFormationFor(n)); }}
+                  // A lineup is keyed by slot index, and a different size is a
+                  // different board — carrying the old indexes over would move
+                  // players to positions nobody picked.
+                  onClick={() => { setSize(n); setFormation(defaultFormationFor(n)); setLineup({}); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                     size === n ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
                   {formatLabelForSize(n)}
@@ -182,7 +339,26 @@ function TacticEditor({
                 </button>
               ))}
             </div>
-            <PitchPreview formation={formation} />
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                {assignedCount} of {slots.length} assigned
+              </span>
+              <span className="text-[10px] text-text-secondary">Tap a position to assign</span>
+            </div>
+            <LineupBoard
+              formation={formation} lineup={visibleLineup} nameById={nameById}
+              onSlotTap={setPickerSlot}
+            />
+            {assignedCount > 0 && (
+              <button type="button" onClick={() => setLineup({})}
+                className="mt-2 text-[11px] font-semibold text-text-secondary underline">
+                Clear all players
+              </button>
+            )}
+            <p className="text-[11px] text-text-secondary mt-2">
+              Optional — a setup saved with players in it loads them straight onto a fixture&apos;s
+              lineup board, minus anyone unavailable for that game.
+            </p>
           </div>
 
           <div>
@@ -232,20 +408,45 @@ function TacticEditor({
           </div>
         </div>
       </div>
+
+      {pickerSlot !== null && (
+        <SlotPicker
+          slots={slots} squad={squad} lineup={visibleLineup} slot={pickerSlot}
+          onPick={(playerId) => {
+            setLineup((prev) => {
+              const next = { ...prev };
+              // One slot per player — drop any prior slot they held.
+              for (const k of Object.keys(next)) if (next[Number(k)] === playerId) delete next[Number(k)];
+              next[pickerSlot] = playerId;
+              return next;
+            });
+            setPickerSlot(null);
+          }}
+          onClear={() => {
+            setLineup((prev) => { const next = { ...prev }; delete next[pickerSlot]; return next; });
+            setPickerSlot(null);
+          }}
+          onClose={() => setPickerSlot(null)}
+        />
+      )}
     </div>
   );
 }
 
 // ── Card ──────────────────────────────────────────────────────────────
 function TacticCard({
-  tactic, isCaptain, onEdit, onDelete,
+  tactic, isCaptain, nameById, onEdit, onDelete,
 }: {
   tactic: TeamTactic;
   isCaptain: boolean;
+  /** Current squad. A player who has left resolves to nothing and their slot
+   *  reads as unfilled, rather than the preset naming somebody who's gone. */
+  nameById: Map<string, string>;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const assigned = Object.values(tactic.lineup).filter((pid) => nameById.has(pid)).length;
   return (
     <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -258,7 +459,8 @@ function TacticCard({
           <p className="text-sm font-bold truncate">{tactic.title}</p>
           <p className="text-xs text-text-secondary mt-0.5">
             {[formatLabelForSize(sizeOfFormation(tactic.formation)), tactic.formation, tactic.style,
-              tactic.pressing && `${tactic.pressing} press`].filter(Boolean).join(" · ")}
+              tactic.pressing && `${tactic.pressing} press`,
+              assigned > 0 && `${assigned} named`].filter(Boolean).join(" · ")}
           </p>
         </button>
         <span className="text-text-secondary text-xs flex-shrink-0 mt-1">{open ? "▲" : "▼"}</span>
@@ -266,7 +468,7 @@ function TacticCard({
 
       {open && (
         <div className="mt-3 pt-3 border-t border-border space-y-3">
-          <PitchPreview formation={tactic.formation} />
+          <LineupBoard formation={tactic.formation} lineup={tactic.lineup} nameById={nameById} />
           {tactic.notes && <p className="text-xs text-text-secondary whitespace-pre-wrap">{tactic.notes}</p>}
           {isCaptain && (
             <div className="flex gap-2">
@@ -296,6 +498,7 @@ export default function TacticsTab({
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<TeamTactic | null | undefined>(undefined); // undefined = closed
   const [teamSize, setTeamSize] = useState<TeamSize>(teamSizeFromFormat(null));
+  const [squad, setSquad] = useState<SquadOption[]>([]);
 
   const load = useCallback(async () => {
     const rows = await loadTeamTactics(teamId);
@@ -312,6 +515,10 @@ export default function TacticsTab({
     supabase.from("teams").select("format").eq("id", teamId).maybeSingle()
       .then(({ data }) => setTeamSize(teamSizeFromFormat(data?.format)));
   }, [teamId]);
+
+  useEffect(() => { loadSquadOptions(teamId).then(setSquad); }, [teamId]);
+
+  const nameById = new Map(squad.map((p) => [p.id, p.name]));
 
   async function remove(id: string) {
     await supabase.from("team_tactics").delete().eq("id", id);
@@ -364,7 +571,7 @@ export default function TacticsTab({
         <div className="space-y-3">
           {tactics.map((t) => (
             <TacticCard
-              key={t.id} tactic={t} isCaptain={isCaptain}
+              key={t.id} tactic={t} isCaptain={isCaptain} nameById={nameById}
               onEdit={() => setEditing(t)}
               onDelete={() => remove(t.id)}
             />
@@ -374,7 +581,7 @@ export default function TacticsTab({
 
       {editing !== undefined && (
         <TacticEditor
-          teamId={teamId} userId={userId} existing={editing} teamSize={teamSize}
+          teamId={teamId} userId={userId} existing={editing} teamSize={teamSize} squad={squad}
           onDone={() => { setEditing(undefined); load(); }}
           onCancel={() => setEditing(undefined)}
         />

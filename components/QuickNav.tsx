@@ -42,13 +42,9 @@ export default function QuickNav() {
       reason: noTeam ? "Join or register a team first" : "Only your captain can post a match",
     },
     { label: "Book a Pitch", href: user ? "/book" : "/login", icon: ICONS.pitch },
-    {
-      label: "Transfer Market",
-      href: "/my-team/transfer",
-      icon: ICONS.transfer,
-      disabled: noTeam,
-      reason: "Join or register a team first",
-    },
+    // Open to every role, signed in or not — the market page itself sends a
+    // signed-out visitor to register the moment they try to act on it.
+    { label: "Transfer Market", href: "/my-team/transfer", icon: ICONS.transfer },
     { label: "Stats", href: user ? "/profile" : "/login", icon: ICONS.stats },
   ];
 

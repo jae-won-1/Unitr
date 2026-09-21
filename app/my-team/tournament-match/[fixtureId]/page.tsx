@@ -571,8 +571,16 @@ export default function ManageTournamentFixturePage({ params }: { params: { fixt
                         <button key={p.id} type="button"
                           onClick={() => {
                             // A copy, not a live link — editing this game's plan
-                            // must never rewrite the team's template.
-                            setTac({ formation: p.formation, style: p.style, notes: p.notes ?? "" });
+                            // must never rewrite the team's template. A preset's
+                            // named players come with it, minus anyone who has
+                            // left the squad or ruled themselves out of this one.
+                            const eligible = new Set(candidates.map((c) => c.player_id));
+                            setTac({
+                              formation: p.formation, style: p.style, notes: p.notes ?? "",
+                              lineup: Object.fromEntries(
+                                Object.entries(p.lineup ?? {}).filter(([, pid]) => eligible.has(pid))
+                              ) as Record<number, string>,
+                            });
                             setPresetPickerOpen(false);
                           }}
                           className="w-full text-left bg-surface border border-border rounded-btn p-3">

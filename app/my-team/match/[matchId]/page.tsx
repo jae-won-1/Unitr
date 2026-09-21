@@ -639,10 +639,19 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
 
   // Copies a saved preset's values in. Deliberately a copy, not a live link:
   // once loaded, editing this match's plan must not rewrite the team's template.
+  // A preset can name players too, and those come across filtered to who can
+  // actually play this game — anyone who has left the squad or ruled themselves
+  // out leaves their slot empty rather than quietly picking itself.
   const applyPreset = (p: TeamTactic) => {
     setFormation(p.formation);
     setStyle(p.style);
     setNotes(p.notes ?? "");
+    const eligible = new Set(
+      confirmations.filter((c) => c.team_id === myTeamId && c.status !== "declined").map((c) => c.player_id)
+    );
+    setLineup(Object.fromEntries(
+      Object.entries(p.lineup ?? {}).filter(([, pid]) => eligible.has(pid))
+    ) as Record<number, string>);
     setPresetPickerOpen(false);
   };
 

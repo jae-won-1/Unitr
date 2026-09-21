@@ -192,7 +192,7 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 |---|---|
 | `/my-team/players` | Squad list → individual profiles |
 | `/my-team/transfer` | Transfer Market — two-sided player/team discovery, offers, join requests, friend requests |
-| `/my-team/tactics` | Team default formation + tactics board |
+| `/my-team/tactics` | Saved setups — shape, instructions, and optionally the players in them |
 | `/my-team/settings` | **Team Settings** — team details (name, location, level, players per side, description), joining fee, invite link, co-captains (was `/my-team/team-profile`) |
 | `/my-team/announcements`, `/my-team/announcement/create` | Team-wide announcements (also DM'd to the squad) |
 | `/my-team/collect-availability` | Captain creates an availability poll |
@@ -587,6 +587,14 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   formation belonging to another size renders as that size's default (`resolveFormation`)
   rather than drawing eleven dots on a 5-a-side board; saves write the resolved key. Slot
   order inside a formation is still history — adding formations is safe, reordering is not.
+- **A saved setup can name players, and names are resolved late.** `team_tactics.lineup` is
+  the same `{ slotIndex: player_id }` shape as `match_tactics.lineup`, so loading a preset
+  into a fixture copies its players straight onto that game's board — filtered to who can
+  actually play it, so anybody who declined or left the squad lands nowhere. Everywhere a
+  preset is *displayed*, an id is looked up in the current squad and an unknown one renders
+  as an empty slot: a transfer leaves a hole in the plan, never a ghost name. Re-saving the
+  preset drops those ids. Changing a preset's match size clears its lineup outright, because
+  slot indexes mean different positions on a different board.
 - **Times are picked on the app's dial, never a native `<input type="time">`.**
   `components/DateTimePickers.tsx` is the only time control, and by default it returns a
   **whole hour** — pitch slots, poll dates and venue opening rules all are one, and every

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   loadViewer, loadEdges, loadInbox, searchPlayers, searchTeams,
@@ -50,11 +51,13 @@ function Avatar({ name, muted }: { name: string; muted?: boolean }) {
 }
 
 // ── Player card ───────────────────────────────────────────────
-function PlayerCard({ player, edges, viewer, onAction }: {
+function PlayerCard({ player, edges, viewer, signedIn, onAction, onNeedAuth }: {
   player: MarketPlayer;
   edges: MarketEdges;
   viewer: Viewer | null;
+  signedIn: boolean;
   onAction: () => void;
+  onNeedAuth: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const friend = edges.friends.get(player.id) ?? "none";
@@ -69,6 +72,13 @@ function PlayerCard({ player, edges, viewer, onAction }: {
     await fn();
     await onAction();
     setBusy(false);
+  };
+
+  // A guest can browse freely; the moment they try to act, send them to
+  // register rather than leaving the button dead in their hand.
+  const runOrAuth = (fn: () => Promise<void>) => {
+    if (!signedIn) { onNeedAuth(); return; }
+    run(fn);
   };
 
   // Every position they play, not just the primary — a captain scouting cover
@@ -113,8 +123,8 @@ function PlayerCard({ player, edges, viewer, onAction }: {
             Accept friend
           </button>
         ) : (
-          <button type="button" disabled={busy || !viewer}
-            onClick={() => run(() => sendFriendRequest(viewer!.userId, player.id))}
+          <button type="button" disabled={busy || (signedIn && !viewer)}
+            onClick={() => runOrAuth(() => sendFriendRequest(viewer!.userId, player.id))}
             className="flex-1 py-2.5 rounded-xl border border-accent text-accent-ink text-sm font-bold disabled:opacity-40">
             Add friend
           </button>
@@ -139,11 +149,13 @@ function PlayerCard({ player, edges, viewer, onAction }: {
 }
 
 // ── Team card ─────────────────────────────────────────────────
-function TeamCard({ team, edges, viewer, onAction }: {
+function TeamCard({ team, edges, viewer, signedIn, onAction, onNeedAuth }: {
   team: MarketTeam;
   edges: MarketEdges;
   viewer: Viewer | null;
+  signedIn: boolean;
   onAction: () => void;
+  onNeedAuth: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const join = edges.joins.get(team.id) ?? "none";
@@ -155,6 +167,7 @@ function TeamCard({ team, edges, viewer, onAction }: {
     .filter(Boolean).join(" · ");
 
   const run = async () => {
+    if (!signedIn) { onNeedAuth(); return; }
     setBusy(true);
     await askToJoin(team.id, viewer!.userId);
     await onAction();
@@ -190,7 +203,7 @@ function TeamCard({ team, edges, viewer, onAction }: {
             Request pending
           </span>
         ) : (
-          <button type="button" disabled={busy || !viewer || alreadyPlacedElsewhere}
+          <button type="button" disabled={busy || (signedIn && !viewer) || alreadyPlacedElsewhere}
             title={alreadyPlacedElsewhere ? "Leave your current team first" : undefined}
             onClick={run}
             className="flex-1 py-2.5 rounded-btn bg-accent text-white text-sm font-bold disabled:opacity-40">
@@ -293,6 +306,8 @@ function InboxSheet({ offers, friends, userId, onClose, onAction }: {
 // ── Page ──────────────────────────────────────────────────────
 export default function TransferMarketPage() {
   const { user } = useAuth();
+  const router = useRouter();
+  const goToRegister = useCallback(() => router.push("/register"), [router]);
   const [tab, setTab] = useState<"players" | "teams">("players");
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -422,7 +437,7 @@ export default function TransferMarketPage() {
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3 mb-4">
           <p className="text-xs text-accent-ink font-semibold mb-0.5">Browsing as a guest</p>
           <p className="text-xs text-text-secondary">
-            <a href="/register" className="underline">Create an account</a> to send requests, offers, and friend invites.
+            <a href="/register" className="underline">Create an account</a> to send requests, offers, and friend invites — we'll take you there when you try.
           </p>
         </div>
       )}
@@ -442,10 +457,12 @@ export default function TransferMarketPage() {
 
         {tab === "players"
           ? visiblePlayers.map((p) => (
-              <PlayerCard key={p.id} player={p} edges={edges} viewer={viewer} onAction={refreshEdges} />
+              <PlayerCard key={p.id} player={p} edges={edges} viewer={viewer} signedIn={!!user}
+                onAction={refreshEdges} onNeedAuth={goToRegister} />
             ))
           : teams.map((t) => (
-              <TeamCard key={t.id} team={t} edges={edges} viewer={viewer} onAction={refreshEdges} />
+              <TeamCard key={t.id} team={t} edges={edges} viewer={viewer} signedIn={!!user}
+                onAction={refreshEdges} onNeedAuth={goToRegister} />
             ))}
       </div>
 
