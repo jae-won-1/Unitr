@@ -24,6 +24,44 @@ Settled alongside it, same day:
 - **Platform:** build both from day one; Play internal testing gets testers first
   (review in hours) with TestFlight following.
 
+## PAUSED after Phase 2 — resume at Phase 3 (22 September 2026)
+
+Work stopped here by agreement, with the pilot tournament five days out. The reason is
+not technical risk — the port cannot touch production (see the freeze below) — it is that
+every screen built needs the user's attention to review, and that attention belongs on the
+pilot this week.
+
+**Done:** Phases 0, 1 and 2. Shared-logic bridge verified on device; auth, role resolution
+and the three-tab shell; Calendar (with month grid and fixture detail sheet), My Team,
+Home (next fixture, status strips, discovery feed), and the availability answer with its
+gate. `mobile/PORTED.md` is the per-screen ledger.
+
+**Resume at Phase 3 (payments).** Deliberately not begun, because it needs decisions and
+hardware rather than just code:
+
+- `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` in `mobile/.env` is **empty on purpose**. The web
+  app's `.env.local` holds a `pk_live_` key, and a dev build pointing at it could take a
+  real card payment during testing. Put a `pk_test_` key there, and only then.
+- `@stripe/stripe-react-native` replaces Stripe Elements, with its own 3D Secure
+  behaviour. Do not assume `lib/confirm-payment.ts`'s two hard-won web fixes transfer —
+  re-verify both failure modes under the native SDK.
+- Real-device testing with real cards. Simulators never reproduced either 3DS bug.
+
+**Also still open from Phase 2:** the Fill In / ringer feed (`components/RingerFeed.tsx`),
+which is self-contained and a clean next task if payments are not wanted yet.
+
+**Before building anything, check what drifted:**
+
+```bash
+git diff 008f735..main -- app components     # the only layer that can drift
+```
+
+Shared code needs no sync — `lib/`, `contexts/`, `app/api/` and the SQL are read by both
+clients. Only the UI is re-ported by hand.
+
+**A trap worth knowing:** `mobile/` exists only on the `mobile` branch. `git checkout main`
+deletes those sources from disk and breaks the Expo dev server. Stay on `mobile`.
+
 ## FREEZE: nothing lands on `main` until after 27 September 2026
 
 The pilot tournament runs **Sunday 27 September 2026**, and the live web app is
