@@ -36,6 +36,7 @@ import { useLeadership } from '@/lib/team-leadership';
 import { fonts, radius, cardShadow } from '~/theme';
 import { kindTints } from '~/kind-style';
 import { GameFeed } from '~/components/game-feed';
+import { StatusStrips } from '~/components/status-strips';
 import { useIsDark, useTheme } from '~/use-theme';
 
 export default function Home() {
@@ -89,6 +90,10 @@ export default function Home() {
       <Text style={styles.roleLine}>
         {roleLoading ? 'Loading…' : role === 'captain' ? 'Captain' : role === 'player' ? 'Player' : 'No team yet'}
       </Text>
+
+      {user && (
+        <StatusStrips role={role} userId={user.id} teamId={teamId} isCaptain={canManage} />
+      )}
 
       <Text style={styles.sectionTitle}>Next fixture</Text>
 
