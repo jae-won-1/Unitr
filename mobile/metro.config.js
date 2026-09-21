@@ -54,10 +54,24 @@ config.resolver.nodeModulesPaths = [path.resolve(projectRoot, "node_modules")];
 
 // Must mirror the "paths" in tsconfig.json, or the editor and the bundler will
 // disagree about what an import means.
+// `@/lib` and `@/contexts` point at the REPO ROOT, not at src/. That is
+// deliberate and load-bearing: 20 of the 38 shared lib files import each other
+// and the Supabase client as "@/lib/…", so the alias has to mean the same thing
+// inside a shared file as it does in the web app or those files cannot be
+// shared at all. It also means a ported screen's import lines copy over
+// verbatim instead of being rewritten one by one.
+//
+// Everything else under "@/" still resolves to this app's own src/ (see
+// tsconfig paths — longest prefix wins), so "@/components/…" is the MOBILE
+// component and never the web app's DOM one. Web UI at the repo root stays
+// unreachable from here, which is what stops a <div> being imported by
+// accident.
 config.resolver.alias = {
   ...(config.resolver.alias ?? {}),
   "@shared/lib": path.resolve(repoRoot, "lib"),
   "@shared/contexts": path.resolve(repoRoot, "contexts"),
+  "@/lib": path.resolve(repoRoot, "lib"),
+  "@/contexts": path.resolve(repoRoot, "contexts"),
 };
 
 module.exports = config;

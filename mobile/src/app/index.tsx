@@ -21,7 +21,11 @@
 
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { fmtKickoff, isKickoffPast, sortKey, toDateKey } from '@shared/lib/match-dates';
+// Imported as "@/lib/…" — byte-for-byte the line the web app uses. That the
+// same specifier means the repo-root lib here and mobile's own src/ for
+// everything else (e.g. "@/components/…") is what lets ported screens keep
+// their import lines unchanged. See metro.config.js.
+import { fmtKickoff, isKickoffPast, sortKey, toDateKey } from '@/lib/match-dates';
 
 // `blocking: false` means a failure is known-survivable under the current
 // deployment assumptions (see the timeZone note below) — it should be visible
