@@ -1,98 +1,223 @@
 // Home.
 //
-// Phase 2 replaces this with the real role-specific dashboard (quick-nav row,
-// status strips, GameFeed). For now it reports what the shared providers
-// actually resolved, which is the end-to-end proof that matters at this stage:
-// a real session, read from the real Supabase project, with the role decided by
-// the web app's own RoleContext rather than a mobile reimplementation of it.
+// Shows ONLY the next fixture, deliberately — everything else committed to is
+// the Calendar's job, and the web app draws that line on purpose. The entry
+// comes from the same shared loadCalendarEntries() the Calendar tab uses, so
+// "next fixture" cannot disagree between the two screens: it is the first
+// upcoming entry of the one merged, sorted list.
+//
+// Still to come: the discovery feed (GameFeed — browse matches, tournaments and
+// fill-in games, with Challenge / Enter / Suggest-to-team depending on role)
+// and the role status strips above it. Those are the largest remaining pieces
+// of Phase 2 and are marked as absent rather than faked.
 
-import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/contexts/RoleContext';
+import {
+  compareEntries,
+  KIND_LABEL,
+  loadCalendarEntries,
+  type CalendarEntry,
+} from '@/lib/calendar-entries';
+import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
-import { useTheme } from '~/use-theme';
+import { kindTints } from '~/kind-style';
+import { useIsDark, useTheme } from '~/use-theme';
 
-const ROLE_BLURB: Record<string, string> = {
-  new_user: 'No team yet — Home will show teams to join and the Fill In feed.',
-  player: 'Home will show what your captain needs from you, your next fixture, and the feed.',
-  captain: 'Home will add join requests, squad suggestions, team credit and poll status.',
-  admin: 'Uniter staff. Admin surfaces stay on the web app for this release.',
-  venue_manager: 'Venue accounts are redirected before reaching the tabs.',
+// What the feed will offer, per role. Kept as copy so the placeholder states
+// what is missing rather than looking broken.
+const FEED_BLURB: Record<string, string> = {
+  new_user: 'Teams to join, and the Fill In feed — matches looking for a guest player.',
+  player: 'Games your team could take, with “Suggest to team” so your captain sees them.',
+  captain: 'Matches and tournaments to Challenge or Enter, with your own live post pinned.',
+  admin: 'Admin surfaces stay on the web app for this release.',
 };
 
 export default function Home() {
   const theme = useTheme();
+  const dark = useIsDark();
   const styles = makeStyles(theme);
-  const { user, signOut } = useAuth();
-  const { role, roleLoading, isCoCaptain } = useRole();
+
+  const { user } = useAuth();
+  const { role, roleLoading } = useRole();
+
+  const [next, setNext] = useState<CalendarEntry | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { entries } = await loadCalendarEntries(user.id);
+      const upcoming = entries.filter((e) => e.isUpcoming).sort(compareEntries);
+      setNext(upcoming[0] ?? null);
+    } catch {
+      setNext(null);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const firstName = (user?.email ?? '').split('@')[0];
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <Text style={styles.hello}>Signed in</Text>
-      <Text style={styles.email}>{user?.email ?? '—'}</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Resolved role</Text>
-        <Text style={styles.role}>
-          {roleLoading ? 'resolving…' : role}
-          {isCoCaptain && <Text style={styles.co}>  (co-captain)</Text>}
-        </Text>
-        <Text style={styles.blurb}>{ROLE_BLURB[role] ?? ''}</Text>
-      </View>
-
-      <Text style={styles.note}>
-        This role came from the web app&apos;s own RoleContext, imported unchanged. The mobile
-        app has no second copy of that logic to drift from.
+    <ScrollView
+      style={styles.page}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            void load();
+          }}
+          tintColor={theme.textSecondary}
+        />
+      }>
+      <Text style={styles.greeting}>Hi {firstName}</Text>
+      <Text style={styles.roleLine}>
+        {roleLoading ? 'Loading…' : role === 'captain' ? 'Captain' : role === 'player' ? 'Player' : 'No team yet'}
       </Text>
 
-      <Pressable
-        style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.7 }]}
-        onPress={() => signOut('/')}>
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
+      <Text style={styles.sectionTitle}>Next fixture</Text>
+
+      {loading ? (
+        <View style={styles.card}>
+          <ActivityIndicator color={theme.accent} />
+        </View>
+      ) : next ? (
+        <NextFixture entry={next} theme={theme} dark={dark} styles={styles} />
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.muted}>
+            Nothing coming up. Games you take or enter will appear here.
+          </Text>
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>Find a game</Text>
+      <View style={[styles.card, styles.stub]}>
+        <Ionicons name="search-outline" size={26} color={theme.textSecondary} />
+        <Text style={styles.stubText}>{FEED_BLURB[role] ?? FEED_BLURB.player}</Text>
+        <View style={styles.stubBadge}>
+          <Text style={styles.stubBadgeText}>Phase 2 — in progress</Text>
+        </View>
+      </View>
     </ScrollView>
+  );
+}
+
+function NextFixture({
+  entry,
+  theme,
+  dark,
+  styles,
+}: {
+  entry: CalendarEntry;
+  theme: ReturnType<typeof useTheme>;
+  dark: boolean;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const tint = kindTints(dark)[entry.kind];
+  return (
+    <View style={[styles.card, styles.fixture, { borderLeftColor: tint.rule }]}>
+      <View style={[styles.badge, { backgroundColor: tint.bg, borderColor: tint.border }]}>
+        <Text style={[styles.badgeText, { color: tint.text }]}>{KIND_LABEL[entry.kind]}</Text>
+      </View>
+
+      <Text style={styles.fixtureTitle}>{entry.title}</Text>
+      {entry.subtitle && <Text style={styles.fixtureSub}>{entry.subtitle}</Text>}
+
+      <View style={styles.fixtureRow}>
+        <Ionicons name="time-outline" size={15} color={theme.textSecondary} />
+        <Text style={styles.fixtureMeta}>{fmtKickoff(entry.date, entry.time)}</Text>
+      </View>
+      {entry.pitch && (
+        <View style={styles.fixtureRow}>
+          <Ionicons name="location-outline" size={15} color={theme.textSecondary} />
+          <Text style={styles.fixtureMeta}>{entry.pitch}</Text>
+        </View>
+      )}
+      {entry.badge && (
+        <View style={styles.fixtureRow}>
+          <Ionicons name="checkmark-circle-outline" size={15} color={theme.accentInk} />
+          <Text style={[styles.fixtureMeta, { color: theme.accentInk }]}>{entry.badge}</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
 const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     page: { flex: 1, backgroundColor: theme.background },
-    content: { padding: 22, paddingTop: 64, gap: 6 },
-    hello: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },
-    email: {
-      color: theme.textPrimary,
-      fontFamily: fonts.bold,
-      fontSize: 21,
-      marginBottom: 20,
+    content: { padding: 20, paddingTop: 60, paddingBottom: 40 },
+    greeting: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26 },
+    roleLine: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13, marginTop: 3 },
+    sectionTitle: {
+      color: theme.textSecondary,
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 0.7,
+      marginTop: 26,
+      marginBottom: 10,
     },
     card: {
       backgroundColor: theme.surface,
       borderColor: theme.border,
       borderWidth: 1,
       borderRadius: radius.card,
-      padding: 17,
-      gap: 7,
+      padding: 16,
       ...cardShadow,
     },
-    cardLabel: {
-      color: theme.textSecondary,
-      fontFamily: fonts.semibold,
-      fontSize: 11,
-      textTransform: 'uppercase',
-      letterSpacing: 0.6,
+    muted: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 19 },
+    fixture: { borderLeftWidth: 4, gap: 4 },
+    badge: {
+      alignSelf: 'flex-start',
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      marginBottom: 6,
     },
-    role: { color: theme.accentInk, fontFamily: fonts.extrabold, fontSize: 22 },
-    co: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
-    blurb: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20 },
-    note: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, marginTop: 18 },
-    signOut: {
+    badgeText: { fontFamily: fonts.semibold, fontSize: 11 },
+    fixtureTitle: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 17 },
+    fixtureSub: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },
+    fixtureRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+    fixtureMeta: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13 },
+    stub: { alignItems: 'center', gap: 9, paddingVertical: 26 },
+    stubText: {
+      color: theme.textSecondary,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: 'center',
+    },
+    stubBadge: {
+      backgroundColor: theme.panel,
       borderColor: theme.border,
       borderWidth: 1,
-      borderRadius: radius.btn,
-      paddingVertical: 13,
-      alignItems: 'center',
-      marginTop: 26,
+      borderRadius: radius.pill,
+      paddingHorizontal: 11,
+      paddingVertical: 4,
     },
-    signOutText: { color: theme.danger, fontFamily: fonts.semibold, fontSize: 14 },
+    stubBadgeText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 11 },
   });
