@@ -24,5 +24,6 @@
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "//": "mobile/ is the Expo app. It has its own tsconfig with RN types and its own React Native module resolution; leaving it in the include glob above would typecheck it against this DOM config and fail the web build.",
-  "exclude": ["node_modules", "mobile"]
+  "//native": "A *.native.ts file beside a shared module is the React Native variant of it: Metro prefers the .native one on a phone, while this app's bundler does not know the convention and keeps the plain .ts. They live in lib/ so the mobile app can share those files, but they import React Native packages that do not exist here, so they must stay out of the web typecheck.",
+  "exclude": ["node_modules", "mobile", "**/*.native.ts", "**/*.native.tsx"]
 }
