@@ -1,6 +1,20 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-15, Claude Code: schedule shape + the app's clock in admin
+## Latest completed work — 2026-09-21, Codex: Vercel build lint fix
+
+Escaped the apostrophe in the Transfer Market guest message (`we&apos;ll`) in
+`app/my-team/transfer/page.tsx:440`. This fixes the `react/no-unescaped-entities`
+error reported by Vercel for commit `667f757`; displayed text is unchanged.
+
+Validation: `npm.cmd run build` passed, including lint, type checking and all
+62 static pages. The four existing hook dependency warnings and stale
+Browserslist notices remain. No browser flow was tested. Preserved existing
+`tsconfig.json` edits and untracked `mobile/` work; the build used that existing
+configuration. User authorized publishing this web fix to `main` for Vercel
+production deployment, excluding all ongoing Claude Code mobile migration
+work. Deployment verification is pending.
+
+## Previous completed work — 2026-09-15, Claude Code: schedule shape + the app's clock in admin
 
 Two admin-facing changes, in one session.
 

@@ -437,7 +437,7 @@ export default function TransferMarketPage() {
         <div className="bg-accent/10 border border-accent/30 rounded-xl px-4 py-3 mb-4">
           <p className="text-xs text-accent-ink font-semibold mb-0.5">Browsing as a guest</p>
           <p className="text-xs text-text-secondary">
-            <a href="/register" className="underline">Create an account</a> to send requests, offers, and friend invites — we'll take you there when you try.
+            <a href="/register" className="underline">Create an account</a> to send requests, offers, and friend invites — we&apos;ll take you there when you try.
           </p>
         </div>
       )}
