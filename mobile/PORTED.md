@@ -50,9 +50,13 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Root gate + venue notice | `contexts/RoleContext.tsx` | `008f735` | Phase 1 — done. Venue portal deliberately out of v1 |
 | Tab shell (Home/Calendar/My Team) | `components/BottomNav.tsx` | `008f735` | Phase 1 — done |
 | Theme (colors, radii, shadow, font) | `tailwind.config.ts`, `app/globals.css`, `app/layout.tsx` | `008f735` | Phase 1 — done. See `src/theme.ts`; dark mode is an addition, the web app has none |
-| Home — next fixture | `app/page.tsx` | `008f735` | Phase 2 — done. GameFeed + status strips still to come |
+| Home — next fixture + status strips | `app/page.tsx`, `components/PlayerActionStrip.tsx`, `PollStatusTile.tsx` | `008f735` | Phase 2 — done. Team credit read-only until Phase 3 |
+| Fixture detail sheet | `components/FixtureDetailSheet.tsx` | `008f735` | Phase 2 — done. Management CTAs greyed until their screens land |
+| Month grid | `components/CalendarSheet.tsx` | `008f735` | Phase 2 — done |
+| Availability answer | `components/AvailabilityButtons.tsx` | `008f735` | Phase 2 — done, gate included |
+| Fill In / ringer feed | `components/RingerFeed.tsx` | — | **not started** |
 | Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `f0d81a1` | Phase 2 — done. Challenge/Enter greyed until Phase 3; Fill In not ported |
-| Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — done. Month-grid sheet + FixtureDetailSheet still to come |
+| Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — **done**, incl. month grid + detail sheet |
 | My Team — squad + details | `app/my-team/page.tsx` | `008f735` | Phase 2 — done. Captain control panel is Phase 4 |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
