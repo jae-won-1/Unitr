@@ -24,6 +24,31 @@ Settled alongside it, same day:
 - **Platform:** build both from day one; Play internal testing gets testers first
   (review in hours) with TestFlight following.
 
+## FREEZE: nothing lands on `main` until after 27 September 2026
+
+The pilot tournament runs **Sunday 27 September 2026**, and the live web app is
+taking real sign-ups and real card payments for it. Until that is done, the port does
+**not** push to `main` — which is what Vercel deploys.
+
+Everything goes on the `mobile` branch instead, **including changes that would normally
+land on `main` first** (shared `lib/` extractions, portability shims). They merge in one
+reviewed batch afterwards. The port loses nothing by waiting.
+
+This is not a judgement that the existing `main` commits were unsafe — they were checked
+rather than assumed, and the three hooks extracted into `lib/game-feed.ts` diff
+byte-identical against their pre-transition versions. It is that a deploy carries
+incidental risk (an env var drifting, a migration interacting, a shim wanted under time
+pressure on a Saturday night) and there is no reason to carry any of it into the weekend
+that the whole pilot rests on.
+
+If something genuinely cannot wait, flag it and let the user decide — do not push.
+
+Rollback, should it ever be needed: the `web-fallback` tag is the commit before the port
+began, and Vercel can redeploy any previous deployment from its dashboard in seconds
+without touching git.
+
+**After the tournament this section lapses.** Ask before assuming it still applies.
+
 ## Coexistence and sync strategy
 
 The web app must stay live and developable throughout — it runs real tournaments. It is the
