@@ -6,7 +6,8 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "uniter",
-    "userInterfaceStyle": "automatic",
+    "//userInterfaceStyle": "LIGHT, not automatic. The web app is light-only -- it has no dark theme to mirror -- so following the device's dark mode made the mobile app diverge from it on exactly the phones most likely to be used. Locking this also stops native chrome (status bar, sheets, keyboard) going dark around light screens. Revisit only if the web app gains a dark theme, at which point src/theme.ts already has the palette.",
+    "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.uniter.app",
       "supportsTablet": false

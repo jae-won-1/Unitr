@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -36,7 +36,7 @@ function Gate({ children }: { children: React.ReactNode }) {
   const { role, roleLoading } = useRole();
   const segments = useSegments();
   const router = useRouter();
-  const theme = colors[useColorScheme() === 'dark' ? 'dark' : 'light'];
+  const theme = colors.light;
 
   // Role only matters once there is someone to have a role.
   const waiting = authLoading || (!!session && roleLoading);
@@ -76,8 +76,9 @@ function Gate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const scheme = useColorScheme();
-  const theme = colors[scheme === 'dark' ? 'dark' : 'light'];
+  // Light always — see the note in src/use-theme.ts. The web app has no dark
+  // theme, so following the device's would be a divergence, not a courtesy.
+  const theme = colors.light;
 
   // Matches app/layout.tsx's next/font/google Poppins config: weights
   // 400–800. Web fonts and RN fonts load through entirely different
@@ -97,7 +98,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <RoleProvider>
-        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <StatusBar style="dark" />
         <Gate>
           <Stack
             screenOptions={{

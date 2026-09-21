@@ -24,6 +24,9 @@ export const colors = {
     panel: '#F9FAFD',
     successBg: '#EAF6EC',
     successBorder: '#BFE3C7',
+    // Tinted navy rather than pure black, so a sheet reads as sitting over the
+    // app instead of over a void — the web comment on this token, kept.
+    scrim: 'rgba(11,21,38,0.55)',
   },
   dark: {
     accent: '#00E676', // the brighter green the web app reserves for the home-screen icon; used as the accent fill here because #008000 reads as near-black on a dark surface
@@ -39,6 +42,7 @@ export const colors = {
     panel: '#111826',
     successBg: '#123322',
     successBorder: '#1F5C3A',
+    scrim: 'rgba(0,0,0,0.6)',
   },
 } as const;
 

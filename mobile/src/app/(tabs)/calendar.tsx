@@ -19,13 +19,14 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -39,8 +40,7 @@ import {
 import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { kindTints } from '~/kind-style';
-import { useTheme } from '~/use-theme';
-import { useIsDark } from '~/use-theme';
+import { useIsDark, useTheme } from '~/use-theme';
 
 type Filter = 'all' | EntryKind;
 
@@ -52,6 +52,75 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'ringer', label: 'Ringer' },
   { key: 'booking', label: 'Pitch bookings' },
 ];
+
+// Mirrors the web app's FilterMenu: a dropdown, not a chip row. The trigger is
+// white while the filter is "All" and fills with accent green once a filter is
+// actually applied, so an active filter is visible without reading the label.
+function FilterMenu({
+  options,
+  value,
+  onChange,
+  theme,
+  styles,
+}: {
+  options: { key: Filter; label: string }[];
+  value: Filter;
+  onChange: (f: Filter) => void;
+  theme: ReturnType<typeof useTheme>;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const [open, setOpen] = useState(false);
+  const active = options.find((o) => o.key === value) ?? options[0];
+  const filtered = value !== 'all';
+
+  return (
+    <View style={styles.menuWrap}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={[styles.menuTrigger, filtered && styles.menuTriggerOn]}>
+        <Text style={[styles.menuTriggerText, filtered && styles.menuTriggerTextOn]}>
+          {active.label}
+        </Text>
+        <Ionicons
+          name="chevron-down"
+          size={14}
+          color={filtered ? '#fff' : theme.textPrimary}
+        />
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        {/* Tapping anywhere outside closes, standing in for the web's
+            click-outside listener. */}
+        <Pressable style={styles.scrim} onPress={() => setOpen(false)}>
+          <View style={styles.menu}>
+            {options.map((o, i) => {
+              const selected = o.key === value;
+              return (
+                <Pressable
+                  key={o.key}
+                  onPress={() => {
+                    onChange(o.key);
+                    setOpen(false);
+                  }}
+                  style={[
+                    styles.menuItem,
+                    i > 0 && { borderTopWidth: 1, borderTopColor: theme.border },
+                  ]}>
+                  <Text style={[styles.menuItemText, selected && styles.menuItemTextOn]}>
+                    {o.label}
+                  </Text>
+                  {selected && (
+                    <Ionicons name="checkmark" size={16} color={theme.accentInk} />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
 
 export default function Calendar() {
   const theme = useTheme();
@@ -103,25 +172,27 @@ export default function Calendar() {
 
   return (
     <View style={styles.page}>
-      <Text style={styles.heading}>Calendar</Text>
+      <View style={styles.header}>
+        <Text style={styles.heading}>Calendar</Text>
+        <Text style={styles.subheading}>Your fixtures, tournaments and bookings</Text>
+      </View>
 
-      <View style={styles.chipRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipScroll}>
-          {chips.map((f) => {
-            const on = filter === f.key;
-            return (
-              <Pressable
-                key={f.key}
-                onPress={() => setFilter(f.key)}
-                style={[styles.chip, on && styles.chipOn]}>
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{f.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+      {/* Filter dropdown + the date-picker pill, laid out as on the web. */}
+      <View style={styles.controls}>
+        <FilterMenu
+          options={chips}
+          value={filter}
+          onChange={setFilter}
+          theme={theme}
+          styles={styles}
+        />
+        {/* The month-grid sheet is not ported yet. Greyed rather than hidden,
+            per the house convention — a missing element shifts everything
+            around it and breaks muscle memory. */}
+        <View style={[styles.datePill, styles.datePillOff]}>
+          <Ionicons name="calendar-outline" size={15} color={theme.textSecondary} />
+          <Text style={styles.datePillText}>Calendar</Text>
+        </View>
       </View>
 
       <FlatList
@@ -211,27 +282,66 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     page: { flex: 1, backgroundColor: theme.background },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.background },
-    heading: {
-      color: theme.textPrimary,
-      fontFamily: fonts.extrabold,
-      fontSize: 26,
+    header: { paddingHorizontal: 20, paddingTop: 60, marginBottom: 18 },
+    heading: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 24, marginBottom: 3 },
+    subheading: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13 },
+
+    controls: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 8,
       paddingHorizontal: 20,
-      paddingTop: 60,
-      paddingBottom: 12,
+      marginBottom: 4,
     },
-    chipRow: { borderBottomWidth: 1, borderBottomColor: theme.border, paddingBottom: 12 },
-    chipScroll: { paddingHorizontal: 20, gap: 8 },
-    chip: {
-      borderRadius: radius.pill,
+    menuWrap: { position: 'relative' },
+    menuTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: radius.btn,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+    },
+    menuTriggerOn: { backgroundColor: theme.accent, borderColor: theme.accent },
+    menuTriggerText: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 14 },
+    menuTriggerTextOn: { color: '#fff' },
+    scrim: { flex: 1, backgroundColor: theme.scrim, paddingTop: 175, paddingHorizontal: 20 },
+    menu: {
+      alignSelf: 'flex-start',
+      minWidth: 200,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.card,
+      overflow: 'hidden',
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+    },
+    menuItemText: { color: theme.textPrimary, fontFamily: fonts.medium, fontSize: 14 },
+    menuItemTextOn: { color: theme.accentInk, fontFamily: fonts.bold },
+    datePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: radius.btn,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.surface,
       paddingHorizontal: 14,
-      paddingVertical: 7,
+      paddingVertical: 10,
     },
-    chipOn: { backgroundColor: theme.accent, borderColor: theme.accent },
-    chipText: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13 },
-    chipTextOn: { color: '#fff', fontFamily: fonts.semibold },
+    datePillOff: { opacity: 0.45 },
+    datePillText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
     list: { padding: 20, paddingBottom: 40, gap: 26 },
     section: { gap: 10 },
     sectionTitle: {
