@@ -159,6 +159,10 @@ Three variants keyed off role, all sharing the same skeleton: quick-nav row → 
 
 Home deliberately shows **only the next fixture** — everything else is the Calendar's job.
 
+The Calendar empty-state **Find a game** button links to `/#find-matches`,
+opening Home at the Find Matches section after role loading, with space for
+the fixed header. Every player-facing Home variant exposes this anchor.
+
 ### Calendar (`app/calendar/page.tsx`)
 
 Owns every commitment the viewer has. **Upcoming always renders above Past**, and both

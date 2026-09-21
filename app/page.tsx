@@ -357,7 +357,7 @@ function NewUserHome() {
 
         <TeamsPanel />
 
-        <section className="space-y-4">
+        <section id="find-matches" className="space-y-4 scroll-mt-16">
           <h3 className="font-bold">Find Matches</h3>
           <TeamlessFeedToggle />
           <RingerFeed showIntro={false} showDateDial />
@@ -382,7 +382,7 @@ function NewUserHome() {
           A visitor should be able to see there are real games happening here
           before being asked for anything — tapping a team or a match is what
           raises the sign-up gate, not scrolling. */}
-      <section className="space-y-4">
+      <section id="find-matches" className="space-y-4 scroll-mt-16">
         <div>
           <h3 className="font-bold">Find Matches</h3>
           <p className="text-xs text-text-secondary mt-0.5">Teams near you looking for players</p>
@@ -533,6 +533,24 @@ function AdminHome({ userId }: { userId: string | undefined }) {
 export default function HomePage() {
   const { role, roleLoading } = useRole();
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (roleLoading) return;
+
+    // The feed mounts after authentication/role loading, so the browser's
+    // initial fragment scroll can run before its target exists.
+    const scrollToMatches = () => {
+      if (window.location.hash === "#find-matches") {
+        document.getElementById("find-matches")?.scrollIntoView({ block: "start" });
+      }
+    };
+    const frame = window.requestAnimationFrame(scrollToMatches);
+    window.addEventListener("hashchange", scrollToMatches);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("hashchange", scrollToMatches);
+    };
+  }, [roleLoading, role, user?.id]);
 
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 

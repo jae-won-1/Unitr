@@ -1,6 +1,25 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-21, Codex: Vercel build lint fix
+## Latest completed work — 2026-09-21, Codex: Calendar discovery link
+
+The empty Calendar's **Find a game** button now opens `/#find-matches`.
+All Home variants expose that section anchor with `scroll-mt-16` to clear
+the fixed header. Home retries the fragment scroll after role loading and
+handles subsequent hash changes, so authentication does not lose the target.
+Feed filters and entry permissions are unchanged. `CLAUDE.md` documents the link.
+
+Work is isolated on `fix/calendar-find-game` in
+`C:/Users/jay1c/unitr-calendar-find-game`, based on main `9ba8b59`, because
+Claude Code is using the original checkout on `mobile`. No mobile files or
+original-checkout changes were edited.
+
+Validation: `npm.cmd run build` passed compilation, lint, type checking and
+all 62 static pages; the existing four hook warnings and Browserslist notices
+remain. `git diff --check` passed. Reviewed each Home variant's target and
+the loading guard; browser navigation was not exercised. Not pushed or
+deployed. Next step: integrate this branch into main and deploy when requested.
+
+## Previous completed work — 2026-09-21, Codex: Vercel build lint fix
 
 Escaped the apostrophe in the Transfer Market guest message (`we&apos;ll`) in
 `app/my-team/transfer/page.tsx:440`. This fixes the `react/no-unescaped-entities`

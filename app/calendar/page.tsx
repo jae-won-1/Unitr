@@ -358,7 +358,7 @@ export default function CalendarPage() {
           <p className="text-xs text-text-secondary mb-4">
             Confirmed matches, tournaments, ringer games and pitch bookings all show up here.
           </p>
-          <a href="/" className="inline-block px-6 py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Find a game</a>
+          <a href="/#find-matches" className="inline-block px-6 py-2.5 rounded-btn bg-accent text-white font-bold text-sm">Find a game</a>
         </div>
       ) : (
         <div className="space-y-6">

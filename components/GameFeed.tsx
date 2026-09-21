@@ -451,7 +451,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   const nothingAtAll = showAll && matchesEmpty && tournamentsEmpty;
 
   return (
-    <section className="space-y-4">
+    <section id="find-matches" className="space-y-4 scroll-mt-16">
       <h3 className="font-bold">Find Matches</h3>
 
       <GameTypeSelect value={tab} onChange={setTab} />
