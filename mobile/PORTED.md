@@ -51,7 +51,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Tab shell (Home/Calendar/My Team) | `components/BottomNav.tsx` | `008f735` | Phase 1 — done |
 | Theme (colors, radii, shadow, font) | `tailwind.config.ts`, `app/globals.css`, `app/layout.tsx` | `008f735` | Phase 1 — done. See `src/theme.ts`; dark mode is an addition, the web app has none |
 | Home — next fixture | `app/page.tsx` | `008f735` | Phase 2 — done. GameFeed + status strips still to come |
-| Home — GameFeed (discovery) | `components/GameFeed.tsx` | — | **not started** (Phase 2) |
+| Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `f0d81a1` | Phase 2 — done. Challenge/Enter greyed until Phase 3; Fill In not ported |
 | Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — done. Month-grid sheet + FixtureDetailSheet still to come |
 | My Team — squad + details | `app/my-team/page.tsx` | `008f735` | Phase 2 — done. Captain control panel is Phase 4 |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
