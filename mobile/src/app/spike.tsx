@@ -26,6 +26,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 // everything else (e.g. "@/components/…") is what lets ported screens keep
 // their import lines unchanged. See metro.config.js.
 import { fmtKickoff, isKickoffPast, sortKey, toDateKey } from '@/lib/match-dates';
+import { supabase } from '@/lib/supabase';
 
 // `blocking: false` means a failure is known-survivable under the current
 // deployment assumptions (see the timeZone note below) — it should be visible
@@ -119,6 +120,27 @@ function runChecks(): Check[] {
     name: 'fmtKickoff renders day, month and time',
     pass: /Sat/.test(kickoff) && /13 Jun/.test(kickoff) && kickoff.endsWith('16:00'),
     detail: kickoff,
+  });
+
+  // --- 3. The .native client variant is the one that got bundled -----------
+  // "@/lib/supabase" must resolve to supabase.native.ts here and to
+  // supabase.ts on the web, from one unchanged import line. If Metro took the
+  // web file instead, the EXPO_PUBLIC_ vars would be missing and the URL below
+  // would be undefined.
+  checks.push({
+    name: 'Supabase client built from EXPO_PUBLIC_ env',
+    pass: typeof process.env.EXPO_PUBLIC_SUPABASE_URL === 'string'
+      && process.env.EXPO_PUBLIC_SUPABASE_URL.startsWith('https://')
+      && !!supabase?.auth,
+    detail: `url=${process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'undefined'}, auth=${!!supabase?.auth}`,
+  });
+
+  // Session storage must be AsyncStorage, not the in-memory default — that is
+  // the difference between staying signed in across app restarts and not.
+  checks.push({
+    name: 'session persists across app restarts',
+    pass: !!(supabase?.auth as unknown as { storage?: unknown })?.storage,
+    detail: 'auth.storage is set (AsyncStorage)',
   });
 
   return checks;

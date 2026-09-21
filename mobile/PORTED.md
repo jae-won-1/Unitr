@@ -46,7 +46,13 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 
 | Screen | Web source | Ported from | Status |
 |---|---|---|---|
-| _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — delete at Phase 1 |
+| Sign in / create account | `app/login`, `app/register` | `008f735` | Phase 1 — email+password only; the registration questionnaire lands with the profile screens |
+| Root gate + venue notice | `contexts/RoleContext.tsx` | `008f735` | Phase 1 — done. Venue portal deliberately out of v1 |
+| Tab shell (Home/Calendar/My Team) | `components/BottomNav.tsx` | `008f735` | Phase 1 — done |
+| Home | `app/page.tsx`, `components/GameFeed.tsx` | — | **not started** (Phase 2) |
+| Calendar | `app/calendar/page.tsx` | — | **not started** (Phase 2) |
+| My Team | `app/my-team/page.tsx` | — | **not started** (Phase 2 · 4) |
+| _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:
 | Home (captain) | app/page.tsx, components/GameFeed.tsx | abc1234 | done |
@@ -58,7 +64,11 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 These need no row because they are not copied — both apps use the same file or the same
 deployed endpoint:
 
-- `lib/` (38 files) — reached as `@shared/lib/*`, see `metro.config.js`
-- `contexts/` — reached as `@shared/contexts/*`
+- `lib/` (38 files) — reached as `@/lib/*`, the same specifier the web app uses
+- `contexts/` — `AuthContext` and `RoleContext` are imported and run **unchanged**, so role
+  resolution cannot drift between the two clients
+- `lib/*.native.ts` — platform variants (`supabase`, `hard-navigate`). Metro prefers these on a
+  phone; Next's bundler does not know the convention and keeps the plain `.ts`. One import
+  specifier, right implementation per platform, no web changes
 - `app/api/` (20 routes) — called over HTTPS against the Vercel deployment
 - `supabase_*.sql` — one database, one set of RLS policies

@@ -38,7 +38,9 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "//tsconfigPaths": "OFF deliberately. Expo otherwise feeds tsconfig paths to Metro as well, which makes the two inseparable -- and this app needs one mapping that must apply to TypeScript ONLY: react -> node_modules/@types/react, which redirects the shared repo-root contexts away from the web app's React 18 typings. Metro following that mapping resolves react to a types-only package with no runtime and the bundle dies. Module aliases therefore live in metro.config.js and are mirrored by hand in tsconfig.json.",
+      "tsconfigPaths": false
     }
   }
 }

@@ -2,31 +2,32 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // MIRRORS metro.config.js by hand. Expo's tsconfigPaths experiment is off
+    // (see app.json), so Metro does not read this block — these entries serve
+    // the editor and tsc only, and metro.config.js is the runtime source of
+    // truth. Keep the two in step.
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ],
-      "@shared/lib/*": [
-        "../lib/*"
-      ],
-      "@shared/contexts/*": [
-        "../contexts/*"
-      ],
-      "@/lib/*": [
-        "../lib/*"
-      ],
-      "@/contexts/*": [
-        "../contexts/*"
-      ]
+      // This app's own code. Deliberately not "@/", so that prefix can belong
+      // entirely to the shared repo-root folders below.
+      "~/*": ["./src/*"],
+
+      // The web app's own lib/ and contexts/, shared by identity rather than
+      // copied. Shared files import each other as "@/lib/…", so the specifier
+      // has to mean the same thing here as it does in the web app.
+      "@/lib/*": ["../lib/*"],
+      "@/contexts/*": ["../contexts/*"],
+      "@shared/lib/*": ["../lib/*"],
+      "@shared/contexts/*": ["../contexts/*"],
+
+      // TYPESCRIPT ONLY, and the reason tsconfigPaths had to be turned off.
+      // The shared contexts live at the repo root, so they resolve their React
+      // typings by walking up into the web app's React 18 @types, which clashes
+      // with this app's React 19 (ReactNode gained bigint). Pointing react at
+      // this app's @types settles it. Metro must NOT follow this — @types/react
+      // is a types-only package with no runtime, and the bundle dies on it.
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }
