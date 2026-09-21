@@ -16,34 +16,11 @@ import { feeOn, UNITER_FEE_RATE } from "@/lib/uniter-fee";
 // Lives here rather than in the Play page so the captain's home feed can open
 // the same flow without a second implementation.
 
-export type PitchOption = {
-  id: string;
-  name: string;
-  address: string;
-  price: number;
-  format: string;
-  distance: string;
-  // Optional per-pitch kickoff time. Older posts won't have it → fall back to the post time.
-  time?: string;
-};
-
-export type MatchPost = {
-  id: string;
-  team_id: string;
-  captain_id: string;
-  team: string;
-  location: string;
-  date: string;
-  match_date: string;
-  match_time: string;
-  pitchOptions: PitchOption[];
-  description: string;
-  availabilityMatch: boolean;
-  status: string;
-  payment_mode: string;
-  pitchSecured: boolean;
-  securedBookingId: string | null;
-};
+// These types moved to lib/game-feed.ts, which is where the queries that
+// produce them now live, so the mobile app can share both. Re-exported here
+// because a dozen call sites import them from this component.
+export type { MatchPost, PitchOption } from "@/lib/game-feed";
+import type { MatchPost, PitchOption } from "@/lib/game-feed";
 
 // ── Challenge Panel ───────────────────────────────────────────
 export default function ChallengePanel({
