@@ -1,0 +1,64 @@
+# Port ledger
+
+The web app keeps evolving while this port is built. Shared code (`lib/`, `contexts/`,
+`app/api/`, the SQL migrations) stays in sync for free — both clients read the same files and
+the same deployed API. **The UI does not.** A Next.js `div` tree cannot be merged into a React
+Native `View` tree, so every web screen that changes after it was ported has to be re-ported
+by hand.
+
+This file is what stops that drift being invisible.
+
+## How to use it
+
+Every ported screen records the `main` commit it was ported from. To find out what has drifted
+since:
+
+```bash
+# Everything that changed in the web UI since a screen was ported
+git diff <sha>..main --stat -- app components
+
+# One screen specifically
+git log <sha>..main --oneline -- app/calendar components/CalendarSheet.tsx
+```
+
+An empty diff means the port is current. A non-empty one is the re-port list — exact, not a
+guess. Update the SHA in the table below whenever a screen is brought back into line.
+
+**Rules that keep this honest:**
+
+- Record the SHA you *actually ported from*, not the SHA at the time you write the row.
+- Re-porting a screen means updating its row, not adding a second one.
+- Renaming or moving files under `components/` makes these diffs unreadable. Don't, unless
+  there's a real reason.
+
+## Baseline
+
+| | |
+|---|---|
+| Web fallback tag | `web-fallback` |
+| Baseline commit | `667f757` |
+| Expo SDK | 57 (RN 0.86, React 19) |
+| Web app | Next.js 14.2.5, React 18 |
+
+## Screens
+
+Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web app.
+
+| Screen | Web source | Ported from | Status |
+|---|---|---|---|
+| _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — delete at Phase 1 |
+
+<!-- Add a row per screen as Phase 1+ lands. Suggested shape:
+| Home (captain) | app/page.tsx, components/GameFeed.tsx | abc1234 | done |
+| Calendar | app/calendar/page.tsx, components/CalendarSheet.tsx | abc1234 | drifted — 3 commits behind |
+-->
+
+## Shared, so never listed here
+
+These need no row because they are not copied — both apps use the same file or the same
+deployed endpoint:
+
+- `lib/` (38 files) — reached as `@shared/lib/*`, see `metro.config.js`
+- `contexts/` — reached as `@shared/contexts/*`
+- `app/api/` (20 routes) — called over HTTPS against the Vercel deployment
+- `supabase_*.sql` — one database, one set of RLS policies
