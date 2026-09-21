@@ -32,18 +32,11 @@ import {
   type CalendarEntry,
 } from '@/lib/calendar-entries';
 import { fmtKickoff } from '@/lib/match-dates';
+import { useLeadership } from '@/lib/team-leadership';
 import { fonts, radius, cardShadow } from '~/theme';
 import { kindTints } from '~/kind-style';
+import { GameFeed } from '~/components/game-feed';
 import { useIsDark, useTheme } from '~/use-theme';
-
-// What the feed will offer, per role. Kept as copy so the placeholder states
-// what is missing rather than looking broken.
-const FEED_BLURB: Record<string, string> = {
-  new_user: 'Teams to join, and the Fill In feed — matches looking for a guest player.',
-  player: 'Games your team could take, with “Suggest to team” so your captain sees them.',
-  captain: 'Matches and tournaments to Challenge or Enter, with your own live post pinned.',
-  admin: 'Admin surfaces stay on the web app for this release.',
-};
 
 export default function Home() {
   const theme = useTheme();
@@ -52,6 +45,7 @@ export default function Home() {
 
   const { user } = useAuth();
   const { role, roleLoading } = useRole();
+  const { teamId, canManage } = useLeadership(user?.id);
 
   const [next, setNext] = useState<CalendarEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,13 +107,15 @@ export default function Home() {
       )}
 
       <Text style={styles.sectionTitle}>Find a game</Text>
-      <View style={[styles.card, styles.stub]}>
-        <Ionicons name="search-outline" size={26} color={theme.textSecondary} />
-        <Text style={styles.stubText}>{FEED_BLURB[role] ?? FEED_BLURB.player}</Text>
-        <View style={styles.stubBadge}>
-          <Text style={styles.stubBadgeText}>Phase 2 — in progress</Text>
-        </View>
-      </View>
+      {user && (
+        <GameFeed
+          teamId={teamId}
+          userId={user.id}
+          // Captain or co-captain. useLeadership resolves this properly — a
+          // co-captain captains no team, so a captain_id lookup would miss them.
+          canAct={canManage}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -203,21 +199,4 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     fixtureSub: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },
     fixtureRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
     fixtureMeta: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13 },
-    stub: { alignItems: 'center', gap: 9, paddingVertical: 26 },
-    stubText: {
-      color: theme.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: 'center',
-    },
-    stubBadge: {
-      backgroundColor: theme.panel,
-      borderColor: theme.border,
-      borderWidth: 1,
-      borderRadius: radius.pill,
-      paddingHorizontal: 11,
-      paddingVertical: 4,
-    },
-    stubBadgeText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 11 },
   });
