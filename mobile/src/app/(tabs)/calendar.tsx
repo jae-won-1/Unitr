@@ -40,6 +40,7 @@ import {
 import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { kindTints } from '~/kind-style';
+import { FixtureDetailSheet } from '~/components/fixture-detail-sheet';
 import { useIsDark, useTheme } from '~/use-theme';
 
 type Filter = 'all' | EntryKind;
@@ -135,6 +136,8 @@ export default function Calendar() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [open, setOpen] = useState<CalendarEntry | null>(null);
+  const [teamId, setTeamId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -142,6 +145,9 @@ export default function Calendar() {
       const data = await loadCalendarEntries(user.id);
       setEntries(data.entries);
       setIsCaptain(data.isCaptain);
+      // Comes back with the entries, so the detail sheet's availability answer
+      // needs no second lookup.
+      setTeamId(data.teamId);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load your calendar.');
@@ -232,7 +238,14 @@ export default function Calendar() {
                 const tint = tints[e.kind];
                 const committed = e.badge != null && COMMITTED_BADGES.has(e.badge);
                 return (
-                  <View key={e.key} style={[styles.card, { borderLeftColor: tint.rule }]}>
+                  <Pressable
+                    key={e.key}
+                    onPress={() => setOpen(e)}
+                    style={({ pressed }) => [
+                      styles.card,
+                      { borderLeftColor: tint.rule },
+                      pressed && { opacity: 0.7 },
+                    ]}>
                     <View style={styles.cardTop}>
                       <View style={[styles.badge, { backgroundColor: tint.bg, borderColor: tint.border }]}>
                         <Text style={[styles.badgeText, { color: tint.text }]}>
@@ -267,13 +280,23 @@ export default function Calendar() {
                         </Text>
                       </Text>
                     )}
-                  </View>
+                  </Pressable>
                 );
               })
             )}
           </View>
         )}
       />
+
+      {user && (
+        <FixtureDetailSheet
+          entry={open}
+          isCaptain={isCaptain}
+          viewerId={user.id}
+          viewerTeamId={teamId}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </View>
   );
 }
