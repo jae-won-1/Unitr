@@ -354,6 +354,20 @@ anything without `organiser_admin_id` — a team's or a venue's event is their f
 their money — and the button hides once kickoff has passed, since football that happened
 can't be refunded.
 
+**Removing one unwanted team from it.** The narrow version of the same thing, for an event
+that should still go ahead without a particular entrant. On the same page, staff see the
+entered teams as a row each with a **Remove** button, behind the same three conditions as the
+take-down box (staff, `organiser_admin_id`, before kickoff). `/api/events/kick-team` refunds
+that team's buy-in with the same `refund_event_buyin` RPC **before** deleting its
+`open_match_teams` row, so a failure leaves the team still entered and the removal retryable
+rather than out of the event and out of pocket; a `full` listing goes back to `open`, freeing
+the spot. Undoing an entry is more than the row: it also withdraws the squad's availability
+answers for the event, deletes the fixtures that team was drawn into and un-assigns referees
+drawn from its squad, cancels its pending invitation, and deletes the money the squad had yet
+to be asked for (pending `replenish` `player_payments`, unreceived `payment_collection_status`
+rows). Anything already paid stays where it is. The captain gets a bell notification carrying
+the reason and the refund. The organiser regenerates the schedule afterwards.
+
 ## Availability
 
 Two records, one question — "am I playing?". `lib/event-availability.ts` is the only place

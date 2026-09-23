@@ -12,6 +12,7 @@ import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-reven
 import { loadLedTeam, loadLeadership } from "@/lib/team-leadership";
 import { useRole } from "@/contexts/RoleContext";
 import { takeDownEvent } from "@/lib/take-down-event";
+import { kickTeamFromEvent } from "@/lib/kick-team";
 import { withOptionalColumn } from "@/lib/optional-column";
 import { TimePicker } from "@/components/DateTimePickers";
 
@@ -110,6 +111,15 @@ export default function TournamentDetailPage() {
   const [takeDownBusy, setTakeDownBusy] = useState(false);
   const [takeDownError, setTakeDownError] = useState<string | null>(null);
   const [takeDownNote, setTakeDownNote] = useState<string | null>(null);
+
+  // Kicking one team out — same staff, same events, one entry instead of all
+  // of them. `kicking` is the team being confirmed, so only one row opens at a
+  // time and the reason box can't be typed into for the wrong team.
+  const [kicking, setKicking] = useState<JoinedTeam | null>(null);
+  const [kickReason, setKickReason] = useState("");
+  const [kickBusy, setKickBusy] = useState(false);
+  const [kickError, setKickError] = useState<string | null>(null);
+  const [kickNote, setKickNote] = useState<string | null>(null);
 
   // Manual-fixture form
   const [mHome, setMHome] = useState("");
@@ -455,8 +465,36 @@ export default function TournamentDetailPage() {
     await load();
   };
 
+  // Remove one unwanted team from Uniter's own event and hand its buy-in back.
+  // The route does the deciding here too — this collects the reason and reports
+  // what went back, which is the only place the admin sees that figure.
+  const handleKick = async () => {
+    if (!t || !kicking) return;
+    setKickBusy(true);
+    setKickError(null);
+    const res = await kickTeamFromEvent(t.id, kicking.team_id, kickReason.trim());
+    setKickBusy(false);
+    if ("error" in res) { setKickError(res.error); return; }
+    const { teamName, refundedPence } = res.result;
+    setKickNote(
+      refundedPence > 0
+        ? `${teamName} removed. £${(refundedPence / 100).toFixed(2)} went back to their team credit.`
+        : `${teamName} removed. They had paid no buy-in, so nothing was refunded.`,
+    );
+    setKicking(null);
+    setKickReason("");
+    await load();
+  };
+
   if (t === undefined) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
   if (!t) return <div className="flex items-center justify-center min-h-screen px-4"><p className="text-text-secondary">Event not found.</p></div>;
+
+  // Who may remove a team, and when. The same three conditions the take-down
+  // box below lives under, for the same reasons: Uniter staff only, Uniter's
+  // own events only, and never once the football has been played — a refund
+  // after kickoff would be paying back a game that happened.
+  const canKickTeams = role === "admin" && Boolean(t.organiser_admin_id)
+    && t.status !== "cancelled" && !isKickoffPast(t.match_date, t.start_time);
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
@@ -495,6 +533,53 @@ export default function TournamentDetailPage() {
           </div>
           {teams.length === 0 ? (
             <p className="text-xs text-text-secondary">No teams have joined yet.</p>
+          ) : canKickTeams ? (
+            // Staff view: a row per team rather than a chip, because each one
+            // now carries an action. The host team (if there is one) has no
+            // Remove — the route refuses it, and offering a button that can't
+            // work is worse than not offering it.
+            <div className="flex flex-col divide-y divide-border">
+              {teams.map((tm) => {
+                const isHost = tm.team_id === t.organiser_team_id;
+                const confirming = kicking?.team_id === tm.team_id;
+                return (
+                  <div key={tm.team_id} className="py-2 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-3">
+                      <p className="flex-1 min-w-0 text-sm font-medium truncate">
+                        {tm.team_name}{isHost ? " · host" : ""}
+                      </p>
+                      {!isHost && !confirming && (
+                        <button onClick={() => { setKicking(tm); setKickReason(""); setKickError(null); }}
+                          className="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 text-xs font-semibold flex-shrink-0">
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {confirming && (
+                      <div className="mt-2 space-y-2 border-t border-border pt-2">
+                        <p className="text-[11px] text-text-secondary">
+                          {tm.team_name} leaves this {noun.toLowerCase()}, their buy-in goes straight back
+                          to their team credit, and their captain is told what you type here. The spot
+                          opens up again.
+                        </p>
+                        <input value={kickReason} onChange={(e) => setKickReason(e.target.value)} autoFocus
+                          placeholder="Reason — e.g. wrong age group, didn't pay up last time"
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent/50 placeholder:text-text-secondary" />
+                        {kickError && <p className="text-[11px] text-red-600">{kickError}</p>}
+                        <div className="flex gap-2">
+                          <button onClick={() => { setKicking(null); setKickError(null); }} disabled={kickBusy}
+                            className="flex-1 py-2 rounded-xl border border-border text-xs font-semibold disabled:opacity-40">Keep them in</button>
+                          <button onClick={handleKick} disabled={kickBusy || !kickReason.trim()}
+                            className="flex-1 py-2 rounded-xl bg-red-500 text-white text-xs font-bold disabled:opacity-40">
+                            {kickBusy ? "Removing…" : "Remove & refund"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {teams.map((tm) => (
@@ -503,6 +588,11 @@ export default function TournamentDetailPage() {
                 </span>
               ))}
             </div>
+          )}
+          {/* Stays after the row closes — the refund total is the only place
+              the admin sees what the removal actually paid out. */}
+          {kickNote && (
+            <p className="text-[11px] text-text-secondary mt-3 pt-3 border-t border-border">{kickNote}</p>
           )}
         </section>
 

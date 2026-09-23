@@ -1,6 +1,59 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-21, Codex: Calendar discovery link
+## Latest completed work — 2026-09-23, Claude Code: remove one team from an event
+
+Uniter staff can take a single unwanted team out of an event they host, instead
+of cancelling the whole thing. Shipped ahead of the pilot tournament because the
+fallback — taking the event down and refunding everyone — is a much bigger
+hammer to reach for on the day. **No SQL**: it reuses `refund_event_buyin` from
+`supabase_event_takedown.sql`, which `scripts/check-migrations.mjs` confirms is
+applied to the live database.
+
+- **New route `app/api/events/kick-team/route.ts`** — the narrow sibling of
+  `/api/events/take-down`, behind the same three refusals (admin caller,
+  `organiser_admin_id` set, before kickoff), plus: never the organiser's own
+  team, never a team that isn't entered, and a reason is required because the
+  captain is told it. It **refunds before it removes**, with the same idempotent
+  `refund_event_buyin`, so a failed refund leaves the team still entered and the
+  removal retryable rather than out of the event and out of pocket. A missing
+  migration (42883) refuses outright rather than removing a team whose money
+  can't go back.
+- Undoing an entry is more than the `open_match_teams` row. Also cleaned up,
+  best-effort: that squad's `match_confirmations` for the event, the
+  `tournament_matches` the team was drawn into, referees drawn from its squad,
+  its pending invitation, the pending `replenish` `player_payments`
+  `/api/tournaments/join` pre-created, and unreceived
+  `payment_collection_status` rows. Anything already paid is left alone. A
+  `full` listing goes back to `open`. The captain gets a bell notification
+  carrying the reason and the refund.
+- **New `lib/kick-team.ts`**, mirroring `lib/take-down-event.ts`. UI on
+  `/play/tournament/[id]`: for staff on their own event before kickoff, the
+  Teams card renders a row per team with **Remove**, opening an inline reason
+  box and a confirm. Everyone else sees the unchanged chip row. The refund total
+  stays on screen afterwards — the only place it is shown.
+- `teamId` is validated as a uuid before it reaches the PostgREST `or` filter.
+
+### Validation
+
+- `npx tsc --noEmit` clean and `next lint` clean on this branch, which carries
+  none of the in-progress work on `mobile` (see below). `next build` passed in
+  the development checkout with these same file contents, with
+  `/api/events/kick-team` in the route table.
+- **Not exercised in a browser, and no team has actually been removed.** The
+  refund and the cleanup writes are reasoned, not observed. Next step is one
+  removal on a throwaway event before relying on it during the pilot.
+
+### Still on the `mobile` branch, deliberately not here
+
+A **Leave team** feature (`lib/leave-team.ts`,
+`components/my-team/LeaveTeamPanel.tsx`, and the panel's wiring into
+`app/my-team/page.tsx` plus a `useRole().isCoCaptain` read) was written in the
+same session and held back: it has no reason to be live for the pilot, and it
+puts a new destructive control in front of players. It merges with the rest of
+the branch afterwards. The Google sign-in work is likewise still uncommitted
+there — see `docs/GOOGLE_SIGN_IN.md` for its switch-on order.
+
+## Previous completed work — 2026-09-21, Codex: Calendar discovery link
 
 The empty Calendar's **Find a game** button now opens `/#find-matches`.
 All Home variants expose that section anchor with `scroll-mt-16` to clear
