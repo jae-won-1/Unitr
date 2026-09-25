@@ -138,9 +138,10 @@ export default function TeamSettingsPage() {
             />
           </div>
           <p className="text-xs text-text-secondary">
-            Paid once by each new player, into your team&rsquo;s credit balance for pitch and
-            tournament fees. Changing it only affects players who join from now on — the squad
-            you already have keeps the fee they signed up under.
+            Paid once by every player, into your team&rsquo;s credit balance for pitch and
+            tournament fees. Changing it changes what the whole squad owes — the players you
+            already have move onto the new fee too, keeping whatever they&rsquo;ve paid. You owe
+            it as well.
           </p>
         </div>
 

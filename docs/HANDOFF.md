@@ -1,6 +1,46 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-23, Claude Code: remove one team from an event
+## Latest completed work — 2026-09-25, Claude Code: the joining fee is the team's current fee
+
+**Needs SQL: `supabase_joining_fee_current.sql`** — run it in the Supabase SQL
+editor, after `supabase_joining_fees.sql`, `supabase_captain_joining_fee.sql`
+and `supabase_pilot_security.sql` (all three are already applied on the pilot
+database). Until it is run, nothing changes: the old snapshot behaviour stands.
+
+**The problem.** The fee was snapshotted per person and never re-taken — at
+approval for a member, at the first non-zero fee for the captain. A captain who
+changed the fee changed it for arrivals only, so Payment Status showed a squad
+carrying several different fees at once and measured each person's payments
+against a number nobody was being asked for any more.
+
+**The fix.** `teams.joining_fee_pence` is now simply the team's fee, and a write
+to it restandardises everyone onto it in the same write:
+
+- `trg_restandardise_joining_fee` (AFTER, on `teams`) sets
+  `team_members.joining_fee_due_pence` to the new fee for every **approved**
+  member, and DMs the ones whose share just went up.
+- `snapshot_captain_joining_fee` lost its `is null` guard, so the captain's
+  `captain_joining_fee_due_pence` follows the fee too, and
+  `notify_captain_joining_fee` now fires whenever what they owe **rises**
+  rather than only on the first fee ever set.
+- `paid_pence` is never touched — it is still only advanced by
+  `credit_from_payment` / `record_cash_credit`. Raising the fee leaves the
+  difference owed; lowering it below what somebody has paid settles them and
+  refunds nothing, because the money is in team credit either way. Payment
+  Status prints what they actually put in, not the smaller figure now asked.
+- `guard_team_member_money` (from `supabase_pilot_security.sql`) is redefined
+  with one extra branch: a `due`-only change carrying the transaction-local
+  flag the trigger sets, for that one team. Without it a **co-captain** saving
+  Team Settings would be refused, since the guard only recognises the captain's
+  own session. It is redefined only if that file has been run.
+- The file ends by bringing every existing team and approved member onto its
+  team's current fee, silently.
+
+**App side** — copy only, no logic: Settle Payments → Joining fee, Team
+Settings and team registration now say the whole squad moves onto a change, and
+`JoiningFeePanels` shows the real paid figure when a lowered fee sits under it.
+
+## Previous completed work — 2026-09-23, Claude Code: remove one team from an event
 
 Uniter staff can take a single unwanted team out of an event they host, instead
 of cancelling the whole thing. Shipped ahead of the pilot tournament because the

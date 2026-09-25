@@ -172,8 +172,9 @@ export default function CreateTeamPage() {
             />
           </div>
           <p className="text-xs text-text-secondary">
-            Each new player pays this once, into your team&rsquo;s credit balance — the pot that
-            covers pitch bookings and tournament entry fees. You can change it later in Team Settings.
+            Every player pays this once, into your team&rsquo;s credit balance — the pot that
+            covers pitch bookings and tournament entry fees. You can change it later in Team
+            Settings, and the whole squad moves onto the new amount.
           </p>
         </div>
 

@@ -492,9 +492,9 @@ Variants:
   including one made by hand in the Stripe dashboard — this one is allowed to drive the
   balance negative, because the money has already gone and the team owes it. Joining-fee
   `paid` figures are deliberately never reversed.
-- **Joining fees** — a captain can set a one-off fee (`teams.joining_fee_pence`) asked of each
-  new member. It is not a separate pot: paying it is a top-up into team credit. The fee owed is
-  snapshotted onto `team_members.joining_fee_due_pence` at approval (trigger), and
+- **Joining fees** — a captain can set a one-off fee (`teams.joining_fee_pence`) asked of every
+  member. It is not a separate pot: paying it is a top-up into team credit. The fee owed is
+  written onto `team_members.joining_fee_due_pence` at approval (trigger), and
   `joining_fee_paid_pence` is advanced **only inside** `credit_from_payment` /
   `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
   can't join, and can't vote **available** for games — see Voting available below. The fee
@@ -504,11 +504,24 @@ Variants:
   **The captain owes it too.** They play in the games the fee pays for, and they have no
   `team_members` row, so their copy of the same two numbers sits on `teams`
   (`captain_joining_fee_due_pence` / `_paid_pence`, `supabase_captain_joining_fee.sql`).
-  Setting a non-zero fee — at registration or later in Team Settings — snapshots it and fires
-  a bell notification telling the captain to top up that much; the snapshot is taken once, so
-  raising the fee later never re-charges them, exactly as it never re-charges the squad.
+  Setting a fee — at registration or later in Team Settings — writes it there and fires a bell
+  notification telling the captain to top up what they still owe.
   `lib/joining-fee.ts` falls back to those columns when there's no membership row, so every
   gate the squad lives under applies to the captain unchanged.
+  **The fee is the team's current fee, not a snapshot** (`supabase_joining_fee_current.sql`).
+  It used to be taken once per person and never re-taken, so a captain who changed it charged
+  the new figure to arrivals only and a squad could be carrying three different fees at once
+  while Payment Status measured each of them against a number nobody was asking for any more.
+  Now a write to `joining_fee_pence` restandardises every approved member **and** the captain
+  onto it, in the same write, via a trigger on `teams`. Only `due` moves — `paid` is money
+  that is already in, so raising the fee leaves the difference owed and lowering it below
+  somebody's payments settles them without refunding anything (the credit is still in the
+  balance; Payment Status prints what they actually put in). Members whose share goes **up**
+  get the captain's DM; a fee that falls, or a Team Settings save that leaves it alone, says
+  nothing. The write reaches `team_members` past `guard_team_member_money`
+  (`supabase_pilot_security.sql`) on a transaction-local flag the trigger sets, which admits a
+  `due`-only change for that one team — otherwise a co-captain saving Team Settings would be
+  refused, since the guard only knows the captain's own session.
 
 `payment_collection_status` is a **bookkeeping checklist** the captain ticks off — it does not
 move money or call Stripe. The real settlement is the credit ledger.
@@ -523,7 +536,7 @@ Settle Payments, and the Payment Status sheet opened titled "Collect Payment".
 |---|---|---|
 | Question | Who owes what, and say so | Who has actually paid |
 | Fixtures tab | Pick who played, send the request, then a read-only receipt of what was charged | Every fixture a request was issued for → mark paid / unpaid, remind, drop a player |
-| Joining fee tab | Set `teams.joining_fee_pence` — permanent, so there's somewhere to set it when there isn't one yet | Per-member paid/due off the snapshots, with a nudge |
+| Joining fee tab | Set `teams.joining_fee_pence` — the whole squad moves onto it, so there's somewhere to change it | Per-member paid/due off the team's current fee, with a nudge |
 
 Consequences worth knowing:
 
@@ -573,6 +586,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_multi_select_preferences.sql` | `teams.formats` + `profiles.positions` — the array beside each scalar, backfilled from it; the scalar stays the primary value. No dependencies |
 | `supabase_team_invites.sql` | `teams.invite_code` + the four invite-link RPCs (`ensure_`/`rotate_team_invite_code`, `team_by_invite_code`, `join_team_by_invite`); run after `supabase_joining_fees.sql` |
 | `supabase_captain_joining_fee.sql` | `teams.captain_joining_fee_due_pence` / `_paid_pence`, the snapshot + notify triggers, and the captain branch of `apply_deposit_to_joining_fee`; run after `supabase_joining_fees.sql` |
+| `supabase_joining_fee_current.sql` | The fee stops being a per-person snapshot: a trigger on `teams` carries `joining_fee_pence` onto every approved member and the captain whenever it changes, DMs whoever now owes more, and teaches `guard_team_member_money` to let that one write through; run after `supabase_joining_fees.sql`, `supabase_captain_joining_fee.sql` and `supabase_pilot_security.sql` |
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
