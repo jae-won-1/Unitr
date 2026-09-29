@@ -57,7 +57,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Month grid | `components/CalendarSheet.tsx` | `008f735` | Phase 2 — done |
 | Availability answer | `components/AvailabilityButtons.tsx` | `008f735` | Phase 2 — done, gate included |
 | Fill In / ringer feed | `components/RingerFeed.tsx`, `lib/ringer-feed.ts` | `da0090e` | **Phase 3 — done, including payment.** Join calls the same `/api/ringer/create-intent` + `/api/ringer/join` pair the web app does, confirmed with Stripe's PaymentSheet instead of the Payment Element. Only real-device 3DS testing is outstanding — see the Phase 3 note below |
-| Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `9ba8b59` | Phase 2 — done. `lib/game-feed.ts`'s hooks are shared, so this stays current for free; Challenge/Enter greyed until Phase 3 |
+| Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `9ba8b59` | Phase 2 — done. `lib/game-feed.ts`'s hooks are shared, so this stays current for free. Enter is live (see below); Challenge still greyed |
 | Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — **done**, incl. month grid + detail sheet |
 | My Team — squad + details | `app/my-team/page.tsx` | `fe97d03` | Phase 2 — done; Phase 4 adds the captain's Invite / Team Settings / Post announcement buttons, join requests, and Team chat for everyone. Tactics, settle payments and match management still to come |
 | Leave team | `components/my-team/LeaveTeamPanel.tsx` | `fe97d03` | done — shares `lib/leave-team.ts`, `lib/availability-gate.ts`, `lib/hard-navigate.native.ts` unchanged |
@@ -77,6 +77,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Tournament fixture (one game) | `app/my-team/tournament-match/[fixtureId]/page.tsx`, `lib/tournament-match.ts`, `lib/formations.ts` | `ea826c8` | done — Info / Attendance / Lineup (Tactics folded under the board). Lineup board is `pitch-board.tsx` on the shared formations. Not ported: loading a saved preset (presets live in the web's TacticsTab) |
 | "Your games" in a tournament | `components/TournamentFixtureList.tsx` | `ea826c8` | done — in the Calendar fixture sheet for an entered tournament; each row opens the fixture |
 | Notifications (bell) | feed half of `components/TopBar.tsx` | `ea826c8` | done — bell with unread dot beside Messages, `notifications.tsx` list with mark-all-read. Links open the matching phone screen where one exists. The query copies TopBar's inline one. The bell's computed counts (join requests, open posts, dues) aren't repeated — they live on Home / My Team |
+| Enter a tournament (captain) | `components/EnterTournamentPanel.tsx` | `ea826c8` | done — `enter-tournament-sheet.tsx` from the feed's Enter button, same `/api/tournaments/join`. A shortfall is paid as a named amount towards the buy-in (not a free top-up), then the team is entered automatically; once paid, a slow webhook never re-offers payment |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:
@@ -99,9 +100,11 @@ tops up separately, beforehand, on its own screen
 `authedPost` calls to existing routes, not a Stripe integration — the caveat
 is what happens on insufficient credit, which the web app answers by sending
 the captain to a top-up sheet that isn't ported (Phase 4, the captain control
-panel). **Decided 2026-09-29: they stay greyed until Phase 4**, and land
-together with the top-up sheet, so the insufficient-credit case always has
-somewhere real to send the captain.
+panel). **Decided 2026-09-29: they stay greyed until Phase 4.** Update
+2026-09-30: **Enter** is now live — its insufficient-funds case pays the
+exact shortfall "towards the buy-in" rather than opening a top-up sheet, which
+also fits the App Store wording decision below. **Challenge** is still greyed:
+it needs the pitch pick and the hold, i.e. the friendly flow.
 
 **Real-device testing is still outstanding for Fill In**, and is the one thing
 that can't be done from a simulator: the migration plan is explicit that both

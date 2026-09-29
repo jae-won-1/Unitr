@@ -12,11 +12,12 @@
 //
 // What this file owns is the presentation and the action each role gets:
 //
-//   captain / co-captain → Challenge and Enter are the real commitments, and
-//     they move money (a credit hold on challenge, a buy-in on entry). Neither
-//     flow is ported yet, so they are GREYED rather than shown as live buttons.
-//     Offering a button that silently does nothing with a team's money would be
-//     worse than saying it is not ready.
+//   captain / co-captain → Enter is live: it opens enter-tournament-sheet.tsx
+//     (the same /api/tournaments/join the web calls, with any shortfall paid
+//     as a named amount towards the buy-in). Challenge stays GREYED until the
+//     friendly flow is ported — it places a hold on the team's money and picks
+//     a pitch, and a button that silently did nothing with that would be worse
+//     than saying it isn't ready.
 //   player → "Suggest to team", which is fully wired: it writes to
 //     match_suggestions, which is exactly what the web app does, and commits
 //     nothing on the team's behalf.
@@ -29,7 +30,7 @@
 //     3DS bugs lib/confirm-payment.ts exists for on the web — see
 //     joinRingerSpot below for the corresponding PaymentIntent-id recovery.
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -47,6 +48,8 @@ import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { paymentIntentIdFrom } from '~/payments';
+import { EnterTournamentSheet } from '~/components/enter-tournament-sheet';
+import { supabase } from '@/lib/supabase';
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
 
@@ -77,7 +80,19 @@ export function GameFeed({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const { posts, loading: postsLoading } = useOpenMatchPosts(teamId);
-  const { tournaments, loading: tourLoading } = useOpenTournaments(teamId);
+  const { tournaments, loading: tourLoading, markJoined } = useOpenTournaments(teamId);
+  const [entering, setEntering] = useState<Tournament | null>(null);
+  // The join route records the team's name on the entry, as the web passes it.
+  const [teamName, setTeamName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canAct || !teamId) return;
+    void supabase
+      .from('teams')
+      .select('name')
+      .eq('id', teamId)
+      .maybeSingle()
+      .then(({ data }) => setTeamName((data as { name?: string } | null)?.name ?? null));
+  }, [canAct, teamId]);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
   const {
     posts: ringers,
@@ -242,8 +257,20 @@ export function GameFeed({
             suggested={suggested.has(t.id)}
             suggestUnavailable={unavailable}
             onSuggest={() => suggest(t.id, 'tournament')}
+            onEnter={() => setEntering(t)}
           />
         ))}
+
+      {entering && teamId && (
+        <EnterTournamentSheet
+          tournament={entering}
+          teamId={teamId}
+          teamName={teamName}
+          userId={userId}
+          onClose={() => setEntering(null)}
+          onEntered={() => markJoined(entering.id, teamId)}
+        />
+      )}
 
       {showRingers && tab === 'ringer' && ringerUnavailable && (
         <View style={styles.card}>
@@ -275,6 +302,7 @@ function Actions({
   suggestUnavailable,
   onSuggest,
   commitLabel,
+  onCommit,
   styles,
 }: {
   teamId: string | null;
@@ -284,19 +312,29 @@ function Actions({
   onSuggest: () => void;
   /** "Challenge" for a match, "Enter" for a tournament. */
   commitLabel: string;
+  /** Present when the commit flow is ported; absent keeps it greyed. */
+  onCommit?: () => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
   if (!teamId) return null;
 
+  if (canAct && onCommit) {
+    return (
+      <Pressable onPress={onCommit} style={({ pressed }) => [styles.commitBtn, styles.commitBtnOn, pressed && { opacity: 0.85 }]}>
+        <Text style={styles.commitBtnOnText}>{commitLabel}</Text>
+      </Pressable>
+    );
+  }
+
   if (canAct) {
-    // Greyed, not hidden — and deliberately not wired. Both flows move money
-    // (a credit hold, a buy-in) and neither is ported yet.
+    // Greyed, not hidden — Challenge places a hold on the team's money and
+    // picks a pitch, and that flow isn't ported yet.
     return (
       <View style={styles.actionRow}>
         <View style={[styles.commitBtn, styles.commitBtnOff]}>
           <Text style={styles.commitBtnOffText}>{commitLabel}</Text>
         </View>
-        <Text style={styles.actionNote}>On the web app until Phase 3</Text>
+        <Text style={styles.actionNote}>On the web app for now</Text>
       </View>
     );
   }
@@ -414,6 +452,7 @@ function TournamentCard({
   suggested,
   suggestUnavailable,
   onSuggest,
+  onEnter,
 }: {
   t: Tournament;
   theme: ReturnType<typeof useTheme>;
@@ -423,6 +462,7 @@ function TournamentCard({
   suggested: boolean;
   suggestUnavailable: boolean;
   onSuggest: () => void;
+  onEnter: () => void;
 }) {
   const entered = !!teamId && t.joinedTeamIds.includes(teamId);
   const full = t.joinedCount >= t.maxTeams;
@@ -480,6 +520,7 @@ function TournamentCard({
             suggestUnavailable={suggestUnavailable}
             onSuggest={onSuggest}
             commitLabel="Enter"
+            onCommit={onEnter}
             styles={styles}
           />
         )}
@@ -669,6 +710,8 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     discount: { color: theme.accentInk, fontFamily: fonts.medium, fontSize: 11, marginTop: 1 },
     actionRow: { alignItems: 'flex-end', gap: 3 },
     commitBtn: { borderRadius: radius.btn, paddingHorizontal: 18, paddingVertical: 10 },
+    commitBtnOn: { backgroundColor: theme.accent },
+    commitBtnOnText: { color: '#fff', fontFamily: fonts.bold, fontSize: 14 },
     commitBtnOff: { backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.border },
     commitBtnOffText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 14 },
     joinBtn: { backgroundColor: theme.accent, minWidth: 84, alignItems: 'center' },
