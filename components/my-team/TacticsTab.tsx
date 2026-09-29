@@ -20,74 +20,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { loadSquadOptions, loadTeamTactics, type SquadOption, type TeamTactic } from "@/lib/team-tactics";
 import {
   slotsFor, PLAY_STYLES, PRESSING_LEVELS, TACTIC_SITUATIONS,
   TEAM_SIZES, formationKeysFor, defaultFormationFor, sizeOfFormation,
   teamSizeFromFormat, formatLabelForSize, type TeamSize,
 } from "@/lib/formations";
 
-export type TeamTactic = {
-  id: string;
-  team_id: string;
-  title: string;
-  situation: string | null;
-  formation: string;
-  style: string | null;
-  pressing: string | null;
-  notes: string | null;
-  /** { [formationSlotIndex]: player_id } — the same shape as match_tactics.lineup,
-   *  so loading a preset into a fixture is a straight copy. */
-  lineup: Record<number, string>;
-};
+// The preset data (TeamTactic, loadTeamTactics, SquadOption, loadSquadOptions)
+// lives in lib/team-tactics.ts so the mobile app can share it; re-exported so
+// existing imports from this file keep working.
+export { loadSquadOptions, loadTeamTactics, type SquadOption, type TeamTactic };
 
 const MISSING_TABLE_MSG = "Saved tactics aren't set up yet — run supabase_team_tactics.sql.";
-
-/** Shared with Manage Match's "load from saved" picker. */
-export async function loadTeamTactics(teamId: string): Promise<TeamTactic[] | null> {
-  const { data, error } = await supabase
-    .from("team_tactics")
-    .select("id, team_id, title, situation, formation, style, pressing, notes, lineup")
-    .eq("team_id", teamId)
-    .order("created_at", { ascending: false });
-  // null means "the table isn't there", which the caller renders as a disabled
-  // explanation. An empty array means "no presets yet" — a different message.
-  if (error) return null;
-  return ((data ?? []) as TeamTactic[]).map((t) => ({ ...t, lineup: t.lineup ?? {} }));
-}
-
-// ── The squad a preset can name ───────────────────────────────────────
-export type SquadOption = { id: string; name: string; position: string | null };
-
-/**
- * Everyone who could be put on the board: the captain plus every approved
- * member. The captain has no team_members row of their own, so they're fetched
- * and prepended — and teams.captain_id → profiles has no registered FK, so that
- * has to be a second query rather than an embedded select.
- */
-export async function loadSquadOptions(teamId: string): Promise<SquadOption[]> {
-  const { data: team } = await supabase
-    .from("teams").select("captain_id").eq("id", teamId).maybeSingle();
-  const { data: rows } = await supabase
-    .from("team_members")
-    .select("player_id, profiles(full_name, position)")
-    .eq("team_id", teamId)
-    .eq("status", "approved");
-
-  const out: SquadOption[] = [];
-  if (team?.captain_id) {
-    const { data: cap } = await supabase
-      .from("profiles").select("full_name, position").eq("id", team.captain_id).maybeSingle();
-    out.push({ id: team.captain_id, name: cap?.full_name ?? "Captain", position: cap?.position ?? null });
-  }
-  const members = (rows ?? []) as unknown as {
-    player_id: string; profiles: { full_name: string | null; position: string | null } | null;
-  }[];
-  for (const r of members) {
-    if (r.player_id === team?.captain_id) continue;
-    out.push({ id: r.player_id, name: r.profiles?.full_name ?? "Player", position: r.profiles?.position ?? null });
-  }
-  return out;
-}
 
 // ── Pitch board ───────────────────────────────────────────────────────
 // Same construction as the fixture lineup boards (Manage Match, Manage
