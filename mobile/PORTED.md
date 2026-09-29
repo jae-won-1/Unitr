@@ -92,6 +92,21 @@ ever reproduced on a real card on a real phone. Test with a
 [Stripe test card](https://docs.stripe.com/testing) that triggers 3DS
 (`4000 0027 6000 3184`) before trusting this on a live key.
 
+**How to run that test.** The deployed API runs live Stripe keys, which a
+`pk_test_` key on the phone can't confirm, so payments are tested against the
+web app running locally in test mode:
+
+1. `.env.development.local` (repo root, gitignored) holds `sk_test_` /
+   `pk_test_` and overrides `.env.local` for `npm run dev` only.
+2. `mobile/.env` points `EXPO_PUBLIC_API_BASE_URL` at this PC's Wi-Fi address
+   on port 3000. Switch it back to the Vercel URL afterwards.
+3. `node mobile/scripts/ringer-test-fixture.mjs seed` — a Test-vs-Test friendly
+   and one £5 ringer request, payer `testcaptain@gmail.com` (its live Stripe
+   customer id is saved and cleared). **This writes to the live database** and
+   the request is visible on the live Fill In feed while it exists.
+4. Pay on the phone with `4000 0027 6000 3184`.
+5. `node mobile/scripts/ringer-test-fixture.mjs undo` straight away.
+
 ## Shared, so never listed here
 
 These need no row because they are not copied — both apps use the same file or the same
