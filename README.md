@@ -49,6 +49,7 @@ database test; Playwright is installed but no browser test suite is configured.
 | `tailwind.config.ts`, `app/globals.css` | Design tokens and global styling |
 | `supabase_*.sql` | Manual database changes and SQL checks |
 | `GO_LIVE.md` | Stripe operational cutover guide, including destructive steps |
+| `docs/GOOGLE_SIGN_IN.md` | Dashboard setup for Continue with Google, and what to check before enabling it |
 
 ## Using Codex and Claude Code
 

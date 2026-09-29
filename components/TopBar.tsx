@@ -13,7 +13,12 @@ import type { TutorialRole } from "@/lib/tutorial-content";
 // /join is on this list for the same reason the auth screens are: it is an
 // entry point, often the first Uniter screen someone ever sees, and it carries
 // the wordmark itself rather than the app chrome.
-const HIDDEN_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/join"];
+const HIDDEN_PATHS = [
+  "/login", "/register", "/forgot-password", "/reset-password", "/join",
+  // Google's round trip: /auth/callback is the landing, /welcome is the rest
+  // of the registration form. Both carry the wordmark hero themselves.
+  "/auth", "/welcome",
+];
 
 export default function TopBar() {
   const pathname = usePathname();

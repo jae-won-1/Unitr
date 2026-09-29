@@ -113,8 +113,9 @@ A captain can promote approved squad members to co-captain from Team Settings
 (`components/my-team/CoCaptainsPanel.tsx` → the `set_co_captain` RPC). A co-captain has the
 captain's authority **everywhere except appointing other co-captains** — that stays with the
 person who was handed the team. They reach the `captain` role, so every captain screen and
-CTA is theirs; `useRole().isCoCaptain` is the only place the two are told apart, and the only
-thing it changes is that panel.
+CTA is theirs; `useRole().isCoCaptain` is the only place the two are told apart, and it
+changes exactly two things — that panel, and **Leave team**, which a co-captain can press
+because they have a membership row to give up and the captain hasn't (see Leaving a squad).
 
 Two rules make that work without rewriting every query, both living in
 **`lib/team-leadership.ts`**:
@@ -159,10 +160,6 @@ Three variants keyed off role, all sharing the same skeleton: quick-nav row → 
 
 Home deliberately shows **only the next fixture** — everything else is the Calendar's job.
 
-The Calendar empty-state **Find a game** button links to `/#find-matches`,
-opening Home at the Find Matches section after role loading, with space for
-the fixed header. Every player-facing Home variant exposes this anchor.
-
 ### Calendar (`app/calendar/page.tsx`)
 
 Owns every commitment the viewer has. **Upcoming always renders above Past**, and both
@@ -204,6 +201,32 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/match/[matchId]` | Manage Match — overview / squad / payment / tactics / result tabs, plus ringer requests |
 | `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad |
 | `/my-team/tournament-match/[fixtureId]` | Manage Tournament Fixture — the same info / attendance / lineup / tactics surface for one game inside a tournament |
+
+#### Leaving a squad
+
+A red **Leave team** button sits at the bottom of My Team under every tab
+(`components/my-team/LeaveTeamPanel.tsx`), and asks a second time before anything happens.
+`lib/leave-team.ts` is the only place a membership is given up.
+
+The `team_members` row **is** the membership — `RoleContext` reads it, the team chat derives
+its members from it, `is_co_captain` rides on it, and the joining-fee snapshot lives on it —
+so deleting it does most of the work: the leaver drops to `new_user`, falls out of the chat,
+and stops appearing in the squad everywhere it's listed. What it doesn't undo splits two ways.
+**Questions about games that haven't kicked off are withdrawn** — the leaver's
+`match_confirmations` for upcoming fixtures and their live-poll `availability_responses`,
+because an Available from someone who has left is a place claimed in a team they aren't in and
+the captain reads that tally when picking a side. Answers for games already played stay: they
+are the record of who played, which Settle Payments reads. **Money is left exactly as it
+stands** — leaving is not how a debt is cleared, so the confirmation warns what is still owed
+(`owedSummary`, the same two debts the availability gate weighs) rather than blocking, and the
+captain's Payment Status keeps listing them.
+
+The captain sees the button **greyed** with the reason, per the house convention: they hold
+the team, every fixture is filed under their id, and `teams.captain_id` is immutable from a
+browser session anyway. A co-captain is a squad member with a row to give up, so they leave
+like anyone else — `useRole().isCoCaptain` is what tells the two apart here, the second place
+it matters after `CoCaptainsPanel`. Leaving finishes with `hardNavigate` rather than a router
+push, because role, team and every cached query belong to a membership that no longer exists.
 
 #### Team details, and the two multi-select answers
 
@@ -276,6 +299,42 @@ A link join writes the same approved `team_members` row the Approve button write
 joining-fee snapshot and welcome DM fire unchanged — the new member still owes the fee.
 Refused cases (captains, players already in a squad, venue accounts) are plain sentences,
 not errors; one approved membership per player is an invariant `RoleContext` depends on.
+
+### Signing up
+
+Two doors, one profile. `/register` asks everything at once behind an email and a password.
+**Continue with Google** (`/login` and `/register`, `lib/google-auth.ts`) can't: Google hands
+back a name and an email and no idea what position anyone plays. So it lands on
+`/auth/callback`, which decides only where the account belongs — **no `profiles` row →
+`/welcome`**, venue → the portal, otherwise the invite or Home — and `/welcome` asks the same
+questions `/register` does and writes the same row. `components/RegistrationFields.tsx` is
+that question markup and `lib/register-profile.ts` is that insert, shared by both screens for
+the same reason `lib/profile-options.ts` holds the option lists: two copies would drift.
+
+**A session without a profile is a real state**, because Google creates the account the
+moment consent is given — close the tab on `/welcome` and you come back signed in and
+profile-less. `RoleContext` reports it as `profileMissing` (never on a *failed* lookup, only a
+genuinely absent row) and `components/ProfileGate`, mounted app-wide, sends that account back
+to `/welcome` from anywhere but the sign-up screens. Half a profile would be worse than none:
+a player with no position is invisible to every Transfer Market filter.
+
+The session itself is never read off the URL by hand. The client is on supabase-js's default
+**implicit** flow, so the fragment is parsed in the browser and there is no server callback
+route — adding one would mean moving the whole app to PKCE. There is **no migration**: the
+`profiles` insert policy and the `account_type` guard already allow exactly this row.
+Switching the provider on is dashboard work, in `docs/GOOGLE_SIGN_IN.md`.
+
+**Matching by email only works for a confirmed one, and for the same address.** Supabase links
+a Google identity to an existing user only if that user's email was verified. Email
+confirmation is off on this project, which makes Supabase auto-confirm every address at
+sign-up — so a member registered with their Gmail is matched automatically. One registered
+with any other address (university, Hotmail, a typo, a made-up one) gets a second user id and
+none of its squad. **Connect Google** on `/profile`
+(`components/SignInMethods.tsx` → `linkIdentity`) is the way through: it attaches Google to
+whoever is *signed in*, so the registered address stops mattering — sign in with the
+password once and the Google button finds that account afterwards. `/welcome` warns that
+finishing it makes a *new* account, because the app can't detect the collision itself:
+`profiles` holds no email and the browser can't read `auth.users`.
 
 ### Book (`app/book/page.tsx`)
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -122,6 +123,12 @@ export default function LoginPage() {
             </>
           ) : "Sign In"}
         </button>
+
+        {/* Google signs an account in and creates one from the same tap, so
+            the same button sits on both screens. An invite rides along in
+            localStorage — it can't survive Google's redirect on the query
+            string. */}
+        <GoogleAuthButton invite={invite} onError={setError} />
 
         <p className="text-center text-sm text-text-secondary">
           Don&apos;t have an account?{" "}
