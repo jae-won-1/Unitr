@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authedDelete } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
-import { actingCaptainId } from "@/lib/team-leadership";
+import { createAvailabilityPoll, parseDateOption, type DateOption } from "@/lib/availability-poll";
 
 // Poll creation, shared by the Collect Availability page and the captain's home
 // tile. One implementation because the create step has a rule that is easy to
@@ -12,32 +11,10 @@ import { actingCaptainId } from "@/lib/team-leadership";
 // deletes the previous request (and its responses) first. Two copies of that
 // would eventually drift into two live polls.
 
-export type DateOption = {
-  id: string;
-  date: string;
-  time: string;
-  day: string;
-  month: string;
-  dayName: string;
-  // Where the captain intends to play this slot. Optional and free text —
-  // a poll option is a proposal, not a booking, and the pitch often isn't
-  // reserved until the squad has said which slot works. Older polls have no
-  // location key at all, so every reader must treat it as possibly absent.
-  location?: string;
-};
-
-const MONTH_NAMES = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
-export function parseDateOption(dateStr: string, timeStr: string, location?: string): DateOption {
-  const d = new Date(dateStr + "T" + timeStr);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = MONTH_NAMES[d.getMonth()];
-  const dayName = DAY_NAMES[d.getDay()];
-  const display = `${dayName.slice(0, 3)}, ${day} ${month} ${d.getFullYear()}`;
-  const loc = location?.trim();
-  return { id: crypto.randomUUID(), date: display, time: timeStr, day, month, dayName, ...(loc ? { location: loc } : {}) };
-}
+// DateOption, parseDateOption and the create step itself live in
+// lib/availability-poll.ts so the mobile app creates polls through the same
+// code; re-exported so existing imports from this file keep working.
+export { parseDateOption, type DateOption };
 
 function isWithin24h(date: string, time: string): boolean {
   if (!date || !time) return false;
@@ -76,27 +53,10 @@ export default function AvailabilityPollForm({
     setSaving(true);
     setError(null);
 
-    const { data: existing } = await supabase
-      .from("availability_requests").select("id").eq("team_id", teamId)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (existing) {
-      await authedDelete("/api/availability/delete", { requestId: existing.id });
-    }
-
-    const date_options = filled.map((r) => parseDateOption(r.date, r.time, r.location));
-    // A co-captain opens polls too. The row is filed under the team's captain
-    // so every squad member's "is there a poll for my team?" still matches,
-    // whoever pressed Send.
-    const { error: insertError } = await supabase
-      .from("availability_requests")
-      .insert({
-        team_id: teamId,
-        captain_id: await actingCaptainId(captainId, teamId),
-        date_options,
-      });
+    const { error: insertError } = await createAvailabilityPoll(teamId, captainId, filled);
 
     setSaving(false);
-    if (insertError) { setError(insertError.message); return; }
+    if (insertError) { setError(insertError); return; }
     onCreated();
   };
 
