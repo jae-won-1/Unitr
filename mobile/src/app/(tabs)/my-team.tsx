@@ -127,6 +127,9 @@ export default function MyTeam() {
             <Text style={styles.actionPrimaryText}>Register your team</Text>
           </Pressable>
         </View>
+        <Pressable onPress={() => router.push('/transfer')} style={[styles.action, { marginTop: 8 }]}>
+          <Text style={styles.actionText}>Transfer Market — offers and friends</Text>
+        </Pressable>
         <Text style={styles.sectionTitle}>Find a team</Text>
         {user && <BrowseTeams userId={user.id} />}
       </ScrollView>
@@ -199,6 +202,9 @@ export default function MyTeam() {
             <Text style={styles.actionText}>Tactics</Text>
           </Pressable>
         </View>
+        <Pressable onPress={() => router.push('/transfer')} style={styles.action}>
+          <Text style={styles.actionText}>Transfer Market</Text>
+        </Pressable>
       </View>
 
       {isCaptain && teamId && <JoinRequests teamId={teamId} onChanged={load} />}
