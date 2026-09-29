@@ -12,8 +12,12 @@
 // lets "3 available · 1 out" expand into names in place — one query either way,
 // the names ride along with the count rather than being fetched on the tap.
 //
-// Team credit is read-only here. Topping up and settling payments are the money
-// surfaces (TeamCreditsBar is 938 lines on the web) and belong with Phase 3.
+// Any squad member who owes money — joining fee, or their share of games
+// already played — gets a "You owe" strip that opens PaySheet, and the same
+// sheet is one tap away from a greyed Available button. The captain's
+// team-credit tile stays read-only: managing the team's money is the captain
+// control panel (Phase 4), and paying what YOU owe is worded around what it's
+// for, not around a balance (see pay-sheet.tsx for why).
 
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -29,7 +33,10 @@ import {
   type ConfirmStatus,
 } from '@/lib/event-availability';
 import { useAvailabilityGate, owedSummary } from '@/lib/availability-gate';
+import { useMyDues } from '@/lib/dues';
+import { fmtFee, useJoiningFee } from '@/lib/joining-fee';
 import { fmtKickoff } from '@/lib/match-dates';
+import { PaySheet } from '~/components/pay-sheet';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
@@ -56,6 +63,12 @@ export function StatusStrips({
   const [credit, setCredit] = useState<number | null>(null);
   const [myPending, setMyPending] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { dues, owedPence: duesOwed, reload: reloadDues } = useMyDues(teamId, userId);
+  const { owedPence: feeOwed, reload: reloadFee } = useJoiningFee(teamId, userId);
+  const [payOpen, setPayOpen] = useState(false);
+  // Bumped after the pay sheet closes so each EventAnswer remounts and
+  // re-reads its availability gate — a payment is exactly what lifts it.
+  const [gateKey, setGateKey] = useState(0);
 
   const load = useCallback(async () => {
     // A teamless viewer's only strip is the request they are waiting on.
@@ -138,9 +151,35 @@ export function StatusStrips({
   }
 
   const unanswered = events.filter((e) => e.myStatus === 'pending');
+  const owed = feeOwed + duesOwed;
+  const owedLine =
+    feeOwed > 0 && duesOwed > 0
+      ? `Joining fee and your share of ${dues.length} game${dues.length === 1 ? '' : 's'}`
+      : feeOwed > 0
+        ? 'Your joining fee'
+        : `Your share of ${dues.length} game${dues.length === 1 ? '' : 's'} already played`;
+
+  const closePay = () => {
+    setPayOpen(false);
+    void reloadDues();
+    void reloadFee();
+    setGateKey((k) => k + 1);
+    void load();
+  };
 
   return (
     <View style={styles.wrap}>
+      {owed > 0 && (
+        <Pressable onPress={() => setPayOpen(true)} style={[styles.strip, styles.stripOwe]}>
+          <Ionicons name="card-outline" size={18} color={theme.danger} />
+          <View style={styles.stripBody}>
+            <Text style={styles.stripTitleOwe}>You owe {fmtFee(owed)}</Text>
+            <Text style={styles.stripSub}>{owedLine}</Text>
+          </View>
+          <Text style={styles.stripAction}>Pay</Text>
+        </Pressable>
+      )}
+
       {isCaptain && (joinRequests > 0 || suggestions > 0 || credit != null) && (
         <View style={styles.tileRow}>
           {joinRequests > 0 && (
@@ -181,18 +220,21 @@ export function StatusStrips({
           </Text>
           {unanswered.map((e) => (
             <EventAnswer
-              key={e.key}
+              key={`${e.key}:${gateKey}`}
               event={e}
               teamId={teamId}
               userId={userId}
               tally={isCaptain ? answers[e.key] : undefined}
               onAnswered={load}
+              onPay={() => setPayOpen(true)}
               styles={styles}
               theme={theme}
             />
           ))}
         </View>
       )}
+
+      <PaySheet visible={payOpen} teamId={teamId} userId={userId} onClose={closePay} />
     </View>
   );
 }
@@ -230,6 +272,7 @@ function EventAnswer({
   userId,
   tally,
   onAnswered,
+  onPay,
   styles,
   theme,
 }: {
@@ -238,6 +281,7 @@ function EventAnswer({
   userId: string;
   tally?: SquadAnswers;
   onAnswered: () => void;
+  onPay: () => void;
   styles: ReturnType<typeof makeStyles>;
   theme: ReturnType<typeof useTheme>;
 }) {
@@ -317,7 +361,10 @@ function EventAnswer({
 
       {gate.blocked && !gate.loading && (
         <Text style={styles.gateNote}>
-          Pay {owedSummary(gate)} to put yourself forward. You can still say you can&apos;t play.
+          Pay {owedSummary(gate)} to put yourself forward. You can still say you can&apos;t play.{' '}
+          <Text style={styles.gateLink} onPress={onPay}>
+            Pay now
+          </Text>
         </Text>
       )}
     </View>
@@ -339,6 +386,11 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     stripWarn: { backgroundColor: '#FFF6E3', borderColor: '#F5DCA6' },
     stripBody: { flex: 1 },
     stripTitleWarn: { color: '#B07400', fontFamily: fonts.semibold, fontSize: 14 },
+    // Inside wrap, which already spaces its children — the standalone strip's
+    // own top margin would double it.
+    stripOwe: { backgroundColor: '#FDECEC', borderColor: '#F5C2C2', marginTop: 0 },
+    stripTitleOwe: { color: theme.danger, fontFamily: fonts.semibold, fontSize: 14 },
+    stripAction: { color: theme.danger, fontFamily: fonts.bold, fontSize: 13 },
     stripSub: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12, marginTop: 1 },
 
     tileRow: { flexDirection: 'row', gap: 9 },
@@ -408,4 +460,5 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       lineHeight: 16,
       marginTop: 6,
     },
+    gateLink: { color: theme.accentInk, fontFamily: fonts.semibold },
   });

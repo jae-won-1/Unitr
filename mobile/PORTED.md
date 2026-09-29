@@ -59,6 +59,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — **done**, incl. month grid + detail sheet |
 | My Team — squad + details | `app/my-team/page.tsx` | `fe97d03` | Phase 2 — done. Captain control panel is Phase 4 |
 | Leave team | `components/my-team/LeaveTeamPanel.tsx` | `fe97d03` | done — shares `lib/leave-team.ts`, `lib/availability-gate.ts`, `lib/hard-navigate.native.ts` unchanged |
+| Pay what you owe (joining fee, match shares) | `components/DuesTopUpModal.tsx`, `lib/dues.ts` | `9ceac25` | **Phase 3 — done.** `pay-sheet.tsx`, opened from a "You owe" strip on Home and from "Pay now" under a greyed Available. Saved card → `/api/settle-match` (confirmed first); otherwise `/api/create-credits-intent` + PaymentSheet. Worded around what's paid for — the web's free-amount top-up is deliberately not ported (App Store, see the Phase 3 note) |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:
@@ -106,6 +107,24 @@ web app running locally in test mode:
    the request is visible on the live Fill In feed while it exists.
 4. Pay on the phone with `4000 0027 6000 3184`.
 5. `node mobile/scripts/ringer-test-fixture.mjs undo` straight away.
+
+**Testing the pay sheet is different, and messier.** A Fill In payment goes to
+Uniter and never touches team credit, but a joining fee or match share is
+recorded by the **Stripe webhook** (`credit_from_payment`), not by the app. A
+local server gets no webhook unless the Stripe CLI forwards one
+(`stripe listen --forward-to localhost:3000/api/webhooks/stripe`, with the
+`whsec_` it prints as `STRIPE_WEBHOOK_SECRET` in `.env.development.local`).
+Without it the payment succeeds and the sheet says it can take a minute, but
+nothing is ever marked paid. With it, a test-mode payment writes real rows to
+the **live** ledger (`team_credit_transactions`, `team_credits`, the
+joining-fee paid column), so only test with an account in the Test team and
+expect to remove those rows afterwards. There is no undo script for that yet.
+
+**Wording (decided 2026-09-29):** every mobile payment screen names what the
+money is for — "Joining fee", "vs X · your share of the pitch" — never "top
+up", "credit" or "balance". The money still lands in `team_credits`. A stored
+balance you add money to is what an App Store reviewer reads as a digital
+wallet (Apple's own 30% payment system); a real-world pitch is exempt.
 
 ## Shared, so never listed here
 
