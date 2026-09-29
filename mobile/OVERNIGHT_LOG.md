@@ -60,7 +60,8 @@ through, which is the list at the bottom.
   is why it's in "Check these first" below. Everything else lands on `mobile`.
 - Every mobile change is type-checked and linted before commit. None of it has
   run on a phone — that is what the test list is for.
-- **Both phone bundles build.** At `f3c8dfa` I ran a full Metro export for
+- **Both phone bundles build.** At `f3c8dfa`, and again on the final state at
+  `6ebe806`, I ran a full Metro export for
   Android and for iOS (`npx expo export`): every screen and shared file
   resolves and compiles to Hermes bytecode, with no warnings. That proves the
   app *assembles*; it doesn't prove it *runs* correctly, which is the test list.
