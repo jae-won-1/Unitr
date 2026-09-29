@@ -18,10 +18,20 @@ guard already allow it.
 Supabase dashboard → Authentication → Users. Export or screenshot the list, and
 note which accounts show a confirmed email.
 
-**Confirm email is currently off on this project**, so expect the answer to be
-"none of them". That is the whole reason steps 4 and 5 exist. Knowing the list
-before Google accounts start appearing is what lets you tell an old account from
-a new duplicate afterwards.
+**Done 2026-09-29: every account came back confirmed.** With "Confirm email"
+off, Supabase auto-confirms each address at sign-up rather than leaving it
+unconfirmed — this document originally assumed the opposite. Check with:
+
+```sql
+select u.email, u.email_confirmed_at is not null as confirmed,
+       p.id is not null as has_profile
+from auth.users u left join public.profiles p on p.id = u.id
+order by u.created_at;
+```
+
+Knowing the list before Google accounts start appearing is still what lets you
+tell an old account from a new duplicate afterwards. Accounts with no profile
+row will be sent to `/welcome` by `ProfileGate` on their next sign-in.
 
 Also note any account registered with a made-up address (`…@test`, `…@fake`,
 anything not a real mailbox). Those can never be matched by email and will need
@@ -93,13 +103,15 @@ duplicate case, and it means the link never attached.
 
 ## 4. Tell the existing squad what to do
 
-This is the step that isn't in a dashboard, and it matters more than any of
-them. Nobody who already has an account should tap Continue with Google first.
+This is the step that isn't in a dashboard. Because every existing address is
+confirmed (step 0), a member whose Uniter email **is** their Google account is
+matched automatically. Everyone else needs Connect Google first.
 
-> If you already have a Uniter account, sign in the way you always have, then go
-> to Profile → Sign-in Methods → Connect Google. Don't use the Google button to
-> sign in until you've done that once — it would start you a brand-new empty
-> account.
+> You can now sign in with Google. If your Uniter account uses the same Gmail
+> address, just tap Continue with Google. If it uses a different address (a
+> university, Hotmail or Naver email, say), sign in the way you always have
+> first, then go to Profile → Sign-in Methods → Connect Google — otherwise the
+> Google button starts you a brand-new empty account.
 
 `/welcome` says a version of this itself, before any field is filled in, but a
 message to the squad before they see it is worth more.
@@ -107,15 +119,15 @@ message to the squad before they see it is worth more.
 ### Why — the three groups
 
 Supabase links a Google identity to an existing user **only when that user's
-email is already confirmed**.
+email is already confirmed** — which, on this project, every address is.
 
 | Who | What happens on Continue with Google |
 | --- | --- |
 | Confirmed email, same address on Google | Same user id. Profile, team and payments intact, password still works |
-| **Unconfirmed** email, real Google address | A **second, separate account** — new user id, no profile, none of their squad. The original is untouched and still reachable by password, but they won't know that |
-| Made-up or non-Google address | No match is possible. The button does nothing for them |
+| Registered with a **different** address from the Google account (non-Gmail, typo, made-up) | A **second, separate account** — new user id, no profile, none of their squad. The original is untouched and still reachable by password, but they won't know that |
+| Unconfirmed email (none exist today; only possible once Confirm email is on) | The same as the row above |
 
-Connect Google answers rows two and three, because `linkIdentity` attaches
+Connect Google answers the second row, because `linkIdentity` attaches
 Google to whoever is **signed in** — the registered address stops mattering. The
 app cannot warn about the collision by itself: `profiles` stores no email and
 the browser cannot read `auth.users`.
@@ -159,8 +171,14 @@ So, in order:
 3. Send a test signup to a real inbox and confirm the link works.
 4. Then enable Authentication → Providers → Email → **Confirm email**.
 
-Existing accounts stay unconfirmed when you do this; it changes nothing for
-them, which is why step 4 above still applies to everyone who is already here.
+Existing accounts are already confirmed (step 0) and are unaffected by the
+switch.
+
+**Why it matters for Google as well:** while it is off, an address is marked
+confirmed without anyone proving they own it. Someone who registers with
+another person's Gmail would have that account auto-linked when the real owner
+later taps Continue with Google — and would still hold its password. Unlikely
+at pilot scale, but it is the reason this job is worth doing.
 
 ---
 

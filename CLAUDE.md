@@ -324,11 +324,12 @@ route — adding one would mean moving the whole app to PKCE. There is **no migr
 `profiles` insert policy and the `account_type` guard already allow exactly this row.
 Switching the provider on is dashboard work, in `docs/GOOGLE_SIGN_IN.md`.
 
-**Matching by email only works for a confirmed one.** Supabase links a Google identity to an
-existing user only if that user's email was verified; an **unconfirmed** account with the
-same address gets a second user id and none of its squad, and an address that isn't a Google
-account can never be matched at all. Email confirmation is off on this project, so that is
-every account registered before Google arrived. **Connect Google** on `/profile`
+**Matching by email only works for a confirmed one, and for the same address.** Supabase links
+a Google identity to an existing user only if that user's email was verified. Email
+confirmation is off on this project, which makes Supabase auto-confirm every address at
+sign-up — so a member registered with their Gmail is matched automatically. One registered
+with any other address (university, Hotmail, a typo, a made-up one) gets a second user id and
+none of its squad. **Connect Google** on `/profile`
 (`components/SignInMethods.tsx` → `linkIdentity`) is the way through: it attaches Google to
 whoever is *signed in*, so the registered address stops mattering — sign in with the
 password once and the Google button finds that account afterwards. `/welcome` warns that
