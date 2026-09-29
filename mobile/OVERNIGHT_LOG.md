@@ -28,6 +28,11 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 7 | Profile leaves out **Connect Google**, with a note pointing to the web app. | Linking Google inside the phone app is an OAuth round trip that needs the app added as a redirect in Supabase and Google Cloud, which is dashboard work. | (this commit) |
 | 8 | Profile leaves out **Friends** for now. | Its only action is "message this friend", and Messages isn't on mobile yet. | (this commit) |
 | 9 | Sign out asks for confirmation first. | On a phone it sits under your thumb at the bottom of a long scroll. | (this commit) |
+| 10 | Added `lib/direct-messages.ts` on **main** as a new file; the web inbox and thread pages were **not** changed to use it. | The web pages run these queries inline. Moving them onto the shared file is a refactor of live pages, which I didn't want to do unsupervised. As a new file it changes nothing on the web. The web pages can switch over later. | 2c0990c |
+| 11 | Built Messages on mobile: inbox, team chat, one-to-one threads, plus a chat icon with an unread dot beside the avatar. | Phase 5 of the plan; it involves no money and was the largest gap left for players. | (this commit) |
+| 12 | One-to-one threads on mobile **poll for replies every 5s**; the web thread doesn't. | On a phone you put the app down and pick it up again. A thread that only updates when you reopen it reads as broken. | (this commit) |
+| 13 | Polling pauses while the app is in the background. | The migration plan's note for team chat: use AppState on native in place of the web's hidden-tab check. | (this commit) |
+| 14 | Team chat's options menu (mute, leave, rejoin) uses the phone's own action sheet, and leaving asks for confirmation. | It's the native equivalent of the web's ⋯ menu, and leaving hides new messages, so it's worth one extra tap. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -55,3 +60,8 @@ Tests:
 - [ ] **Profile**: tap the avatar (top right) on Home, Calendar and My Team. Check name, positions, About you. Edit Profile: change positions (first pick shows "main") and an answer, save, and see it update.
 - [ ] **Add a card** on Profile (test key, `4242 4242 4242 4242`, or `4000 0027 6000 3184` for 3D Secure). Expect "Visa •••• 4242 · Saved". Then **Remove** it. Uses a test account only — it writes the card to that account's profile.
 - [ ] **Sign out** from Profile: confirmation, then the sign-in screen, and Back doesn't return into the app.
+- [ ] **Messages icon** (top right, beside the avatar): the red dot shows when you have unread messages and clears after reading. Muting the team chat should stop the chat counting towards it.
+- [ ] **Team chat**: open it from the inbox, send a message, and see it appear. From the web app (or a second account) send one back; it should arrive on the phone within about 5 seconds. Scroll up, have a message arrive, and check the **New messages** pill brings you back down.
+- [ ] **Team chat menu** (⋯): turn notifications off and on; Leave (confirm), which should show "You left this chat" with Rejoin; then Rejoin.
+- [ ] **One-to-one thread**: open one from the inbox, send, and check a reply arrives within about 5 seconds.
+- [ ] **Keyboard**: in both chats, the message box should stay above the keyboard on your phone. This is the part most likely to look wrong on Android.
