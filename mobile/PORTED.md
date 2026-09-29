@@ -76,6 +76,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Register a team | `app/my-team/create/page.tsx` | `ea826c8` | done — same insert and missing-column fallback; refreshes the session so the captain role is picked up |
 | Tournament fixture (one game) | `app/my-team/tournament-match/[fixtureId]/page.tsx`, `lib/tournament-match.ts`, `lib/formations.ts` | `ea826c8` | done — Info / Attendance / Lineup (Tactics folded under the board). Lineup board is `pitch-board.tsx` on the shared formations. Not ported: loading a saved preset (presets live in the web's TacticsTab) |
 | "Your games" in a tournament | `components/TournamentFixtureList.tsx` | `ea826c8` | done — in the Calendar fixture sheet for an entered tournament; each row opens the fixture |
+| Notifications (bell) | feed half of `components/TopBar.tsx` | `ea826c8` | done — bell with unread dot beside Messages, `notifications.tsx` list with mark-all-read. Links open the matching phone screen where one exists. The query copies TopBar's inline one. The bell's computed counts (join requests, open posts, dues) aren't repeated — they live on Home / My Team |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:

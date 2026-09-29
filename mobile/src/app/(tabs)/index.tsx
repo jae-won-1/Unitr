@@ -180,7 +180,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     page: { flex: 1, backgroundColor: theme.background },
     content: { padding: 20, paddingTop: 60, paddingBottom: 40 },
-    greeting: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 48 },
+    greeting: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 128 },
     roleLine: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13, marginTop: 3 },
     sectionTitle: {
       color: theme.textSecondary,

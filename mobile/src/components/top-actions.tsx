@@ -26,6 +26,7 @@ export function TopActions({ top = 56 }: { top?: number }) {
   const { user } = useAuth();
   const [initials, setInitials] = useState('');
   const [unread, setUnread] = useState(0);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   // Re-counted whenever the tab comes back into focus — returning from a
   // thread is exactly when the number changes.
@@ -34,9 +35,20 @@ export function TopActions({ top = 56 }: { top?: number }) {
       if (!user) return;
       let live = true;
       void (async () => {
-        const [direct, led] = await Promise.all([countUnreadDirect(user.id), loadLeadership(user.id)]);
+        const [direct, led, notifs] = await Promise.all([
+          countUnreadDirect(user.id),
+          loadLeadership(user.id),
+          supabase
+            .from('notifications')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('read', false),
+        ]);
         const chat = await loadChatSummary(led?.teamId, user.id);
-        if (live) setUnread(direct + (chat?.unreadCount ?? 0));
+        if (live) {
+          setUnread(direct + (chat?.unreadCount ?? 0));
+          setUnreadNotifs(notifs.count ?? 0);
+        }
       })();
       return () => {
         live = false;
@@ -68,6 +80,14 @@ export function TopActions({ top = 56 }: { top?: number }) {
   return (
     <View style={[styles.wrap, { top }]}>
       <Pressable
+        onPress={() => router.push('/notifications')}
+        accessibilityLabel={unreadNotifs > 0 ? `Notifications, ${unreadNotifs} unread` : 'Notifications'}
+        hitSlop={8}
+        style={styles.icon}>
+        <Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />
+        {unreadNotifs > 0 && <View style={styles.dot} />}
+      </Pressable>
+      <Pressable
         // Cast: the generated route types (.expo/types/router.d.ts) list the
         // inbox as "/messages/index" — they're also listing non-route files as
         // "/../…" paths, so the generator is confused. At runtime
@@ -92,7 +112,7 @@ export function TopActions({ top = 56 }: { top?: number }) {
 
 const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
-    wrap: { position: 'absolute', right: 20, flexDirection: 'row', alignItems: 'center', gap: 12, zIndex: 5 },
+    wrap: { position: 'absolute', right: 20, flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 5 },
     icon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
     dot: {
       position: 'absolute',

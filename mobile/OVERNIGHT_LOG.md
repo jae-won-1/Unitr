@@ -59,6 +59,9 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 38 | Folded the web's separate Tactics tab (style and notes) under the lineup board. | On a phone, three tabs fit and four are cramped, and a captain thinks about style while looking at the board. | (this commit) |
 | 39 | Loading a saved team preset into a lineup isn't ported. | Presets are loaded by code inside the web's Tactics tab component rather than a shared file. Moving it is for when the Tactics screen itself is ported. | — |
 | 40 | The full tournament schedule page (all teams, standings, organiser controls) isn't ported; the fixture page points to the web app for it. | It's the organiser's screen and much bigger. Players get their own games on mobile. | — |
+| 41 | Added the notification bell to mobile (beside Messages) with a Notifications screen and Mark all read. | Captains get notified here when an event is cancelled and refunded, when they're removed from an event, or when a joining fee goes up. Mobile showed none of it. | (this commit) |
+| 42 | Tapping a notification opens the matching phone screen when there is one (messages, a tournament game, My Team, Team Settings, Profile, Calendar), and otherwise just marks it read. | Notification links are website addresses, and some point at screens the phone doesn't have yet. | (this commit) |
+| 43 | The web bell's three computed counts (join requests, open posts, dues) aren't repeated in the mobile bell. | They already have places on mobile: join requests on My Team and Home, what you owe on Home. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -109,3 +112,4 @@ Tests:
 - [ ] **Tournament games** (needs an entered tournament with fixtures drawn up, e.g. on the Test team): Calendar → tap the tournament → "Your games" lists each game; tap one.
 - [ ] **Fixture page as a player**: Info shows kick-off, pitch and referee; Attendance shows the squad's In / Out / Pending for the day; Lineup is read-only.
 - [ ] **Fixture page as captain**: pick a formation, tap positions to choose players (someone who said Out shouldn't be offered; picking someone already placed moves them), set a style and notes, **Save lineup**. Then open the same game on the web and check it matches (same players in the same positions).
+- [ ] **Bell** (top right): the dot shows with unread notifications. Open it, tap one (it goes grey and opens the right screen if it links somewhere the phone has), then Mark all read. To get one to test with: the removing-a-team feature and changing a joining fee both create notifications on the Test team.

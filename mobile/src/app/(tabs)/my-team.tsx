@@ -263,7 +263,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       lineHeight: 21,
       textAlign: 'center',
     },
-    heading: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 48 },
+    heading: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 128 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' },
     rolePill: {
       backgroundColor: theme.accent,
