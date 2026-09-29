@@ -43,6 +43,7 @@ import { TopActions } from '~/components/top-actions';
 import LeaveTeamPanel from '~/components/leave-team-panel';
 import { JoinRequests } from '~/components/join-requests';
 import { BrowseTeams } from '~/components/browse-teams';
+import { PlayerSheet } from '~/components/player-sheet';
 
 type Team = {
   id: string;
@@ -52,6 +53,7 @@ type Team = {
   format: string | null;
   description: string | null;
   joining_fee_pence: number | null;
+  captain_id: string;
 };
 
 export default function MyTeam() {
@@ -71,6 +73,8 @@ export default function MyTeam() {
 
   const [team, setTeam] = useState<Team | null>(null);
   const [squad, setSquad] = useState<CoCaptainRow[] | null>(null);
+  const [captainName, setCaptainName] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; role: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -82,10 +86,17 @@ export default function MyTeam() {
     }
     const { data } = await supabase
       .from('teams')
-      .select('id, name, location, level, format, description, joining_fee_pence')
+      .select('id, name, location, level, format, description, joining_fee_pence, captain_id')
       .eq('id', teamId)
       .maybeSingle();
     setTeam((data as Team) ?? null);
+    // The squad list below leaves the captain out (it's the co-captain
+    // appointment list), and the captain is who players most want to message.
+    const capId = (data as Team | null)?.captain_id;
+    if (capId) {
+      const { data: cap } = await supabase.from('profiles').select('full_name').eq('id', capId).maybeSingle();
+      setCaptainName((cap as { full_name?: string } | null)?.full_name ?? 'Captain');
+    }
     setSquad(await loadSquadForAppointment(teamId));
     setLoading(false);
     setRefreshing(false);
@@ -187,7 +198,7 @@ export default function MyTeam() {
       {isCaptain && teamId && <JoinRequests teamId={teamId} onChanged={load} />}
 
       <Text style={styles.sectionTitle}>
-        Squad{squad ? ` · ${squad.length}` : ''}
+        Squad{squad ? ` · ${squad.length + (team?.captain_id ? 1 : 0)}` : ''}
       </Text>
 
       {squad === null ? (
@@ -200,16 +211,25 @@ export default function MyTeam() {
             database.
           </Text>
         </View>
-      ) : squad.length === 0 ? (
-        <View style={styles.card}>
-          <Text style={styles.muted}>No approved members yet.</Text>
-        </View>
       ) : (
         <View style={styles.card}>
-          {squad.map((m, i) => (
-            <View
+          {/* Tap anyone to see their details and message them. */}
+          {team?.captain_id && (
+            <Pressable onPress={() => setViewing({ id: team.captain_id, role: 'Captain' })} style={styles.member}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{(captainName ?? 'C').trim().charAt(0).toUpperCase()}</Text>
+              </View>
+              <Text style={styles.memberName}>{captainName ?? 'Captain'}</Text>
+              <View style={styles.coBadge}>
+                <Text style={styles.coBadgeText}>Captain</Text>
+              </View>
+            </Pressable>
+          )}
+          {squad.map((m) => (
+            <Pressable
               key={m.playerId}
-              style={[styles.member, i > 0 && { borderTopWidth: 1, borderTopColor: theme.border }]}>
+              onPress={() => setViewing({ id: m.playerId, role: m.isCoCaptain ? 'Co-captain' : null })}
+              style={[styles.member, { borderTopWidth: 1, borderTopColor: theme.border }]}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
                   {m.name.trim().charAt(0).toUpperCase() || '?'}
@@ -221,14 +241,14 @@ export default function MyTeam() {
                   <Text style={styles.coBadgeText}>Co-captain</Text>
                 </View>
               )}
-            </View>
+            </Pressable>
           ))}
+          {squad.length === 0 && <Text style={styles.muted}>No other players yet.</Text>}
         </View>
       )}
 
       <Text style={styles.footnote}>
-        Tactics, settle payments, team settings and match management arrive in Phase 4. They
-        remain on the web app until then.
+        Tactics and managing a friendly are on the web app for now.
       </Text>
 
       {/* Bottom of the screen, under everything: leaving is about the squad, not
@@ -244,6 +264,13 @@ export default function MyTeam() {
           joiningFeePence={team.joining_fee_pence}
         />
       )}
+
+      <PlayerSheet
+        playerId={viewing?.id ?? null}
+        role={viewing?.role}
+        viewerId={user?.id}
+        onClose={() => setViewing(null)}
+      />
     </ScrollView>
   );
 }

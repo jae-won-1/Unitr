@@ -14,6 +14,10 @@ decided on your behalf, and one test list to run through in a single sitting.
   deploy to Vercel, but change no behaviour. Everything else lands on `mobile`.
 - Every mobile change is type-checked and linted before commit. None of it has
   run on a phone — that is what the test list is for.
+- **Both phone bundles build.** At `f3c8dfa` I ran a full Metro export for
+  Android and for iOS (`npx expo export`): every screen and shared file
+  resolves and compiles to Hermes bytecode, with no warnings. That proves the
+  app *assembles*; it doesn't prove it *runs* correctly, which is the test list.
 
 ## Decisions made on your behalf
 
@@ -71,6 +75,7 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 50 | Captains can **issue** a tournament's payment requests on mobile (My Team → Settle payments): pick who took part and send. It writes the same rows and reminder messages as the web. | It closes the pilot's money loop on the phone: enter, play, ask the squad for their shares, and they pay in "What you owe". | (this commit) |
 | 51 | After issuing, the phone shows who has paid **read-only**. Marking a payment off by hand (cash), reminding and removing a player stay on the web's Payment Status. | CLAUDE.md wants "paid" recorded in one place. Players who pay through the app are still marked off automatically. **Worth knowing:** the web's own pay flow (`applyTopUp`) already writes "paid" too, so that rule is looser than CLAUDE.md says. I haven't changed anything there. | (this commit) |
 | 52 | Settle payments on mobile covers **tournaments only**, not friendlies. | Friendlies can't be played on mobile yet. | — |
+| 53 | Tapping anyone in the My Team squad opens their details with a **Message** button. The captain is now listed first in the squad. | Mobile could reply to conversations but not start one. The captain wasn't in the list at all (the list is the co-captain picker's), and they're who players most want to message. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -127,3 +132,4 @@ Tests:
 - [ ] **Tournament page**: from the Calendar (tap an entered tournament → View schedule & results) and from the feed (tap a tournament's name → Details). Check the details, the team list (yours highlighted), the schedule (your games tappable, with finish times if match length was set), and the table once a score has been entered on the web. Pull down to refresh after entering a score on the web.
 - [ ] **Cancelled event**: take a test event down on the web; its page on the phone should show the red cancelled banner with the reason.
 - [ ] **Settle payments** (as the Test team's captain, after entering a test tournament): My Team → Settle payments → open the tournament. "Played" should list who said they could play (or the whole squad if nobody answered). Untick someone and check the per-player amount; send. Each player gets "You owe £X for entering …" in Messages and a "You owe" strip on Home. Pay one share on the phone, reopen Settle payments, and that player should show **Paid ✓**. Compare with Payment Status on the web.
+- [ ] **Message a teammate**: My Team → tap a squad member (and the captain) → details → Message. It should open an empty thread; send, and check it arrives on the web or the other account. Your own row shouldn't offer Message.
