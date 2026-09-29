@@ -18,9 +18,10 @@ import { fmtFee } from "@/lib/joining-fee";
 
 // ── Setting the fee (Settle Payments) ─────────────────────────────────────
 // Writes teams.joining_fee_pence, the same column Team Settings and team
-// registration write. Snapshotting it onto each member is the database's job
-// (supabase_joining_fees.sql), so changing the number here never re-charges
-// anyone who has already joined.
+// registration write. Carrying it onto each member is the database's job
+// (supabase_joining_fee_current.sql): the fee is the team's fee, so saving a
+// new number here restandardises the whole squad — and the captain — onto it,
+// leaving what everyone has already paid where it is.
 export function JoiningFeeAmountPanel({ teamId }: { teamId: string }) {
   const [fee, setFee] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -71,7 +72,7 @@ export function JoiningFeeAmountPanel({ teamId }: { teamId: string }) {
       <p className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1">Joining fee</p>
       <p className="text-[11px] text-text-secondary mb-3">
         Currently {savedPence > 0
-          ? <span className="font-semibold text-text-primary">{fmtFee(savedPence)} per new member</span>
+          ? <span className="font-semibold text-text-primary">{fmtFee(savedPence)} per player</span>
           : "no joining fee"}.
       </p>
 
@@ -86,10 +87,10 @@ export function JoiningFeeAmountPanel({ teamId }: { teamId: string }) {
         />
       </div>
       <p className="text-[11px] text-text-secondary mt-2">
-        Paid once by each new player, into your team&rsquo;s credit balance for pitch and
-        tournament fees. Changing it only affects players who join from now on — the squad
-        you already have keeps the fee they signed up under. Who has paid theirs is in
-        Payment Status.
+        Paid once by every player, into your team&rsquo;s credit balance for pitch and
+        tournament fees. Changing it changes what the whole squad owes — the players you
+        already have move onto the new fee too, keeping whatever they&rsquo;ve paid. Who has
+        paid theirs is in Payment Status.
       </p>
 
       {error && (
@@ -190,7 +191,7 @@ export function JoiningFeeStatusPanel({ teamId, viewerId }: { teamId: string; vi
     return (
       <p className="text-xs text-text-secondary text-center py-10">
         Nobody has a joining fee charged to them. Set one in Settle Payments &rarr; Joining fee
-        and it applies to players who join from then on.
+        and it applies to the whole squad, you included.
       </p>
     );
   }
@@ -212,7 +213,10 @@ export function JoiningFeeStatusPanel({ teamId, viewerId }: { teamId: string; vi
               <p className="text-sm font-semibold truncate">{row.playerId === viewerId ? "You" : row.name}</p>
               <p className="text-[10px] text-text-secondary">
                 {paid
-                  ? `${fmtFee(row.duePence)} paid`
+                  // Lowering the fee can leave someone above it. They aren't
+                  // refunded — it's team credit either way — so say what they
+                  // actually put in rather than the smaller figure now asked.
+                  ? `${fmtFee(Math.max(row.paidPence, row.duePence))} paid`
                   : row.paidPence > 0
                   ? `${fmtFee(row.paidPence)} of ${fmtFee(row.duePence)} paid`
                   : `${fmtFee(row.duePence)} due`}

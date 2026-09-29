@@ -140,7 +140,7 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
       // Card ids come from the caller's profile server-side now; the session
       // token says who is paying.
       const res = await authedPost("/api/settle-match", {
-        items: [{ amountPence: totalPence, sharePence: totalPence, feePence: 0 }],
+        items: [{ amountPence: totalPence, sharePence: totalPence, feePence: 0, purpose: "pitch_booking" }],
       });
       const data = await res.json();
       const result = data.results?.[0];

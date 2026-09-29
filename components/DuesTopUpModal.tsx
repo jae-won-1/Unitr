@@ -281,6 +281,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
           amountPence: due.remainingPence,
           sharePence: due.remainingPence,
           feePence: 0,
+          purpose: due.kind === "tournament" ? "tournament_fees" : "match_fees",
           teamId,   // the route refills this team's credit once the charge clears
           // Stripe metadata only — a tournament due carries its open_match id.
           matchId: due.kind === "match" ? due.matchId : undefined,
@@ -311,6 +312,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
       const res = await authedPost("/api/settle-match", {
         items: [{
           amountPence: feeOwedPence, sharePence: feeOwedPence, feePence: 0,
+          purpose: "joining_fee",
           teamId,   // the route refills this team's credit once the charge clears
         }],
       });
@@ -381,6 +383,7 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
       const res = await authedPost("/api/settle-match", {
         items: [{
           amountPence, sharePence: amountPence, feePence: 0,
+          purpose: payTarget ? "match_fees" : "top_up",
           teamId,   // the route refills this team's credit once the charge clears
         }],
       });

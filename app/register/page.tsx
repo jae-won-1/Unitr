@@ -4,34 +4,22 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 import {
-  AGE_GROUPS, EXPERIENCE_LEVELS, FOOTBALL_TYPES, GENDERS, PLAY_FREQUENCIES, POSITIONS,
-} from "@/lib/profile-options";
+  AccountTypeCards, PlayerDetailsFields, VenueNextStepsNote,
+} from "@/components/RegistrationFields";
+import {
+  EMPTY_PLAYER_DETAILS, homeForAccount, insertNewProfile, playerDetailsIncomplete,
+  type AccountType, type PlayerDetails,
+} from "@/lib/register-profile";
 
-// Every option list lives in lib/profile-options.ts, because /profile now lets
-// a player change each of these answers afterwards and two copies of the same
-// list would eventually offer two different sets of choices. The reasoning
-// behind each — why buckets rather than a number, why short keys rather than
-// the labels — is on the migrations that added the columns
-// (supabase_player_demographics.sql, supabase_play_frequency.sql,
-// supabase_preferred_football_type.sql).
-//
-// Sign-up still asks for one position; the editor is where a player lists the
-// rest. One question is enough to get somebody through a registration form.
-const positions = POSITIONS;
-const experiences = EXPERIENCE_LEVELS;
-const ageGroups = AGE_GROUPS;
-const genders = GENDERS;
-const playFrequencies = PLAY_FREQUENCIES;
-const footballTypes = FOOTBALL_TYPES;
-
-// Pilot testing is London-only, so the location question is not worth asking
-// yet — every answer would be the same. Profiles still carry a location (the
-// Transfer Market, search and squad lists all render it), so we write this
-// rather than leaving the column null and those cards blank.
-const PILOT_LOCATION = "London";
-
-type AccountType = "player" | "venue_manager";
+// The questions themselves — and the option lists behind them — live in
+// components/RegistrationFields.tsx and lib/profile-options.ts. /welcome asks
+// the same set of a Google account, and two copies would eventually offer two
+// different forms. The reasoning behind each answer (why buckets rather than a
+// number, why short keys rather than the labels) is on the migrations that
+// added the columns: supabase_player_demographics.sql,
+// supabase_play_frequency.sql, supabase_preferred_football_type.sql.
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -43,12 +31,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
 
   // Player-only fields
-  const [position, setPosition] = useState("");
-  const [experience, setExperience] = useState("");
-  const [gamesPerMonth, setGamesPerMonth] = useState("");
-  const [footballType, setFootballType] = useState("");
-  const [ageGroup, setAgeGroup] = useState("");
-  const [gender, setGender] = useState("");
+  const [details, setDetails] = useState<PlayerDetails>(EMPTY_PLAYER_DETAILS);
 
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -69,7 +52,7 @@ export default function RegisterPage() {
     if (!fullName || !email || !password) { setError("Please fill in all required fields."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
-    if (accountType === "player" && (!position || !experience || !gamesPerMonth || !footballType || !ageGroup || !gender)) {
+    if (accountType === "player" && playerDetailsIncomplete(details)) {
       setError("Please fill in all player fields.");
       return;
     }
@@ -80,32 +63,15 @@ export default function RegisterPage() {
     if (signUpError) { setError(signUpError.message); setLoading(false); return; }
 
     if (data.user) {
-      const profileData =
-        accountType === "venue_manager"
-          ? { id: data.user.id, full_name: fullName, account_type: "venue_manager" }
-          : {
-              id: data.user.id,
-              full_name: fullName,
-              location: PILOT_LOCATION,
-              position,
-              experience,
-              games_per_month: gamesPerMonth,
-              preferred_football_type: footballType,
-              age_group: ageGroup,
-              gender,
-              account_type: "player",
-            };
-
-      const { error: profileError } = await supabase.from("profiles").insert(profileData);
-      if (profileError) { setError(profileError.message); setLoading(false); return; }
+      const profileError = await insertNewProfile(data.user.id, accountType, fullName, details);
+      if (profileError) { setError(profileError); setLoading(false); return; }
     }
 
     setLoading(false);
     // /join/<code> rather than joining here: that page redeems the code and is
     // the one screen that explains what just happened, so a brand-new member
     // and a returning one land on the same confirmation.
-    const invited = inviteDestination(invite);
-    router.push(accountType === "venue_manager" ? "/venue/calendar" : invited ?? "/");
+    router.push(homeForAccount(accountType, inviteDestination(invite)));
   };
 
   return (
@@ -149,45 +115,7 @@ export default function RegisterPage() {
         )}
 
         {/* Account type selector */}
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text-secondary">I am a…</label>
-          <div className="grid grid-cols-2 gap-3">
-            {/* Player card */}
-            <button type="button" onClick={() => setAccountType("player")}
-              className={`flex flex-col items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${accountType === "player" ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accountType === "player" ? "bg-accent/20" : "bg-surface"}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accountType === "player" ? "#0E7A3C" : "#5A6478"} strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                  <path d="M2 12h20"/>
-                </svg>
-              </div>
-              <div>
-                <p className={`text-sm font-bold ${accountType === "player" ? "text-accent-ink" : "text-text-primary"}`}>Player</p>
-                <p className="text-xs text-text-secondary mt-0.5">Join teams, find matches, track stats</p>
-              </div>
-              {accountType === "player" && (
-                <div className="absolute top-2 right-2">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="#0E7A3C"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>
-              )}
-            </button>
-
-            {/* Venue manager card */}
-            <button type="button" onClick={() => setAccountType("venue_manager")}
-              className={`flex flex-col items-start gap-3 p-4 rounded-2xl border-2 transition-all text-left ${accountType === "venue_manager" ? "border-accent bg-accent/10" : "border-border bg-surface-2"}`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${accountType === "venue_manager" ? "bg-accent/20" : "bg-surface"}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={accountType === "venue_manager" ? "#0E7A3C" : "#5A6478"} strokeWidth="2" strokeLinecap="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-              </div>
-              <div>
-                <p className={`text-sm font-bold ${accountType === "venue_manager" ? "text-accent-ink" : "text-text-primary"}`}>Venue Manager</p>
-                <p className="text-xs text-text-secondary mt-0.5">List your pitch, manage bookings</p>
-              </div>
-            </button>
-          </div>
-        </div>
+        <AccountTypeCards value={accountType} onChange={setAccountType} />
 
         {/* Common fields — shown once account type is selected */}
         {accountType && (
@@ -229,98 +157,17 @@ export default function RegisterPage() {
           </>
         )}
 
-        {/* Player-only fields */}
+        {/* Player-only fields. Shared with /welcome, which asks a Google
+            account the same six questions — see components/RegistrationFields. */}
         {accountType === "player" && (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Age Group</label>
-              <div className="grid grid-cols-2 gap-2">
-                {ageGroups.map((ag) => (
-                  <button key={ag.value} type="button" onClick={() => setAgeGroup(ag.value)}
-                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${ageGroup === ag.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    {ag.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Gender</label>
-              <div className="grid grid-cols-2 gap-2">
-                {genders.map((g) => (
-                  <button key={g.value} type="button" onClick={() => setGender(g.value)}
-                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${gender === g.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    {g.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Position</label>
-              <div className="flex flex-wrap gap-2">
-                {positions.map((pos) => (
-                  <button key={pos} type="button" onClick={() => setPosition(pos)}
-                    className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${position === pos ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    {pos}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Experience Level</label>
-              <div className="flex flex-col gap-2">
-                {experiences.map((level) => (
-                  <button key={level} type="button" onClick={() => setExperience(level)}
-                    className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-colors ${experience === level ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    {level}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <label className="text-sm font-medium text-text-secondary">How often do you play?</label>
-                <span className="text-xs text-text-secondary">Roughly, per month.</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {playFrequencies.map((freq) => (
-                  <button key={freq.value} type="button" onClick={() => setGamesPerMonth(freq.value)}
-                    className={`px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${gamesPerMonth === freq.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    {freq.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Stacked rather than chipped: these carry a hint line each, and
-                the third label is too long to sit in a wrapping row. */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-text-secondary">Preferred type of football</label>
-              <div className="flex flex-col gap-2">
-                {footballTypes.map((type) => (
-                  <button key={type.value} type="button" onClick={() => setFootballType(type.value)}
-                    className={`w-full px-4 py-3 rounded-xl border text-left transition-colors ${footballType === type.value ? "bg-accent text-white border-accent" : "border-border bg-surface-2 text-text-secondary"}`}>
-                    <span className="block text-sm font-medium">{type.label}</span>
-                    <span className={`block text-xs mt-0.5 ${footballType === type.value ? "text-white/70" : "text-text-secondary"}`}>{type.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
+          <PlayerDetailsFields
+            value={details}
+            onChange={(patch) => setDetails((d) => ({ ...d, ...patch }))}
+          />
         )}
 
         {/* Venue manager info banner */}
-        {accountType === "venue_manager" && (
-          <div className="bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
-            <p className="text-xs text-accent-ink font-semibold mb-1">What happens next</p>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              After signing up you&apos;ll land in your Venue Portal where you can register your pitch, set availability, and start receiving bookings from Uniter players.
-            </p>
-          </div>
-        )}
+        {accountType === "venue_manager" && <VenueNextStepsNote />}
 
         {accountType && (
           <button type="submit" disabled={loading}
@@ -335,6 +182,11 @@ export default function RegisterPage() {
             ) : accountType === "venue_manager" ? "Create Venue Account" : "Create Account"}
           </button>
         )}
+
+        {/* Google creates the account from the same tap that signs one in, so
+            this is on both screens. It skips the questions above — /welcome
+            asks them on the way back, since Google can't answer them. */}
+        <GoogleAuthButton invite={invite} onError={setError} />
 
         <p className="text-center text-sm text-text-secondary">
           Already have an account?{" "}

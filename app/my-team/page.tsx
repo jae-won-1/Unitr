@@ -27,6 +27,7 @@ import ManageMatchTab from "@/components/my-team/ManageMatchTab";
 import TacticsTab from "@/components/my-team/TacticsTab";
 import StatsTab from "@/components/my-team/StatsTab";
 import MembersTab from "@/components/my-team/MembersTab";
+import LeaveTeamPanel from "@/components/my-team/LeaveTeamPanel";
 
 // Highlights "@Full Name" mentions in announcement text for display.
 // Validity (matching a real squad member) is enforced at creation time via
@@ -306,7 +307,7 @@ function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean })
 }
 
 // ── Team-scoped tab surface ───────────────────────────────────
-function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean }) {
+function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptain: boolean; isCoCaptain: boolean }) {
   const [team, setTeam] = useState<Team | null | undefined>(undefined);
   const [tab, setTab] = useState<TeamTab>("match");
 
@@ -387,6 +388,18 @@ function TeamTabs({ userId, isCaptain }: { userId: string; isCaptain: boolean })
       {tab === "tactics" && <TacticsTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
       {tab === "stats" && <StatsTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
       {tab === "members" && <MembersTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
+
+      {/* Bottom of the page, under every tab: leaving is about the squad, not
+          about whichever tab you happen to be on. A co-captain reaches the
+          captain role but is still a squad member with a membership row to give
+          up, so only the actual captain gets the greyed version. */}
+      <LeaveTeamPanel
+        teamId={team.id}
+        teamName={team.name}
+        userId={userId}
+        isCaptain={isCaptain && !isCoCaptain}
+        joiningFeePence={team.joining_fee_pence}
+      />
     </>
   );
 }
@@ -445,7 +458,7 @@ function TeamAnnouncementBanner({ userId, role }: { userId: string; role: "capta
 
 // ── Page ─────────────────────────────────────────────────────
 export default function MyTeamPage() {
-  const { role, roleLoading } = useRole();
+  const { role, roleLoading, isCoCaptain } = useRole();
   const { user } = useAuth();
   if (roleLoading) return <div className="flex items-center justify-center min-h-screen"><div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" /></div>;
 
@@ -480,7 +493,7 @@ export default function MyTeamPage() {
         </div>
       )}
       {role === "new_user" && user && <NewUserMyTeam />}
-      {inTeam && <TeamTabs userId={user.id} isCaptain={role === "captain"} />}
+      {inTeam && <TeamTabs userId={user.id} isCaptain={role === "captain"} isCoCaptain={isCoCaptain} />}
     </div>
   );
 }
