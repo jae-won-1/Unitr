@@ -40,6 +40,8 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 19 | Post announcement ported with its own copy of the web page's two database writes, rather than moving them into `lib/`. | On the web they're inline in a live page; extracting them would be a refactor I didn't want to make unsupervised. Noted in `PORTED.md` so they're kept in step. | (this commit) |
 | 20 | The web's announcements **list** page isn't ported. | Every announcement already arrives in each player's Messages inbox, which mobile now has. | (this commit) |
 | 21 | Joining fee help text on mobile says "towards your pitch bookings and tournament entries" rather than the web's "into your team's credit balance". | Your wording decision for mobile. | (this commit) |
+| 22 | Moved `useAvailabilityPoll` into `lib/availability-poll.ts` on **main** (unchanged code, re-exported), and dropped two unused imports from the web modal. | Mobile needs the poll to let players answer it. Built and type-checked before pushing. | 4a4e7e7 |
+| 23 | Players can answer the captain's poll on mobile, from a "Proposed dates" card on Home. | Mobile could answer per-game questions but not the poll, which is the other half of the same question. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -78,3 +80,5 @@ Tests:
 - [ ] **Co-captains**: switch someone on and off as the captain. As a co-captain, the section is greyed with an explanation.
 - [ ] **Joining fee**: change it and save. This changes what the whole squad owes, so use the Test team only.
 - [ ] **Post announcement**: type `@` and a letter, tap a suggested name, post. Everyone in the squad should get it in Messages.
+- [ ] **Poll** (needs a live poll — create one on the web as captain): on Home, a "Your captain proposed dates" card appears. Pick dates and Submit; the card then says "n dates sent". Reopen and change to "Unavailable for any of these".
+- [ ] **Poll while owing money** (Test team account with an unpaid joining fee): dates can't be picked, "Unavailable for any" still sends, and **Pay now** opens the pay sheet.

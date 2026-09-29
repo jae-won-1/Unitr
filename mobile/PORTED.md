@@ -67,6 +67,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Join requests (captain) | `JoinRequests` in `app/my-team/page.tsx` | `2c0990c` | Phase 4 — done, on My Team above the squad. Approve writes the same row, so the fee snapshot and welcome DM triggers fire |
 | Team Settings | `app/my-team/settings/page.tsx` + Details / InviteLink / CoCaptains panels | `2c0990c` | Phase 4 — done. Invite link built from the website's address (`EXPO_PUBLIC_WEB_URL`, default the Vercel URL) and shared via the share sheet |
 | Post announcement | `app/my-team/announcement/create/page.tsx` | `2c0990c` | Phase 4 — done, incl. @-mention suggestions. Its two queries are a copy of the web page's inline ones — keep in step. The announcements list page isn't ported (players get each one as a message) |
+| Answer the availability poll | `components/AvailabilityModal.tsx`, `lib/availability-poll.ts` | `4a4e7e7` | done — a "Proposed dates" card on Home opens `poll-sheet.tsx`; same upsert, same gate (a player who owes can only unpick or send "none of these"), with Pay now linking to the pay sheet |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:

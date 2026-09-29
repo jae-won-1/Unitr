@@ -37,6 +37,8 @@ import { useMyDues } from '@/lib/dues';
 import { fmtFee, useJoiningFee } from '@/lib/joining-fee';
 import { fmtKickoff } from '@/lib/match-dates';
 import { PaySheet } from '~/components/pay-sheet';
+import { PollSheet } from '~/components/poll-sheet';
+import { useAvailabilityPoll } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
@@ -66,6 +68,10 @@ export function StatusStrips({
   const { dues, owedPence: duesOwed, reload: reloadDues } = useMyDues(teamId, userId);
   const { owedPence: feeOwed, reload: reloadFee } = useJoiningFee(teamId, userId);
   const [payOpen, setPayOpen] = useState(false);
+  // The captain's live poll — proposed dates, as opposed to games already
+  // committed to (those are the per-game answers further down).
+  const { request: poll, myAnswer: pollAnswer, reload: reloadPoll } = useAvailabilityPoll(teamId, userId);
+  const [pollOpen, setPollOpen] = useState(false);
   // Bumped after the pay sheet closes so each EventAnswer remounts and
   // re-reads its availability gate — a payment is exactly what lifts it.
   const [gateKey, setGateKey] = useState(0);
@@ -213,6 +219,27 @@ export function StatusStrips({
         </View>
       )}
 
+      {poll && poll.date_options.length > 0 && (
+        <Pressable
+          onPress={() => setPollOpen(true)}
+          style={[styles.strip, styles.stripPoll, pollAnswer === null && styles.stripPollDue]}>
+          <Ionicons name="calendar-outline" size={18} color={pollAnswer === null ? '#B07400' : theme.accentInk} />
+          <View style={styles.stripBody}>
+            <Text style={pollAnswer === null ? styles.stripTitleWarn : styles.stripTitlePoll}>
+              {pollAnswer === null ? 'Your captain proposed dates' : 'Proposed dates'}
+            </Text>
+            <Text style={styles.stripSub}>
+              {pollAnswer === null
+                ? `${poll.date_options.length} option${poll.date_options.length === 1 ? '' : 's'} — which could you play?`
+                : pollAnswer.length === 0
+                  ? 'You said none work · tap to change'
+                  : `${pollAnswer.length} date${pollAnswer.length === 1 ? '' : 's'} sent · tap to change`}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+        </Pressable>
+      )}
+
       {unanswered.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardLabel}>
@@ -235,6 +262,23 @@ export function StatusStrips({
       )}
 
       <PaySheet visible={payOpen} teamId={teamId} userId={userId} onClose={closePay} />
+      {poll && (
+        <PollSheet
+          visible={pollOpen}
+          request={poll}
+          myAnswer={pollAnswer}
+          teamId={teamId}
+          userId={userId}
+          onClose={(answered) => {
+            setPollOpen(false);
+            if (answered) void reloadPoll();
+          }}
+          onPay={() => {
+            setPollOpen(false);
+            setPayOpen(true);
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -388,6 +432,9 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     stripTitleWarn: { color: '#B07400', fontFamily: fonts.semibold, fontSize: 14 },
     // Inside wrap, which already spaces its children — the standalone strip's
     // own top margin would double it.
+    stripPoll: { backgroundColor: theme.surface, borderColor: theme.border, marginTop: 0 },
+    stripPollDue: { backgroundColor: '#FFF6E3', borderColor: '#F5DCA6' },
+    stripTitlePoll: { color: theme.textPrimary, fontFamily: fonts.semibold, fontSize: 14 },
     stripOwe: { backgroundColor: '#FDECEC', borderColor: '#F5C2C2', marginTop: 0 },
     stripTitleOwe: { color: theme.danger, fontFamily: fonts.semibold, fontSize: 14 },
     stripAction: { color: theme.danger, fontFamily: fonts.bold, fontSize: 13 },
