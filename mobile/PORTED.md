@@ -54,8 +54,8 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Fixture detail sheet | `components/FixtureDetailSheet.tsx` | `008f735` | Phase 2 — done. Management CTAs greyed until their screens land |
 | Month grid | `components/CalendarSheet.tsx` | `008f735` | Phase 2 — done |
 | Availability answer | `components/AvailabilityButtons.tsx` | `008f735` | Phase 2 — done, gate included |
-| Fill In / ringer feed | `components/RingerFeed.tsx` | — | **not started** |
-| Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `9ba8b59` | Phase 2 — done. `lib/game-feed.ts`'s hooks are shared, so this stays current for free; Challenge/Enter greyed until Phase 3; Fill In not ported |
+| Fill In / ringer feed | `components/RingerFeed.tsx`, `lib/ringer-feed.ts` | `da0090e` | Browse only — a fourth GameFeed tab, `useRingerPosts` shared unchanged. Join is greyed: it pays by card (Stripe Elements on web), and the native SDK is Phase 3 |
+| Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `9ba8b59` | Phase 2 — done. `lib/game-feed.ts`'s hooks are shared, so this stays current for free; Challenge/Enter greyed until Phase 3 |
 | Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — **done**, incl. month grid + detail sheet |
 | My Team — squad + details | `app/my-team/page.tsx` | `fe97d03` | Phase 2 — done. Captain control panel is Phase 4 |
 | Leave team | `components/my-team/LeaveTeamPanel.tsx` | `fe97d03` | done — shares `lib/leave-team.ts`, `lib/availability-gate.ts`, `lib/hard-navigate.native.ts` unchanged |

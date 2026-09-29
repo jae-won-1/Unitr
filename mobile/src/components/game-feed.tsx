@@ -1,12 +1,14 @@
-// The discovery feed — what the viewer's team could join.
+// The discovery feed — what the viewer's team could join, plus Fill In: guest
+// spots anyone signed in can take, team or no team.
 //
-// The data is entirely shared: useOpenMatchPosts, useOpenTournaments and
-// useSuggestions are the web app's own hooks, extracted into lib/game-feed.ts
-// and imported here unchanged. That matters because they carry behaviour that
-// would be easy to lose in a second implementation — the 42703 retry when
-// supabase_admin_hosting.sql has not been run, hiding the viewer's own hosted
-// events while keeping venue- and admin-hosted ones visible to teamless
-// viewers, and the pending-invitation discount lookup.
+// The data is entirely shared: useOpenMatchPosts, useOpenTournaments,
+// useSuggestions and useRingerPosts are the web app's own hooks, extracted
+// into lib/game-feed.ts and lib/ringer-feed.ts and imported here unchanged.
+// That matters because they carry behaviour that would be easy to lose in a
+// second implementation — the 42703 retry when supabase_admin_hosting.sql has
+// not been run, hiding the viewer's own hosted events while keeping venue-
+// and admin-hosted ones visible to teamless viewers, the pending-invitation
+// discount lookup, and Fill In excluding the viewer's own team's requests.
 //
 // What this file owns is the presentation and the action each role gets:
 //
@@ -19,6 +21,9 @@
 //     match_suggestions, which is exactly what the web app does, and commits
 //     nothing on the team's behalf.
 //   new_user → discovery only, nothing to act with.
+//   anyone, on a Fill In card → "Join for £x" is GREYED too. Joining pays a
+//     flat card charge (@stripe/react-stripe-js on web), and the native Stripe
+//     SDK is Phase 3 work, not yet wired here.
 
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -31,19 +36,19 @@ import {
   type MatchPost,
   type Tournament,
 } from '@/lib/game-feed';
+import { useRingerPosts, fmtRingerDate, type RingerPost } from '@/lib/ringer-feed';
 import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
-type Tab = 'all' | 'matches' | 'tournaments';
+type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
 
-// Mirrors GAME_TYPES in components/GameFeed.tsx, minus "Fill In" — the ringer
-// feed is its own component on the web and is not ported yet, so offering the
-// filter would lead to a permanently empty list.
+// Mirrors GAME_TYPES in components/GameFeed.tsx.
 const GAME_TYPES: { key: Tab; label: string }[] = [
   { key: 'all', label: 'All games' },
   { key: 'matches', label: 'Matches' },
   { key: 'tournaments', label: 'Tournaments' },
+  { key: 'ringer', label: 'Fill In' },
 ];
 
 const money = (pence: number) => `£${(pence / 100).toFixed(2).replace(/\.00$/, '')}`;
@@ -67,18 +72,25 @@ export function GameFeed({
   const { posts, loading: postsLoading } = useOpenMatchPosts(teamId);
   const { tournaments, loading: tourLoading } = useOpenTournaments(teamId);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
+  const { posts: ringers, loading: ringerLoading, unavailable: ringerUnavailable } = useRingerPosts(userId);
 
-  const loading = postsLoading || tourLoading;
+  const loading = postsLoading || tourLoading || ringerLoading;
   const showMatches = tab === 'all' || tab === 'matches';
   const showTournaments = tab === 'all' || tab === 'tournaments';
+  const showRingers = tab === 'all' || tab === 'ringer';
   const current = GAME_TYPES.find((t) => t.key === tab) ?? GAME_TYPES[0];
 
+  // The ringer-only tab gets its own "not set up" message instead of this one
+  // when the migration is missing, so this excludes that case rather than
+  // showing both.
   const empty = useMemo(
     () =>
       !loading &&
+      !(tab === 'ringer' && ringerUnavailable) &&
       (!showMatches || posts.length === 0) &&
-      (!showTournaments || tournaments.length === 0),
-    [loading, showMatches, showTournaments, posts.length, tournaments.length],
+      (!showTournaments || tournaments.length === 0) &&
+      (!showRingers || ringers.length === 0),
+    [loading, tab, ringerUnavailable, showMatches, showTournaments, showRingers, posts.length, tournaments.length, ringers.length],
   );
 
   return (
@@ -155,6 +167,15 @@ export function GameFeed({
             onSuggest={() => suggest(t.id, 'tournament')}
           />
         ))}
+
+      {showRingers && tab === 'ringer' && ringerUnavailable && (
+        <View style={styles.card}>
+          <Text style={styles.muted}>Fill In isn&apos;t set up on this database yet.</Text>
+        </View>
+      )}
+
+      {showRingers &&
+        ringers.map((r) => <RingerCard key={r.id} post={r} theme={theme} styles={styles} />)}
     </View>
   );
 }
@@ -375,6 +396,77 @@ function TournamentCard({
             commitLabel="Enter"
             styles={styles}
           />
+        )}
+      </View>
+    </View>
+  );
+}
+
+// A one-off guest spot. No team involved on either side of this card — the
+// squad only appears in "vs", and joining is a personal card payment, not a
+// team commitment, so there is no Suggest-to-team fallback: every signed-in
+// viewer gets the same (greyed) Join button.
+function RingerCard({
+  post,
+  theme,
+  styles,
+}: {
+  post: RingerPost;
+  theme: ReturnType<typeof useTheme>;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <View style={[styles.kindBadge, { backgroundColor: '#EAF0FF', borderColor: '#C6D4FF' }]}>
+          <Text style={[styles.kindBadgeText, { color: theme.accent2 }]}>Fill In</Text>
+        </View>
+        {post.joined && (
+          <View style={styles.enteredBadge}>
+            <Ionicons name="checkmark-circle" size={11} color={theme.accentInk} />
+            <Text style={styles.enteredText}>You&apos;re in</Text>
+          </View>
+        )}
+      </View>
+
+      <Text style={styles.cardTitle}>{post.teamName}</Text>
+      <Text style={styles.cardSub}>vs {post.opponentName}</Text>
+
+      <View style={styles.metaRow}>
+        <Ionicons name="time-outline" size={14} color={theme.textSecondary} />
+        <Text style={styles.metaText}>
+          {fmtRingerDate(post.date)} · {post.time}
+        </Text>
+      </View>
+      <View style={styles.metaRow}>
+        <Ionicons name="location-outline" size={14} color={theme.textSecondary} />
+        <Text style={styles.metaText} numberOfLines={1}>{post.pitch}</Text>
+      </View>
+      <View style={styles.metaRow}>
+        <Ionicons name="people-outline" size={14} color={theme.textSecondary} />
+        <Text style={styles.metaText}>
+          {post.positions.length === 0 ? 'Any position' : post.positions.join(', ')} ·{' '}
+          {post.spotsLeft} spot{post.spotsLeft === 1 ? '' : 's'} left
+        </Text>
+      </View>
+
+      {!!post.notes && (
+        <Text style={styles.description} numberOfLines={2}>
+          {post.notes}
+        </Text>
+      )}
+
+      <View style={styles.cardFoot}>
+        <Text style={styles.price}>{money(post.pricePence)}</Text>
+        {post.joined ? (
+          <Text style={styles.actionNote}>You&apos;re in the squad</Text>
+        ) : (
+          <View style={styles.actionRow}>
+            <View style={[styles.commitBtn, styles.commitBtnOff]}>
+              <Text style={styles.commitBtnOffText}>Join for {money(post.pricePence)}</Text>
+            </View>
+            <Text style={styles.actionNote}>Pay by card on the web app until Phase 3</Text>
+          </View>
         )}
       </View>
     </View>
