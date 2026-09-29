@@ -1,5 +1,43 @@
 # Uniter handoff
 
+## Latest completed work — 2026-09-30, Claude Code: React Native port, Phases 3–5 (overnight)
+
+On the `mobile` branch, while the user slept, on their instruction to carry on
+and approve anything non-critical. **Nothing has run on a phone yet.** Read
+`mobile/OVERNIGHT_LOG.md` first — it has a summary, every decision taken, and
+the one test checklist — then `mobile/PORTED.md` for per-screen status.
+
+**What reached `main` (all build-checked, deployed by Vercel):** shared code
+the phone needs, nothing that changes how the web behaves except one:
+
+- Moves of pure data code into `lib/`, each checked identical and re-exported
+  from where it came from: `lib/ringer-feed.ts`, `lib/dues.ts`,
+  `saveCardFromIntent` → `lib/save-card.ts`, `lib/availability-poll.ts`,
+  `lib/settle-payments.ts`, `lib/team-tactics.ts`.
+- New files the web doesn't use yet: `lib/authed-fetch.native.ts` (absolute API
+  URLs on a phone) and `lib/direct-messages.ts` (the one-to-one message queries
+  the web inbox runs inline — the web can move onto it later).
+- **The exception:** poll creation moved into `lib/availability-poll.ts`
+  (`ea826c8`) and `AvailabilityPollForm` now calls it. Same queries in the same
+  order, but not a byte-identical move. It also gained a fallback id generator
+  for phones without `crypto.randomUUID`. **Test creating a poll on the web.**
+
+**Flagged, not changed:** the web `/welcome` may bounce a brand-new Google
+account between Home and `/welcome` after it finishes — RoleContext only
+re-resolves when the user object changes, and nothing changes it. The phone
+works around the same thing with `supabase.auth.refreshSession()` after writing
+a profile or joining a team. Worth reproducing on the web now that Google
+sign-in is live.
+
+**Also noticed:** CLAUDE.md says `payment_collection_status.received` is written
+in exactly one place (`markReceived`), but the shared `applyTopUp` (the pay
+flow) writes it too. The phone deliberately doesn't add a third writer.
+
+**Local setup this left behind (gitignored):** `.env.development.local` in the
+repo root (paste an `sk_test_` key into it), and `mobile/.env` with a
+`pk_test_` key and `EXPO_PUBLIC_API_BASE_URL` pointing at this PC. Switch that
+back to the Vercel URL when not testing payments.
+
 ## Latest completed work — 2026-09-25, Claude Code: the joining fee is the team's current fee
 
 **Needs SQL: `supabase_joining_fee_current.sql`** — run it in the Supabase SQL

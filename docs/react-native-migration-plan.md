@@ -24,31 +24,40 @@ Settled alongside it, same day:
 - **Platform:** build both from day one; Play internal testing gets testers first
   (review in hours) with TestFlight following.
 
-## PAUSED after Phase 2 — resume at Phase 3 (22 September 2026)
+## Status — 30 September 2026: Phases 3–5 largely built, untested on a device
 
-Work stopped here by agreement, with the pilot tournament five days out. The reason is
-not technical risk — the port cannot touch production (see the freeze below) — it is that
-every screen built needs the user's attention to review, and that attention belongs on the
-pilot this week.
+Resumed after the pilot (27 Sep). The port picked up Phase 3 on 29 September and
+carried on overnight into Phases 4 and 5. **None of it has been run on a phone
+yet**: every change is type-checked and linted, and both Android and iOS Metro
+bundles build (`npx expo export`). `mobile/PORTED.md` is the per-screen
+ledger, and `mobile/OVERNIGHT_LOG.md` lists every decision made while the user
+was away plus one test checklist.
 
-**Done:** Phases 0, 1 and 2. Shared-logic bridge verified on device; auth, role resolution
-and the three-tab shell; Calendar (with month grid and fixture detail sheet), My Team,
-Home (next fixture, status strips, discovery feed), and the availability answer with its
-gate. `mobile/PORTED.md` is the per-screen ledger.
+**Built:** sign-up and the profile gate; Profile (Edit Profile, card on file,
+Friends, sign out); payments through `@stripe/stripe-react-native`'s
+PaymentSheet (Fill In, what you owe, entering a tournament, saving a card);
+Messages (inbox, team chat, one-to-one) and the notification bell; availability
+polls (answer and run); announcements, join requests, Team Settings, Tactics,
+Transfer Market; the tournament page, per-game fixtures with lineups, and
+settling a tournament's payments.
 
-**Resume at Phase 3 (payments).** Deliberately not begun, because it needs decisions and
-hardware rather than just code:
+**Still web-only:** the friendly flow (post, Challenge, Manage match, results,
+ringer requests), pitch booking, marking a payment received by hand, Connect
+Google, and every organiser / admin / venue tool (out of v1 scope by design).
 
-- `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` in `mobile/.env` is **empty on purpose**. The web
-  app's `.env.local` holds a `pk_live_` key, and a dev build pointing at it could take a
-  real card payment during testing. Put a `pk_test_` key there, and only then.
-- `@stripe/stripe-react-native` replaces Stripe Elements, with its own 3D Secure
-  behaviour. Do not assume `lib/confirm-payment.ts`'s two hard-won web fixes transfer —
-  re-verify both failure modes under the native SDK.
-- Real-device testing with real cards. Simulators never reproduced either 3DS bug.
+**Decisions that shape the rest:**
 
-**Also still open from Phase 2:** the Fill In / ringer feed (`components/RingerFeed.tsx`),
-which is self-contained and a clean next task if payments are not wanted yet.
+- **App Store wording (decided 2026-09-29).** Mobile payment screens name what
+  the money is for, never "top up", "credit" or "balance"; no free-amount top-up
+  screen exists on the phone. See "The in-app-purchase trap" below.
+- **Payments are tested against a local test-mode server.** `mobile/.env`
+  holds a `pk_test_` key and points `EXPO_PUBLIC_API_BASE_URL` at `npm run dev`
+  on the developer's PC, with `.env.development.local` supplying test keys. The
+  deployed API runs live keys, which a test publishable key can't confirm. The
+  procedure (and why it still writes to the live database) is in PORTED.md.
+- **Real-device 3D Secure testing is still owed.** PaymentSheet drives 3DS
+  natively, but the web's two mobile 3DS bugs were only ever reproduced on real
+  cards; test before trusting a live key.
 
 **Before building anything, check what drifted:**
 
