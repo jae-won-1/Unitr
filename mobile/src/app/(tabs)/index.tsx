@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect } from 'expo-router';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRole } from '@/contexts/RoleContext';
@@ -47,7 +48,14 @@ export default function Home() {
 
   const { user } = useAuth();
   const { role, roleLoading } = useRole();
-  const { teamId, canManage } = useLeadership(user?.id);
+  const { teamId, canManage, reload: reloadLead } = useLeadership(user?.id);
+  // Keyed on the user id, which doesn't change when the player's team does —
+  // see the same note on My Team.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadLead();
+    }, [reloadLead]),
+  );
 
   const [next, setNext] = useState<CalendarEntry | null>(null);
   const [loading, setLoading] = useState(true);

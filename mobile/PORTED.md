@@ -72,6 +72,8 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Answer the availability poll | `components/AvailabilityModal.tsx`, `lib/availability-poll.ts` | `4a4e7e7` | done — a "Proposed dates" card on Home opens `poll-sheet.tsx`; same upsert, same gate (a player who owes can only unpick or send "none of these"), with Pay now linking to the pay sheet |
 | Run the availability poll (captain) | `app/my-team/collect-availability/page.tsx`, `AvailabilityPollForm.tsx` | `ea826c8` | done — `poll.tsx` from My Team: answers per slot (count, Best, who's in), New poll, Close poll. Creates through the shared `createAvailabilityPoll`. Not ported: "pick dates → post matches" (match posting isn't on mobile) |
 | Date + hour picker | `components/DateTimePickers.tsx` | — | `slot-picker.tsx`: next six weeks as a strip, 07:00–22:00 as a grid, whole hours only (the web convention), past hours today disabled |
+| Find a team / request to join | `BrowseTeams` in `app/my-team/page.tsx` | `ea826c8` | done — My Team for a teamless player. Search actually filters (it's unwired on the web); a sent request stays shown as sent |
+| Register a team | `app/my-team/create/page.tsx` | `ea826c8` | done — same insert and missing-column fallback; refreshes the session so the captain role is picked up |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:

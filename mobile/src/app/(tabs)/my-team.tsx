@@ -28,7 +28,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -42,6 +42,7 @@ import { useTheme } from '~/use-theme';
 import { TopActions } from '~/components/top-actions';
 import LeaveTeamPanel from '~/components/leave-team-panel';
 import { JoinRequests } from '~/components/join-requests';
+import { BrowseTeams } from '~/components/browse-teams';
 
 type Team = {
   id: string;
@@ -57,7 +58,16 @@ export default function MyTeam() {
   const theme = useTheme();
   const styles = makeStyles(theme);
   const { user } = useAuth();
-  const { teamId, isCaptain, isCoCaptain, loading: leadLoading } = useLeadership(user?.id);
+  const { teamId, isCaptain, isCoCaptain, loading: leadLoading, reload: reloadLead } = useLeadership(user?.id);
+
+  // useLeadership is keyed on the user id, which doesn't change when the
+  // player's team does — registering a team, being approved into one, or
+  // leaving. Re-read it whenever the tab comes into focus.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadLead();
+    }, [reloadLead]),
+  );
 
   const [team, setTeam] = useState<Team | null>(null);
   const [squad, setSquad] = useState<CoCaptainRow[] | null>(null);
@@ -93,18 +103,22 @@ export default function MyTeam() {
     );
   }
 
-  // new_user: signed in but teamless. The web app's Home offers registering a
-  // team or joining one; those flows are not ported yet, so this says what the
-  // state is rather than offering a button that goes nowhere.
+  // new_user: signed in but teamless — register a team, or find one and ask
+  // to join, as on the web's My Team.
   if (!teamId) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="people-outline" size={40} color={theme.textSecondary} />
-        <Text style={styles.emptyTitle}>No team yet</Text>
-        <Text style={styles.emptyBody}>
-          Join a squad or register your own on the web app, and it will appear here.
-        </Text>
-      </View>
+      <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <TopActions />
+        <Text style={styles.heading}>My Team</Text>
+        <Text style={styles.location}>You&apos;re not in a squad yet.</Text>
+        <View style={[styles.actions, { flexDirection: 'row' }]}>
+          <Pressable onPress={() => router.push('/create-team')} style={[styles.action, styles.actionPrimary]}>
+            <Text style={styles.actionPrimaryText}>Register your team</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.sectionTitle}>Find a team</Text>
+        {user && <BrowseTeams userId={user.id} />}
+      </ScrollView>
     );
   }
 

@@ -52,6 +52,9 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 31 | After saving a profile, the mobile screens refresh the login session. | The shared role check only looks again when the signed-in user changes, so it would otherwise go on thinking the profile is missing and bounce you back to Finish setting up. | (this commit) |
 | 32 | ⚠️ **Not changed, but worth checking on the web:** the web's `/welcome` may have the same problem, sending a brand-new Google account back and forth between Home and `/welcome` after they finish. | I noticed it reading the shared role code; I haven't reproduced it. It would affect new Google sign-ups, which went live today. | — |
 | 33 | Arriving on mobile through a team invite link isn't handled. | Invite links open the website, which handles joining. | — |
+| 34 | A player with no team can now find and join a team, or register their own, on mobile (My Team). | Previously the screen only said "use the web app", which left a new sign-up with nothing to do. | (this commit) |
+| 35 | The team search on mobile actually filters, by name or location. | On the web the search box is drawn but does nothing. Mobile does what it looks like it does; the web is unchanged. | (this commit) |
+| 36 | Home and My Team now re-check your team every time you come back to them. | The shared team lookup only refreshes when the signed-in user changes, so creating, joining or leaving a team wouldn't show up until the app restarted. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -97,3 +100,5 @@ Tests:
 - [ ] **Web, important: brand-new Google account.** In a private window, Continue with Google with an account that has never used Uniter, and fill in `/welcome`. Check you land on Home and **stay** there, rather than flicking back to `/welcome`. If it loops, tell me: it's a live bug for new sign-ups, not a mobile one.
 - [ ] **Mobile: create an account** (Sign in → "New here? Create an account"). Try it with a throwaway email; it creates a real account in the live database, so delete it afterwards in Supabase → Authentication → Users. Check the validation (password under 8, mismatch, unanswered questions), then that you land on Home with your name in the greeting.
 - [ ] **Mobile: finish setting up.** Sign in on the phone with an account that has no profile (the Step-0 list had three: `jay1choii1@`, `emilytony1108@`, `jeehan.kim05@`; use your own). You should be taken to Finish setting up, and land on Home after answering. "Use a different account" signs out.
+- [ ] **Find a team** (as a player with no team, e.g. a new test account): search by name and by area, filter by level, then Request to join. The button should stay "Request sent" after leaving and reopening the tab, and the captain should see the request.
+- [ ] **Register a team** (as a teamless test account): fill it in and create. You should land on My Team as captain, with Invite players and Team Settings showing, without restarting the app. Delete the test team afterwards in Supabase if you don't want it listed.
