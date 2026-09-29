@@ -42,6 +42,11 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 21 | Joining fee help text on mobile says "towards your pitch bookings and tournament entries" rather than the web's "into your team's credit balance". | Your wording decision for mobile. | (this commit) |
 | 22 | Moved `useAvailabilityPoll` into `lib/availability-poll.ts` on **main** (unchanged code, re-exported), and dropped two unused imports from the web modal. | Mobile needs the poll to let players answer it. Built and type-checked before pushing. | 4a4e7e7 |
 | 23 | Players can answer the captain's poll on mobile, from a "Proposed dates" card on Home. | Mobile could answer per-game questions but not the poll, which is the other half of the same question. | (this commit) |
+| 24 | Moved poll **creation** into `lib/availability-poll.ts` on **main**. This one isn't a pure move: `AvailabilityPollForm` on the web now calls the shared function, and option ids fall back to a random id where `crypto.randomUUID` doesn't exist (phones only; every browser has it, so the web behaves as before). | The web file warns that the one-live-poll-per-team rule would drift if it were copied twice. Reviewed the diff line by line and built it before pushing. **Please test creating a poll on the web too.** | ea826c8 |
+| 25 | Built the captain's poll screen on mobile (My Team → Availability poll): see answers, propose new dates, close the poll. | It completes the poll, which players can now answer on mobile too. | (this commit) |
+| 26 | Built a simple date-and-hour picker (a strip of days, a grid of whole hours from 07:00 to 22:00) instead of the web's clock dial. | The plan says to keep the dial's rule (whole hours by default) rather than copy its look. Past hours today are disabled. | (this commit) |
+| 27 | When every slot in a poll has passed, the captain's screen closes it automatically. | That's what the web captain page does, so the squad stops being asked about dates that have gone. | (this commit) |
+| 28 | Left out the web's "pick up to 3 dates → post matches" step. | It hands off to match posting, which isn't on mobile yet. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -82,3 +87,5 @@ Tests:
 - [ ] **Post announcement**: type `@` and a letter, tap a suggested name, post. Everyone in the squad should get it in Messages.
 - [ ] **Poll** (needs a live poll — create one on the web as captain): on Home, a "Your captain proposed dates" card appears. Pick dates and Submit; the card then says "n dates sent". Reopen and change to "Unavailable for any of these".
 - [ ] **Poll while owing money** (Test team account with an unpaid joining fee): dates can't be picked, "Unavailable for any" still sends, and **Pay now** opens the pay sheet.
+- [ ] **Web: create a poll** (My Team → Collect availability, or the captain's Home tile) — this code moved into a shared file tonight, so check it still sends, and that sending a second poll replaces the first.
+- [ ] **Mobile: captain poll** (My Team → Availability poll): add 2–3 options with the day strip and hour grid (past hours today should be greyed), send, and check the squad sees "Your captain proposed dates". Answer from a player account, then check the counts, the "Best" slot and the initials on the captain's screen. Try **New poll** (warns it replaces the current one) and **Close poll**.

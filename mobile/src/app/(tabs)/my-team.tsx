@@ -154,6 +154,11 @@ export default function MyTeam() {
             </Pressable>
           </View>
         )}
+        {isCaptain && (
+          <Pressable onPress={() => router.push('/poll')} style={styles.action}>
+            <Text style={styles.actionText}>Availability poll</Text>
+          </Pressable>
+        )}
         {/* Not captain-gated: the chat is the whole squad's. */}
         <Pressable onPress={() => router.push('/messages/team' as Href)} style={styles.action}>
           <Text style={styles.actionText}>Team chat</Text>
