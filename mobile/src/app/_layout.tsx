@@ -46,7 +46,7 @@ const stripeUrlScheme =
 // them on a screen whose queries have quietly started failing.
 function Gate({ children }: { children: React.ReactNode }) {
   const { session, loading: authLoading } = useAuth();
-  const { role, roleLoading } = useRole();
+  const { role, roleLoading, profileMissing } = useRole();
   const segments = useSegments();
   const router = useRouter();
   const theme = colors.light;
@@ -60,13 +60,26 @@ function Gate({ children }: { children: React.ReactNode }) {
 
     const top = segments[0] as string | undefined;
     const onSignIn = top === 'sign-in';
+    // The screens a session may be on before it has a profile — the web's
+    // ProfileGate SETUP_ROUTES. Register is mid-way through writing one.
+    const onSetup = top === 'sign-in' || top === 'register' || top === 'welcome';
     const onVenue = top === 'venue';
     // The spike is a development screen; leave it reachable without the gate
     // bouncing anyone off it.
     if (top === 'spike') return;
 
     if (!session) {
-      if (!onSignIn) router.replace('/sign-in');
+      if (!onSignIn && top !== 'register') router.replace('/sign-in');
+      return;
+    }
+    // Signed in with no profile row (the web's ProfileGate): finish setting up
+    // before anything else. Half a profile is worse than none.
+    if (profileMissing) {
+      if (!onSetup) router.replace('/welcome');
+      return;
+    }
+    if (top === 'welcome') {
+      router.replace('/');
       return;
     }
     // Venue managers are checked before anything player-shaped, exactly as the
@@ -76,7 +89,7 @@ function Gate({ children }: { children: React.ReactNode }) {
       return;
     }
     if (onSignIn || onVenue) router.replace('/');
-  }, [waiting, session, role, segments, router]);
+  }, [waiting, session, role, profileMissing, segments, router]);
 
   if (waiting) {
     return (

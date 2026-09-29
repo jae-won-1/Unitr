@@ -1,16 +1,8 @@
-// Sign in / create account.
+// Sign in.
 //
-// One screen with a toggle rather than two routes: the two forms differ by a
-// single field, and a player who tapped the wrong one should not have to
-// navigate to fix it.
-//
-// Account creation here is deliberately minimal — email and password only. The
-// web app's /register also collects name, positions, experience, age group and
-// so on, but that questionnaire belongs with the profile screens later in the
-// port; a half-ported version asking three of eight questions would write
-// worse data than asking none. A new account resolves to `new_user`, which is
-// the correct role for someone with no team yet, and the existing profile
-// screens fill the rest in.
+// Creating an account is its own screen (register.tsx), because it asks
+// everything the web's /register asks — the old two-field sign-up here made
+// accounts with no profile at all.
 
 import { useState } from 'react';
 import {
@@ -34,14 +26,11 @@ export default function SignIn() {
   const theme = useTheme();
   const styles = makeStyles(theme);
 
-  const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const creating = mode === 'up';
 
   async function submit() {
     setError(null);
@@ -55,20 +44,8 @@ export default function SignIn() {
 
     setBusy(true);
     try {
-      if (creating) {
-        const { data, error } = await supabase.auth.signUp({ email: mail, password });
-        if (error) throw error;
-        // If the project requires email confirmation, signUp returns a user
-        // with no session. Saying so beats a screen that silently does nothing.
-        if (!data.session) {
-          setNotice('Check your email to confirm your account, then sign in.');
-          setMode('in');
-          return;
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: mail, password });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email: mail, password });
+      if (error) throw error;
       // The root gate re-reads the session and routes by role from here.
       router.replace('/');
     } catch (e) {
@@ -107,8 +84,8 @@ export default function SignIn() {
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
-            autoComplete={creating ? 'new-password' : 'current-password'}
-            placeholder={creating ? 'At least 6 characters' : 'Your password'}
+            autoComplete="current-password"
+            placeholder="Your password"
             placeholderTextColor={theme.textSecondary}
             editable={!busy}
             onSubmitEditing={submit}
@@ -125,21 +102,13 @@ export default function SignIn() {
             {busy ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>{creating ? 'Create account' : 'Sign in'}</Text>
+              <Text style={styles.buttonText}>Sign in</Text>
             )}
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={() => {
-            setMode(creating ? 'in' : 'up');
-            setError(null);
-            setNotice(null);
-          }}
-          disabled={busy}>
-          <Text style={styles.toggle}>
-            {creating ? 'Already have an account? Sign in' : "New here? Create an account"}
-          </Text>
+        <Pressable onPress={() => router.push('/register')} disabled={busy}>
+          <Text style={styles.toggle}>New here? Create an account</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>

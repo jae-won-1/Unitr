@@ -46,7 +46,9 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 
 | Screen | Web source | Ported from | Status |
 |---|---|---|---|
-| Sign in / create account | `app/login`, `app/register` | `008f735` | Phase 1 — email+password only; the registration questionnaire lands with the profile screens |
+| Sign in | `app/login` | `008f735` | Phase 1 — email + password |
+| Create an account | `app/register/page.tsx`, `components/RegistrationFields.tsx`, `lib/register-profile.ts` | `ea826c8` | done — every question the web asks, written by the shared `insertNewProfile`. Replaces Phase 1's email-and-password-only sign-up, which made accounts with no profile |
+| Finish setting up (profile gate) | `app/welcome/page.tsx`, `components/ProfileGate.tsx` | `ea826c8` | done — the root Gate sends a session with no profile to `welcome.tsx`, skipping the sign-up screens, as ProfileGate does |
 | Root gate + venue notice | `contexts/RoleContext.tsx` | `008f735` | Phase 1 — done. Venue portal deliberately out of v1 |
 | Tab shell (Home/Calendar/My Team) | `components/BottomNav.tsx` | `008f735` | Phase 1 — done |
 | Theme (colors, radii, shadow, font) | `tailwind.config.ts`, `app/globals.css`, `app/layout.tsx` | `008f735` | Phase 1 — done. See `src/theme.ts`; dark mode is an addition, the web app has none |
