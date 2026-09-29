@@ -46,15 +46,7 @@ import { authedPost } from '@/lib/authed-fetch';
 import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
-
-// A PaymentIntent's client secret is always "{intent_id}_secret_{random}".
-// PaymentSheet confirms the intent but hands back no id on success — only an
-// { error } — so this is the one place mobile needs to read one back out
-// rather than being given it, purely to tell /api/ringer/join which payment
-// to check. Stripe documents this shape; it is not this app inferring it.
-function paymentIntentIdFrom(clientSecret: string): string {
-  return clientSecret.split('_secret_')[0];
-}
+import { paymentIntentIdFrom } from '~/payments';
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
 

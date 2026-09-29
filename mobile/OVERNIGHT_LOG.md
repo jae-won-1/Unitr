@@ -1,0 +1,50 @@
+# Overnight log — 29/30 September 2026
+
+Written while you slept, on your instruction to carry on with the React Native
+transition and approve everything that isn't critical. Two sections: what I
+decided on your behalf, and one test list to run through in a single sitting.
+
+## Ground rules I held to
+
+- **No writes to the live database.** Seed scripts are written, never run.
+- **No force-pushes, no deleting branches or data, no dashboard changes**
+  (Stripe, Supabase, Google Cloud, Vercel).
+- **`main` only receives byte-identical extractions** of pure data code into
+  `lib/` (the branch-discipline rule), each type-checked and built first. They
+  deploy to Vercel, but change no behaviour. Everything else lands on `mobile`.
+- Every mobile change is type-checked and linted before commit. None of it has
+  run on a phone — that is what the test list is for.
+
+## Decisions made on your behalf
+
+| # | Decision | Why | Commit |
+|---|---|---|---|
+| 1 | Challenge and Enter stay greyed until Phase 4 (your call, recorded). | Their failure case needs a captain's payment sheet that doesn't exist yet. | a519a81 |
+| 2 | Payments tested against a local test-mode server, not the live API. | The phone's pk_test key can't confirm an intent made with the live secret key. | 33152bd |
+| 3 | Pay sheet built with no free-amount top-up. | Your wording decision: a balance you add money to looks like a digital wallet to Apple. | e6a6a6d |
+| 4 | Moved `saveCardFromIntent` into `lib/save-card.ts` on **main** (unchanged code, re-exported). | Mobile needs it to save a card after paying. Built and type-checked before pushing; no behaviour change. | 48aca6e |
+| 5 | "Save this card" switch added to the pay sheet only, **not** to Fill In. | Fill In goes straight into Stripe's sheet with no screen of ours to put a switch on. Stripe's own save box needs a new server route (ephemeral keys), which is a server change I didn't want to make unsupervised. | (this commit) |
+
+## Test checklist (do these together later)
+
+Setup once, before any of it:
+
+1. Paste your `sk_test_` key into `.env.development.local` (repo root).
+2. `npm run dev` in the repo root — the startup lines should list
+   `.env.development.local`. (I stopped your earlier dev server by mistake.)
+3. `cd mobile && npx expo start`, scan the QR code with Expo Go. Phone and PC on
+   the same Wi-Fi.
+4. When finished testing payments, set `EXPO_PUBLIC_API_BASE_URL` in
+   `mobile/.env` back to the Vercel line.
+
+Tests:
+
+- [ ] **Fill In payment.** `node mobile/scripts/ringer-test-fixture.mjs seed`,
+      sign in as `testcaptain@gmail.com`, Home → Find a game → Fill In → Join.
+      Pay with `4000 0027 6000 3184` (forces 3D Secure). Expect "You're in" and
+      the card to show "You're in". Then `... undo` immediately.
+- [ ] **Leave team** on My Team: greyed with a reason for a captain; red with a
+      second confirmation for a player. (Don't confirm on a real account.)
+- [ ] **What you owe** strip on Home (needs Stripe CLI webhooks — see
+      `mobile/PORTED.md`, Phase 3 note — and writes to the live ledger).
+- [ ] **Save this card** in the pay sheet: with no card on file, the switch shows; turn it on, pay, then reopen the sheet — it should now say payments go to your saved card, and ask you to confirm before charging.

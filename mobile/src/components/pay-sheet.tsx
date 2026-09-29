@@ -28,6 +28,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -42,6 +43,7 @@ import { waitForCredit } from '@/lib/credit-sync';
 import { toDateKey } from '@/lib/match-dates';
 import { fonts, radius } from '~/theme';
 import { useTheme } from '~/use-theme';
+import { paymentIntentIdFrom, useSaveCardChoice } from '~/payments';
 
 // What a single Pay button is paying for.
 type Target = { kind: 'fee' } | { kind: 'due'; due: MyDue };
@@ -81,6 +83,7 @@ export function PaySheet({
   const [savedCard, setSavedCard] = useState<SavedCard | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const saveCard = useSaveCardChoice(userId);
 
   useEffect(() => {
     if (!visible) return;
@@ -178,6 +181,7 @@ export function PaySheet({
 
     // Charged. From here nothing may read as a failure — the money has moved.
     if (t.kind === 'due') await applyTopUp(userId, amountPence, t.due.pcsId);
+    await saveCard.commit(paymentIntentIdFrom(data.clientSecret));
     const landed = await waitForCredit(teamId, before?.balance_pence ?? 0);
     await refresh();
     setNotice(
@@ -253,6 +257,24 @@ export function PaySheet({
                     onPay={() => pay({ kind: 'fee' })}
                     styles={styles}
                   />
+                )}
+                {/* Only for a first card — with one saved, payments go
+                    through it and there is nothing to save. */}
+                {!savedCard && saveCard.offer && (
+                  <View style={styles.saveRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rowTitle}>Save this card</Text>
+                      <Text style={styles.rowSub}>
+                        Pay in one tap next time, and let Uniter charge your share of match fees
+                        automatically. Remove it any time from your profile.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={saveCard.checked}
+                      onValueChange={saveCard.setChecked}
+                      trackColor={{ true: theme.accent, false: theme.border }}
+                    />
+                  </View>
                 )}
                 {dues.map((due) => (
                   <Row
@@ -375,6 +397,15 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       alignItems: 'center',
     },
     payBtnText: { color: '#fff', fontFamily: fonts.bold, fontSize: 13 },
+    saveRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: theme.surface2,
+      borderRadius: radius.btn,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+    },
     muted: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, paddingVertical: 8 },
     footnote: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 11, lineHeight: 16, marginTop: 4 },
   });
