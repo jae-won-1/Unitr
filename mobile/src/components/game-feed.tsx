@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStripe } from '@stripe/stripe-react-native';
+import { router } from 'expo-router';
 
 import {
   useOpenMatchPosts,
@@ -485,8 +486,13 @@ function TournamentCard({
         )}
       </View>
 
-      <Text style={styles.cardTitle}>{t.title}</Text>
-      {organiser && <Text style={styles.cardSub}>by {organiser}</Text>}
+      <Pressable onPress={() => router.push({ pathname: '/tournament/[id]', params: { id: t.id } })} hitSlop={6}>
+        <Text style={styles.cardTitle}>{t.title}</Text>
+        <Text style={styles.cardSub}>
+          {organiser ? `by ${organiser} · ` : ''}
+          <Text style={{ color: theme.accentInk }}>Details</Text>
+        </Text>
+      </Pressable>
 
       <View style={styles.metaRow}>
         <Ionicons name="time-outline" size={14} color={theme.textSecondary} />

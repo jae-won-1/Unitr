@@ -6,11 +6,11 @@
 // part — shared, so the mobile sheet can never offer a captain something the
 // web sheet would not, or miss something it would.
 //
-// The CTAs themselves route to screens that are not ported yet (Manage match,
-// Submit result, Manage tournament, Edit post). They are shown GREYED with
-// where to find them, rather than hidden: the house convention, and it also
-// tells a captain the mobile app knows the action exists rather than implying
-// the fixture has none.
+// A tournament's CTA opens the phone's read-only tournament page. The others
+// route to screens that are not ported yet (Manage match, Submit result, Edit
+// post) and are shown GREYED with where to find them, rather than hidden: the
+// house convention, and it also tells a captain the mobile app knows the
+// action exists rather than implying the fixture has none.
 //
 // A z-index note that does not apply here: on the web every sheet is z-[60] to
 // clear the nav. React Native's Modal renders above everything by construction,
@@ -18,6 +18,7 @@
 
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 
 import {
   fixtureAction,
@@ -150,7 +151,20 @@ export function FixtureDetailSheet({
               </View>
             )}
 
-            {action && (
+            {action && action.href.startsWith('/play/tournament/') && (
+              // The organiser's controls stay on the web; the phone shows the
+              // player's view — schedule, referees, scores, table.
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  router.push({ pathname: '/tournament/[id]', params: { id: action.href.split('/').pop() ?? '' } });
+                }}
+                style={styles.ctaLive}>
+                <Text style={styles.ctaLiveText}>View schedule & results</Text>
+              </Pressable>
+            )}
+
+            {action && !action.href.startsWith('/play/tournament/') && (
               // Greyed rather than hidden — the screen it opens is not ported.
               <View style={styles.ctaBox}>
                 <View style={styles.ctaDisabled}>
@@ -240,6 +254,14 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       borderTopColor: theme.border,
       gap: 6,
     },
+    ctaLive: {
+      marginTop: 18,
+      backgroundColor: theme.accent,
+      borderRadius: radius.btn,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    ctaLiveText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15 },
     ctaDisabled: {
       backgroundColor: theme.surface2,
       borderColor: theme.border,
