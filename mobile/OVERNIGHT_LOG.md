@@ -55,6 +55,10 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 34 | A player with no team can now find and join a team, or register their own, on mobile (My Team). | Previously the screen only said "use the web app", which left a new sign-up with nothing to do. | (this commit) |
 | 35 | The team search on mobile actually filters, by name or location. | On the web the search box is drawn but does nothing. Mobile does what it looks like it does; the web is unchanged. | (this commit) |
 | 36 | Home and My Team now re-check your team every time you come back to them. | The shared team lookup only refreshes when the signed-in user changes, so creating, joining or leaving a team wouldn't show up until the app restarted. | (this commit) |
+| 37 | Built the per-game tournament page on mobile: kick-off, referee, score, the squad's answers, and the captain's lineup board with formation, style and notes. It opens from "Your games" in the Calendar's tournament sheet. | Tournaments are the pilot's focus, and setting a lineup is the thing a captain does before each game. Every read and write goes through the shared tournament and formation code. | (this commit) |
+| 38 | Folded the web's separate Tactics tab (style and notes) under the lineup board. | On a phone, three tabs fit and four are cramped, and a captain thinks about style while looking at the board. | (this commit) |
+| 39 | Loading a saved team preset into a lineup isn't ported. | Presets are loaded by code inside the web's Tactics tab component rather than a shared file. Moving it is for when the Tactics screen itself is ported. | — |
+| 40 | The full tournament schedule page (all teams, standings, organiser controls) isn't ported; the fixture page points to the web app for it. | It's the organiser's screen and much bigger. Players get their own games on mobile. | — |
 
 ## Test checklist (do these together later)
 
@@ -102,3 +106,6 @@ Tests:
 - [ ] **Mobile: finish setting up.** Sign in on the phone with an account that has no profile (the Step-0 list had three: `jay1choii1@`, `emilytony1108@`, `jeehan.kim05@`; use your own). You should be taken to Finish setting up, and land on Home after answering. "Use a different account" signs out.
 - [ ] **Find a team** (as a player with no team, e.g. a new test account): search by name and by area, filter by level, then Request to join. The button should stay "Request sent" after leaving and reopening the tab, and the captain should see the request.
 - [ ] **Register a team** (as a teamless test account): fill it in and create. You should land on My Team as captain, with Invite players and Team Settings showing, without restarting the app. Delete the test team afterwards in Supabase if you don't want it listed.
+- [ ] **Tournament games** (needs an entered tournament with fixtures drawn up, e.g. on the Test team): Calendar → tap the tournament → "Your games" lists each game; tap one.
+- [ ] **Fixture page as a player**: Info shows kick-off, pitch and referee; Attendance shows the squad's In / Out / Pending for the day; Lineup is read-only.
+- [ ] **Fixture page as captain**: pick a formation, tap positions to choose players (someone who said Out shouldn't be offered; picking someone already placed moves them), set a style and notes, **Save lineup**. Then open the same game on the web and check it matches (same players in the same positions).

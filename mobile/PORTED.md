@@ -74,6 +74,8 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Date + hour picker | `components/DateTimePickers.tsx` | — | `slot-picker.tsx`: next six weeks as a strip, 07:00–22:00 as a grid, whole hours only (the web convention), past hours today disabled |
 | Find a team / request to join | `BrowseTeams` in `app/my-team/page.tsx` | `ea826c8` | done — My Team for a teamless player. Search actually filters (it's unwired on the web); a sent request stays shown as sent |
 | Register a team | `app/my-team/create/page.tsx` | `ea826c8` | done — same insert and missing-column fallback; refreshes the session so the captain role is picked up |
+| Tournament fixture (one game) | `app/my-team/tournament-match/[fixtureId]/page.tsx`, `lib/tournament-match.ts`, `lib/formations.ts` | `ea826c8` | done — Info / Attendance / Lineup (Tactics folded under the board). Lineup board is `pitch-board.tsx` on the shared formations. Not ported: loading a saved preset (presets live in the web's TacticsTab) |
+| "Your games" in a tournament | `components/TournamentFixtureList.tsx` | `ea826c8` | done — in the Calendar fixture sheet for an entered tournament; each row opens the fixture |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:

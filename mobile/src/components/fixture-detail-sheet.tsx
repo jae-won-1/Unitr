@@ -25,6 +25,7 @@ import {
   type CalendarEntry,
 } from '@/lib/calendar-entries';
 import { fmtKickoff } from '@/lib/match-dates';
+import { TournamentFixtureList } from '~/components/tournament-fixture-list';
 import { fonts, radius } from '~/theme';
 import { kindTints } from '~/kind-style';
 import { useIsDark, useTheme } from '~/use-theme';
@@ -131,6 +132,20 @@ export function FixtureDetailSheet({
                   target={availabilityTarget}
                   playerId={viewerId}
                   teamId={viewerTeamId}
+                />
+              </View>
+            )}
+
+            {/* A tournament is one commitment but several games; each has its
+                own page (lineup, attendance, score). Only for a team that
+                entered — openMatchId is exactly that test, as on the web. */}
+            {entry.kind === 'tournament' && entry.openMatchId && (
+              <View style={styles.availability}>
+                <TournamentFixtureList
+                  openMatchId={entry.openMatchId}
+                  teamId={viewerTeamId}
+                  isCaptain={isCaptain}
+                  onOpen={onClose}
                 />
               </View>
             )}
