@@ -54,7 +54,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Fixture detail sheet | `components/FixtureDetailSheet.tsx` | `008f735` | Phase 2 — done. Management CTAs greyed until their screens land |
 | Month grid | `components/CalendarSheet.tsx` | `008f735` | Phase 2 — done |
 | Availability answer | `components/AvailabilityButtons.tsx` | `008f735` | Phase 2 — done, gate included |
-| Fill In / ringer feed | `components/RingerFeed.tsx`, `lib/ringer-feed.ts` | `da0090e` | Browse only — a fourth GameFeed tab, `useRingerPosts` shared unchanged. Join is greyed: it pays by card (Stripe Elements on web), and the native SDK is Phase 3 |
+| Fill In / ringer feed | `components/RingerFeed.tsx`, `lib/ringer-feed.ts` | `da0090e` | **Phase 3 — done, including payment.** Join calls the same `/api/ringer/create-intent` + `/api/ringer/join` pair the web app does, confirmed with Stripe's PaymentSheet instead of the Payment Element. Only real-device 3DS testing is outstanding — see the Phase 3 note below |
 | Home — GameFeed (discovery) | `components/GameFeed.tsx`, `lib/game-feed.ts` | `9ba8b59` | Phase 2 — done. `lib/game-feed.ts`'s hooks are shared, so this stays current for free; Challenge/Enter greyed until Phase 3 |
 | Calendar | `app/calendar/page.tsx`, `lib/calendar-entries.ts` | `008f735` | Phase 2 — **done**, incl. month grid + detail sheet |
 | My Team — squad + details | `app/my-team/page.tsx` | `fe97d03` | Phase 2 — done. Captain control panel is Phase 4 |
@@ -65,6 +65,33 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Home (captain) | app/page.tsx, components/GameFeed.tsx | abc1234 | done |
 | Calendar | app/calendar/page.tsx, components/CalendarSheet.tsx | abc1234 | drifted — 3 commits behind |
 -->
+
+## Phase 3 status (started 2026-09-29)
+
+`@stripe/stripe-react-native` is installed, `StripeProvider` wraps the app in
+`_layout.tsx` (test-mode key from `mobile/.env`, `urlScheme="uniter"` matching
+`app.json`'s scheme), and Fill In's Join button is wired end to end with
+PaymentSheet — see the table row above.
+
+**Challenge and Enter turned out not to need any of this.** They don't run a
+card payment at the moment they're pressed — the web app moves a credit hold
+(Challenge) or a buy-in (Enter) out of `team_credits`, a balance the captain
+tops up separately, beforehand, on its own screen
+(`DuesTopUpModal`/`TeamCreditsBar`). Un-greying them is wiring two
+`authedPost` calls to existing routes, not a Stripe integration — the caveat
+is what happens on insufficient credit, which the web app answers by sending
+the captain to a top-up sheet that isn't ported (Phase 4, the captain control
+panel). Until that sheet exists, Challenge/Enter can be wired for the success
+path with a plain "top up on the web app" message on the failure path, or left
+greyed until Phase 4 lands together with it — worth deciding rather than
+assuming.
+
+**Real-device testing is still outstanding for Fill In**, and is the one thing
+that can't be done from a simulator: the migration plan is explicit that both
+mobile 3D Secure bugs `lib/confirm-payment.ts` exists for on the web were only
+ever reproduced on a real card on a real phone. Test with a
+[Stripe test card](https://docs.stripe.com/testing) that triggers 3DS
+(`4000 0027 6000 3184`) before trusting this on a live key.
 
 ## Shared, so never listed here
 

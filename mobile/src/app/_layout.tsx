@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import {
   useFonts,
   Poppins_400Regular,
@@ -96,19 +97,27 @@ export default function RootLayout() {
   if (!fontsLoaded) return null; // splash screen is still showing
 
   return (
-    <AuthProvider>
-      <RoleProvider>
-        <StatusBar style="dark" />
-        <Gate>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: theme.background },
-              animation: 'fade',
-            }}
-          />
-        </Gate>
-      </RoleProvider>
-    </AuthProvider>
+    // Test-mode publishableKey only — see mobile/.env. urlScheme matches
+    // app.json's "scheme": 3D Secure and any bank redirect returns to the app
+    // through it, not to a web page. No merchantIdentifier: Apple Pay isn't
+    // offered yet, and that prop is for nothing else.
+    <StripeProvider
+      publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''}
+      urlScheme="uniter">
+      <AuthProvider>
+        <RoleProvider>
+          <StatusBar style="dark" />
+          <Gate>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: theme.background },
+                animation: 'fade',
+              }}
+            />
+          </Gate>
+        </RoleProvider>
+      </AuthProvider>
+    </StripeProvider>
   );
 }

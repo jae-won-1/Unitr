@@ -36,7 +36,14 @@
           "imageWidth": 76
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "//": "No merchantIdentifier -- Apple Pay isn't offered yet. An empty object is still required: the plugin destructures props unconditionally and a bare string entry crashes config resolution.",
+          "enableGooglePay": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -21,13 +21,18 @@
 //     match_suggestions, which is exactly what the web app does, and commits
 //     nothing on the team's behalf.
 //   new_user → discovery only, nothing to act with.
-//   anyone, on a Fill In card → "Join for £x" is GREYED too. Joining pays a
-//     flat card charge (@stripe/react-stripe-js on web), and the native Stripe
-//     SDK is Phase 3 work, not yet wired here.
+//   anyone, on a Fill In card → "Join for £x" is wired end to end: the same
+//     /api/ringer/create-intent + /api/ringer/join pair the web app calls,
+//     confirmed here with Stripe's PaymentSheet instead of the Payment
+//     Element. PaymentSheet (not a raw CardField + confirmPayment) because it
+//     drives 3D Secure natively without this app re-solving the two mobile
+//     3DS bugs lib/confirm-payment.ts exists for on the web — see
+//     joinRingerSpot below for the corresponding PaymentIntent-id recovery.
 
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useStripe } from '@stripe/stripe-react-native';
 
 import {
   useOpenMatchPosts,
@@ -37,9 +42,19 @@ import {
   type Tournament,
 } from '@/lib/game-feed';
 import { useRingerPosts, fmtRingerDate, type RingerPost } from '@/lib/ringer-feed';
+import { authedPost } from '@/lib/authed-fetch';
 import { fmtKickoff } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
+
+// A PaymentIntent's client secret is always "{intent_id}_secret_{random}".
+// PaymentSheet confirms the intent but hands back no id on success — only an
+// { error } — so this is the one place mobile needs to read one back out
+// rather than being given it, purely to tell /api/ringer/join which payment
+// to check. Stripe documents this shape; it is not this app inferring it.
+function paymentIntentIdFrom(clientSecret: string): string {
+  return clientSecret.split('_secret_')[0];
+}
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
 
@@ -72,7 +87,77 @@ export function GameFeed({
   const { posts, loading: postsLoading } = useOpenMatchPosts(teamId);
   const { tournaments, loading: tourLoading } = useOpenTournaments(teamId);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
-  const { posts: ringers, loading: ringerLoading, unavailable: ringerUnavailable } = useRingerPosts(userId);
+  const {
+    posts: ringers,
+    loading: ringerLoading,
+    unavailable: ringerUnavailable,
+    reload: reloadRingers,
+  } = useRingerPosts(userId);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+
+  // Mirrors RingerFeed.tsx's startJoin/confirmJoin on the web, with
+  // PaymentSheet standing in for Stripe Elements. There is no signed-out case
+  // to gate here — Gate in app/_layout.tsx never lets a signed-out session
+  // reach a tab screen at all.
+  const joinRingerSpot = useCallback(
+    async (post: RingerPost) => {
+      setJoiningId(post.id);
+      try {
+        const startRes = await authedPost('/api/ringer/create-intent', { requestId: post.id });
+        const startData = await startRes.json();
+        if (!startData.clientSecret) {
+          Alert.alert('Could not start payment', startData.error ?? 'Try again in a moment.');
+          return;
+        }
+        const clientSecret: string = startData.clientSecret;
+
+        const init = await initPaymentSheet({
+          merchantDisplayName: 'Uniter',
+          paymentIntentClientSecret: clientSecret,
+        });
+        if (init.error) {
+          Alert.alert('Could not start payment', init.error.message);
+          return;
+        }
+
+        const present = await presentPaymentSheet();
+        if (present.error) {
+          // The sheet's own Cancel button surfaces as an error here too —
+          // silently backing out of a payment isn't a failure worth an alert.
+          if (present.error.code !== 'Canceled') {
+            Alert.alert('Payment failed', present.error.message);
+          }
+          return;
+        }
+
+        // The charge succeeded on Stripe's side at this point. Recording the
+        // signup can still fail (network, a spot taken in the meantime), and
+        // that failure is reported plainly rather than inviting a re-pay —
+        // same reasoning as the web app's confirmJoin.
+        const joinRes = await authedPost('/api/ringer/join', {
+          requestId: post.id,
+          paymentIntentId: paymentIntentIdFrom(clientSecret),
+        });
+        const joinData = await joinRes.json();
+        if (!joinData.ok) {
+          Alert.alert(
+            "You've been charged",
+            joinData.error ?? "Contact the team before paying again — we couldn't confirm your spot.",
+          );
+          return;
+        }
+
+        await reloadRingers();
+        Alert.alert("You're in", `You're in the matchday squad for ${post.teamName}.`);
+      } catch {
+        Alert.alert('Something went wrong', "Couldn't reach the payment service. Please try again.");
+      } finally {
+        setJoiningId(null);
+      }
+    },
+    [initPaymentSheet, presentPaymentSheet, reloadRingers],
+  );
 
   const loading = postsLoading || tourLoading || ringerLoading;
   const showMatches = tab === 'all' || tab === 'matches';
@@ -175,7 +260,16 @@ export function GameFeed({
       )}
 
       {showRingers &&
-        ringers.map((r) => <RingerCard key={r.id} post={r} theme={theme} styles={styles} />)}
+        ringers.map((r) => (
+          <RingerCard
+            key={r.id}
+            post={r}
+            theme={theme}
+            styles={styles}
+            joining={joiningId === r.id}
+            onJoin={() => joinRingerSpot(r)}
+          />
+        ))}
     </View>
   );
 }
@@ -410,10 +504,14 @@ function RingerCard({
   post,
   theme,
   styles,
+  joining,
+  onJoin,
 }: {
   post: RingerPost;
   theme: ReturnType<typeof useTheme>;
   styles: ReturnType<typeof makeStyles>;
+  joining: boolean;
+  onJoin: () => void;
 }) {
   return (
     <View style={styles.card}>
@@ -461,12 +559,20 @@ function RingerCard({
         {post.joined ? (
           <Text style={styles.actionNote}>You&apos;re in the squad</Text>
         ) : (
-          <View style={styles.actionRow}>
-            <View style={[styles.commitBtn, styles.commitBtnOff]}>
-              <Text style={styles.commitBtnOffText}>Join for {money(post.pricePence)}</Text>
-            </View>
-            <Text style={styles.actionNote}>Pay by card on the web app until Phase 3</Text>
-          </View>
+          <Pressable
+            onPress={joining ? undefined : onJoin}
+            disabled={joining}
+            style={({ pressed }) => [
+              styles.commitBtn,
+              styles.joinBtn,
+              (pressed || joining) && { opacity: 0.8 },
+            ]}>
+            {joining ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.joinBtnText}>Join for {money(post.pricePence)}</Text>
+            )}
+          </Pressable>
         )}
       </View>
     </View>
@@ -573,6 +679,8 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     commitBtn: { borderRadius: radius.btn, paddingHorizontal: 18, paddingVertical: 10 },
     commitBtnOff: { backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.border },
     commitBtnOffText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 14 },
+    joinBtn: { backgroundColor: theme.accent, minWidth: 84, alignItems: 'center' },
+    joinBtnText: { color: '#fff', fontFamily: fonts.bold, fontSize: 14 },
     actionNote: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 10 },
     suggestBtn: {
       flexDirection: 'row',
