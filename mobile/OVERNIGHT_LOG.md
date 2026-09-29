@@ -33,6 +33,13 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 12 | One-to-one threads on mobile **poll for replies every 5s**; the web thread doesn't. | On a phone you put the app down and pick it up again. A thread that only updates when you reopen it reads as broken. | (this commit) |
 | 13 | Polling pauses while the app is in the background. | The migration plan's note for team chat: use AppState on native in place of the web's hidden-tab check. | (this commit) |
 | 14 | Team chat's options menu (mute, leave, rejoin) uses the phone's own action sheet, and leaving asks for confirmation. | It's the native equivalent of the web's ⋯ menu, and leaving hides new messages, so it's worth one extra tap. | (this commit) |
+| 15 | Captains can approve or decline join requests on mobile, from My Team. | Home showed the count, but there was nowhere to act on it. | (this commit) |
+| 16 | Team Settings ported whole: team details, invite link, co-captains (captain only; greyed for a co-captain, as on the web), joining fee. | It's the first thing a new captain needs, and every write goes through shared code or the web's own database functions. | (this commit) |
+| 17 | The invite link shared from the phone uses the **website** address (`EXPO_PUBLIC_WEB_URL`, defaulting to the Vercel URL), not the API address. | The web builds it from the browser's address, which a phone doesn't have. The API address points at your PC while payments are being tested, and a link to that would be useless to anyone else. | (this commit) |
+| 18 | Invite link: Share only (the phone's share sheet includes Copy). No separate Copy button. | A Copy button needs another native module (expo-clipboard); the share sheet already covers it. | (this commit) |
+| 19 | Post announcement ported with its own copy of the web page's two database writes, rather than moving them into `lib/`. | On the web they're inline in a live page; extracting them would be a refactor I didn't want to make unsupervised. Noted in `PORTED.md` so they're kept in step. | (this commit) |
+| 20 | The web's announcements **list** page isn't ported. | Every announcement already arrives in each player's Messages inbox, which mobile now has. | (this commit) |
+| 21 | Joining fee help text on mobile says "towards your pitch bookings and tournament entries" rather than the web's "into your team's credit balance". | Your wording decision for mobile. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -65,3 +72,9 @@ Tests:
 - [ ] **Team chat menu** (⋯): turn notifications off and on; Leave (confirm), which should show "You left this chat" with Rejoin; then Rejoin.
 - [ ] **One-to-one thread**: open one from the inbox, send, and check a reply arrives within about 5 seconds.
 - [ ] **Keyboard**: in both chats, the message box should stay above the keyboard on your phone. This is the part most likely to look wrong on Android.
+- [ ] **Join requests** (as a captain, with a request pending, e.g. from a test account): Approve and Decline on My Team. An approved player should appear in the squad and get the welcome message.
+- [ ] **Team Settings** (My Team → Team Settings, as captain): edit details and save; formats show "main" on the first pick.
+- [ ] **Invite link**: Share opens the phone's share sheet; the link starts `https://unitr-omega.vercel.app/join/…` and works when opened. **Reset link** asks first, and the old link stops working.
+- [ ] **Co-captains**: switch someone on and off as the captain. As a co-captain, the section is greyed with an explanation.
+- [ ] **Joining fee**: change it and save. This changes what the whole squad owes, so use the Test team only.
+- [ ] **Post announcement**: type `@` and a letter, tap a suggested name, post. Everyone in the squad should get it in Messages.

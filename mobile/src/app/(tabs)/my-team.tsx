@@ -12,12 +12,15 @@
 // supabase_co_captains.sql hasn't been run) so this screen degrades the same
 // way the web one does instead of erroring.
 //
-// Not yet ported: the captain's control panel sub-pages (tactics, settle
-// payments, team settings, match management). Phase 4.
+// Captain and co-captain get join requests to answer and three entry points —
+// Invite players / Team Settings (the invite link lives there, beside the
+// joining fee, as on the web) and Post announcement. Team chat is for
+// everyone. Still to port: tactics, settle payments, match management.
 
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -25,6 +28,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router, type Href } from 'expo-router';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -37,6 +41,7 @@ import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { TopActions } from '~/components/top-actions';
 import LeaveTeamPanel from '~/components/leave-team-panel';
+import { JoinRequests } from '~/components/join-requests';
 
 type Team = {
   id: string;
@@ -132,6 +137,30 @@ export default function MyTeam() {
 
       {team?.location && <Text style={styles.location}>{team.location}</Text>}
       {team?.description && <Text style={styles.description}>{team.description}</Text>}
+
+      <View style={styles.actions}>
+        {isCaptain && (
+          <Pressable onPress={() => router.push('/team-settings')} style={[styles.action, styles.actionPrimary]}>
+            <Text style={styles.actionPrimaryText}>Invite players</Text>
+          </Pressable>
+        )}
+        {isCaptain && (
+          <View style={styles.actionRow}>
+            <Pressable onPress={() => router.push('/team-settings')} style={styles.action}>
+              <Text style={styles.actionText}>Team Settings</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push('/announcement')} style={styles.action}>
+              <Text style={styles.actionText}>Post announcement</Text>
+            </Pressable>
+          </View>
+        )}
+        {/* Not captain-gated: the chat is the whole squad's. */}
+        <Pressable onPress={() => router.push('/messages/team' as Href)} style={styles.action}>
+          <Text style={styles.actionText}>Team chat</Text>
+        </Pressable>
+      </View>
+
+      {isCaptain && teamId && <JoinRequests teamId={teamId} onChanged={load} />}
 
       <Text style={styles.sectionTitle}>
         Squad{squad ? ` · ${squad.length}` : ''}
@@ -234,6 +263,20 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       paddingVertical: 4,
       overflow: 'hidden',
     },
+    actions: { gap: 8, marginTop: 16 },
+    actionRow: { flexDirection: 'row', gap: 8 },
+    action: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: radius.btn,
+      paddingVertical: 11,
+      alignItems: 'center',
+      backgroundColor: theme.surface,
+    },
+    actionText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 12 },
+    actionPrimary: { backgroundColor: theme.accent, borderColor: theme.accent },
+    actionPrimaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 13 },
     location: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, marginTop: 10 },
     description: {
       color: theme.textSecondary,
