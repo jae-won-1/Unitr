@@ -24,6 +24,10 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 3 | Pay sheet built with no free-amount top-up. | Your wording decision: a balance you add money to looks like a digital wallet to Apple. | e6a6a6d |
 | 4 | Moved `saveCardFromIntent` into `lib/save-card.ts` on **main** (unchanged code, re-exported). | Mobile needs it to save a card after paying. Built and type-checked before pushing; no behaviour change. | 48aca6e |
 | 5 | "Save this card" switch added to the pay sheet only, **not** to Fill In. | Fill In goes straight into Stripe's sheet with no screen of ours to put a switch on. Stripe's own save box needs a new server route (ephemeral keys), which is a server change I didn't want to make unsupervised. | (this commit) |
+| 6 | Built a Profile screen, reached from an avatar button at the top-right of each tab, not a fourth tab. | Mobile had no way for a player to sign out at all. The web app keeps three tabs and puts Profile behind the avatar; same here. | (this commit) |
+| 7 | Profile leaves out **Connect Google**, with a note pointing to the web app. | Linking Google inside the phone app is an OAuth round trip that needs the app added as a redirect in Supabase and Google Cloud, which is dashboard work. | (this commit) |
+| 8 | Profile leaves out **Friends** for now. | Its only action is "message this friend", and Messages isn't on mobile yet. | (this commit) |
+| 9 | Sign out asks for confirmation first. | On a phone it sits under your thumb at the bottom of a long scroll. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -48,3 +52,6 @@ Tests:
 - [ ] **What you owe** strip on Home (needs Stripe CLI webhooks — see
       `mobile/PORTED.md`, Phase 3 note — and writes to the live ledger).
 - [ ] **Save this card** in the pay sheet: with no card on file, the switch shows; turn it on, pay, then reopen the sheet — it should now say payments go to your saved card, and ask you to confirm before charging.
+- [ ] **Profile**: tap the avatar (top right) on Home, Calendar and My Team. Check name, positions, About you. Edit Profile: change positions (first pick shows "main") and an answer, save, and see it update.
+- [ ] **Add a card** on Profile (test key, `4242 4242 4242 4242`, or `4000 0027 6000 3184` for 3D Secure). Expect "Visa •••• 4242 · Saved". Then **Remove** it. Uses a test account only — it writes the card to that account's profile.
+- [ ] **Sign out** from Profile: confirmation, then the sign-in screen, and Back doesn't return into the app.

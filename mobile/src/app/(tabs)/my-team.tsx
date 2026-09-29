@@ -35,6 +35,7 @@ import {
 } from '@/lib/team-leadership';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
+import { TopActions } from '~/components/top-actions';
 import LeaveTeamPanel from '~/components/leave-team-panel';
 
 type Team = {
@@ -118,6 +119,7 @@ export default function MyTeam() {
           tintColor={theme.textSecondary}
         />
       }>
+      <TopActions />
       <Text style={styles.heading}>{team?.name ?? 'My Team'}</Text>
 
       <View style={styles.metaRow}>
@@ -213,7 +215,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       lineHeight: 21,
       textAlign: 'center',
     },
-    heading: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26 },
+    heading: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 48 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' },
     rolePill: {
       backgroundColor: theme.accent,

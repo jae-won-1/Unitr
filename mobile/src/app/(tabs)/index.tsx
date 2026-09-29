@@ -38,6 +38,7 @@ import { kindTints } from '~/kind-style';
 import { GameFeed } from '~/components/game-feed';
 import { StatusStrips } from '~/components/status-strips';
 import { useIsDark, useTheme } from '~/use-theme';
+import { TopActions } from '~/components/top-actions';
 
 export default function Home() {
   const theme = useTheme();
@@ -86,6 +87,7 @@ export default function Home() {
           tintColor={theme.textSecondary}
         />
       }>
+      <TopActions />
       <Text style={styles.greeting}>Hi {firstName}</Text>
       <Text style={styles.roleLine}>
         {roleLoading ? 'Loading…' : role === 'captain' ? 'Captain' : role === 'player' ? 'Player' : 'No team yet'}
@@ -170,7 +172,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     page: { flex: 1, backgroundColor: theme.background },
     content: { padding: 20, paddingTop: 60, paddingBottom: 40 },
-    greeting: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26 },
+    greeting: { color: theme.textPrimary, fontFamily: fonts.extrabold, fontSize: 26, paddingRight: 48 },
     roleLine: { color: theme.textSecondary, fontFamily: fonts.medium, fontSize: 13, marginTop: 3 },
     sectionTitle: {
       color: theme.textSecondary,

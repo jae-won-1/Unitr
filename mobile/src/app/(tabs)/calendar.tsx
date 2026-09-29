@@ -43,6 +43,7 @@ import { kindTints } from '~/kind-style';
 import { FixtureDetailSheet } from '~/components/fixture-detail-sheet';
 import { CalendarSheet } from '~/components/calendar-sheet';
 import { useIsDark, useTheme } from '~/use-theme';
+import { TopActions } from '~/components/top-actions';
 
 // "2026-10-04" → "Sun 4 Oct", for the pill once a date is picked.
 function fmtDayLabel(key: string): string {
@@ -191,6 +192,7 @@ export default function Calendar() {
   return (
     <View style={styles.page}>
       <View style={styles.header}>
+        <TopActions />
         <Text style={styles.heading}>Calendar</Text>
         <Text style={styles.subheading}>Your fixtures, tournaments and bookings</Text>
       </View>

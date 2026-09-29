@@ -60,6 +60,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | My Team — squad + details | `app/my-team/page.tsx` | `fe97d03` | Phase 2 — done. Captain control panel is Phase 4 |
 | Leave team | `components/my-team/LeaveTeamPanel.tsx` | `fe97d03` | done — shares `lib/leave-team.ts`, `lib/availability-gate.ts`, `lib/hard-navigate.native.ts` unchanged |
 | Pay what you owe (joining fee, match shares) | `components/DuesTopUpModal.tsx`, `lib/dues.ts` | `9ceac25` | **Phase 3 — done.** `pay-sheet.tsx`, opened from a "You owe" strip on Home and from "Pay now" under a greyed Available. Saved card → `/api/settle-match` (confirmed first); otherwise `/api/create-credits-intent` + PaymentSheet. Worded around what's paid for — the web's free-amount top-up is deliberately not ported (App Store, see the Phase 3 note) |
+| Profile | `app/profile/page.tsx`, `components/EditProfileSheet.tsx` | `48aca6e` | done — details, Edit Profile, card on file (SetupIntent + PaymentSheet setup mode), sign out. Reached from the avatar at the top of every tab. Not ported: Connect Google (needs dashboard redirect setup), Friends (waits for Messages) |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:
