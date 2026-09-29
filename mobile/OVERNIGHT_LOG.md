@@ -81,6 +81,7 @@ decided on your behalf, and one test list to run through in a single sitting.
 | 56 | Added **Load a saved setup** to a tournament game's lineup. Players who said they're out, or who have left, are dropped when it loads. | This was the gap left on the fixture page earlier tonight. It follows the web's rule for loading a preset. | (this commit) |
 | 57 | Ported the Transfer Market to mobile (My Team → Transfer Market): search players and teams, add friends, captains send offers to free agents, ask to join a team, and an inbox for team offers and friend requests. | Its data and every action were already in a shared file, so this was UI work only and can't behave differently from the web. | (this commit) |
 | 58 | "View profile" in the market opens the player sheet (details and Message); there's no "View team" on mobile. | The phone has no public team page yet. The player sheet already exists and lets you message the player. | (this commit) |
+| 59 | Added the **Friends** list to Profile; each friend opens their details with Message. | Left out earlier because its only action was messaging, which now exists. The query copies the web Profile's, in a small local function. | (this commit) |
 
 ## Test checklist (do these together later)
 
@@ -141,3 +142,4 @@ Tests:
 - [ ] **Tactics** (My Team → Tactics): as captain, create a setup (name, situation, size, formation, a few players, style, pressing, notes) and save; edit it, then change its match size (the players should clear); try a duplicate name (you should get a plain message); delete one. As a player, check it's read-only. Compare with the web's Tactics tab.
 - [ ] **Load a saved setup** into a tournament game's lineup (captain): the shape, style and notes load, and anyone who said they can't play is left off the board. Save and check on the web.
 - [ ] **Transfer Market** (My Team → Transfer Market): search players by name and filter by position; Add friend (the other account sees it in the inbox and can accept). As a captain, Send offer to join to a free agent; on the free agent's phone, open the inbox (envelope, top right) → Accept & join, and they should land in the squad without restarting. On the Teams tab, Ask to join as a teamless player; the captain sees the join request.
+- [ ] **Friends on Profile**: after accepting a friend request in the Transfer Market, the friend shows under Friends on Profile; tap them → Message.

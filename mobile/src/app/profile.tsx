@@ -13,8 +13,10 @@
 //   • Connect Google (Sign-in Methods). linkIdentity is an OAuth round trip
 //     that needs the app registered as a redirect target with Supabase and
 //     Google — dashboard work, not code. Pointed at the web app instead.
-//   • Friends. Its one action is "message this friend", and messaging on the
-//     phone lands with Phase 5; a list with nothing to do is left for then.
+//
+// Friends is here: accepted friend_requests in either direction (the web
+// page's useFriends query, copied — keep in step), each opening the player
+// sheet, which can start a conversation.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -48,6 +50,26 @@ import {
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { EditProfileSheet } from '~/components/edit-profile-sheet';
+import { PlayerSheet } from '~/components/player-sheet';
+
+type Friend = { id: string; name: string; position: string | null };
+
+// Accepted friend requests in either direction. friend_requests points at
+// auth.users, which has no relationship to profiles in the schema cache, so
+// names are a second query. A missing table degrades to no friends.
+async function loadFriends(userId: string): Promise<Friend[]> {
+  const { data: rows, error } = await supabase
+    .from('friend_requests')
+    .select('from_player_id, to_player_id')
+    .eq('status', 'accepted')
+    .or(`from_player_id.eq.${userId},to_player_id.eq.${userId}`);
+  if (error || !rows || rows.length === 0) return [];
+  const others = Array.from(new Set(rows.map((r) => (r.from_player_id === userId ? r.to_player_id : r.from_player_id) as string)));
+  const { data: profiles } = await supabase.from('profiles').select('id, full_name, position').in('id', others);
+  return (profiles ?? [])
+    .map((p) => ({ id: p.id as string, name: (p.full_name as string) || 'Player', position: (p.position as string) || null }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 type Profile = {
   full_name: string;
@@ -85,6 +107,13 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [viewing, setViewing] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadFriends(user.id).then(setFriends);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -186,6 +215,20 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      <Text style={styles.sectionTitle}>Friends{friends.length ? ` · ${friends.length}` : ''}</Text>
+      <View style={styles.card}>
+        {friends.length === 0 ? (
+          <Text style={styles.cardBody}>No friends yet. Add people from the Transfer Market.</Text>
+        ) : (
+          friends.map((f, i) => (
+            <Pressable key={f.id} onPress={() => setViewing(f.id)} style={[styles.aboutRow, i > 0 && styles.divider]}>
+              <Text style={styles.aboutValue}>{f.name}</Text>
+              <Text style={styles.aboutLabel}>{f.position ?? ''}</Text>
+            </Pressable>
+          ))
+        )}
+      </View>
+
       <Pressable onPress={() => setEditing(true)} style={styles.editBtn}>
         <Text style={styles.editBtnText}>Edit Profile</Text>
       </Pressable>
@@ -236,6 +279,8 @@ export default function ProfileScreen() {
         <Ionicons name="log-out-outline" size={17} color={theme.textSecondary} />
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
+
+      <PlayerSheet playerId={viewing} viewerId={user.id} onClose={() => setViewing(null)} />
 
       <EditProfileSheet
         visible={editing}
