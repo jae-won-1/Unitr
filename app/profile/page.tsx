@@ -6,6 +6,7 @@ import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { confirmCardSetup } from "@/lib/confirm-payment";
 import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
+import SignInMethods from "@/components/SignInMethods";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -359,6 +360,10 @@ function ProfileContent({ isCaptain, profile, teamName, onSaved }: {
       <AboutYou profile={profile} />
 
       <PaymentMethodSection />
+
+      {/* Connect Google to this account — the only route in for somebody who
+          registered with an address Google will never match. */}
+      <SignInMethods />
 
       {editing && user && (
         <EditProfileSheet

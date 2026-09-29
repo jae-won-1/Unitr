@@ -3,9 +3,11 @@
 // ── Joining fee status, from the player's side ─────────────────────────
 // One question, asked from several surfaces (PlayerActionStrip, the top-up
 // modal, availability voting): "does this player still owe their joining
-// fee?". The columns live on team_members and are only ever advanced
+// fee?". The columns live on team_members: `paid` is only ever advanced
 // server-side by credit_from_payment / record_cash_credit
-// (supabase_joining_fees.sql) — this module just reads them.
+// (supabase_joining_fees.sql), and `due` is the team's current fee, carried
+// onto every approved member whenever the captain changes it
+// (supabase_joining_fee_current.sql) — this module just reads them.
 //
 // A captain has no team_members row, so their copy of the same two numbers
 // lives on `teams` (captain_joining_fee_*, supabase_captain_joining_fee.sql)
@@ -18,7 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 export type JoiningFeeStatus = {
-  duePence: number;   // snapshot owed at approval
+  duePence: number;   // the team's current fee
   paidPence: number;  // how much of it is covered
   owedPence: number;  // due - paid, floored at 0
 };

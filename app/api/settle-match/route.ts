@@ -9,16 +9,57 @@ import { getCallerId } from "@/lib/api-auth";
 // could charge a stranger's saved card any amount they liked. The caller is
 // now identified from their session token and the card is looked up from
 // their own profile.
+// What the charge is actually for. It decides only the Stripe description and
+// metadata label — never the amount — so a caller naming the wrong one
+// mislabels its own payment and nothing else. It exists because this route is
+// not only used at settlement: a plain top-up, a joining fee and a pitch
+// booking all charge the same saved card through here, and every one of them
+// used to arrive in Stripe reading "Uniter match settlement".
+type SettlePurpose =
+  | "top_up"          // money into team credit, no charge behind it
+  | "joining_fee"     // the one-off fee a new member owes
+  | "match_fees"      // a player's share of a friendly already played
+  | "tournament_fees" // the same for a tournament entry
+  | "match_settlement"// paying a share at /pay/[matchId]
+  | "pitch_booking";  // booking a pitch outright
+
 type SettleItem = {
-  amountPence: number;    // total to charge (pitch share + 5% fee)
+  amountPence: number;    // total to charge (pitch share + Uniter fee)
   sharePence: number;     // the pitch share portion (refills team credit)
-  feePence: number;       // the 5% Uniter fee portion
+  feePence: number;       // the Uniter fee portion
+  purpose?: SettlePurpose;
   teamId?: string | null; // set to refill this team's credit from the charge
   pcsId?: string | null;  // a due row — its amount overrides the one sent
   matchId?: string;
   openMatchId?: string;   // set instead of matchId for a tournament entry fee
   bookingId?: string | null;
 };
+
+const PURPOSE_LABEL: Record<SettlePurpose, string> = {
+  top_up: "team credits",
+  joining_fee: "joining fee",
+  match_fees: "match fees",
+  tournament_fees: "tournament fees",
+  match_settlement: "match settlement",
+  pitch_booking: "pitch booking",
+};
+
+// An older client sends no purpose, so fall back to what the item points at.
+function purposeOf(it: SettleItem): SettlePurpose {
+  if (it.purpose && it.purpose in PURPOSE_LABEL) return it.purpose;
+  if (it.pcsId) return it.openMatchId ? "tournament_fees" : "match_fees";
+  if (it.matchId || it.bookingId) return "match_settlement";
+  if (it.teamId) return "top_up";
+  return "pitch_booking";
+}
+
+function describe(purpose: SettlePurpose, sharePence: number, feePence: number): string {
+  const label = PURPOSE_LABEL[purpose];
+  // The fee is a separate line only where there is one — it is 0 for now.
+  return feePence > 0
+    ? `Uniter ${label} — £${(sharePence / 100).toFixed(2)} + £${(feePence / 100).toFixed(2)} fee`
+    : `Uniter ${label} — £${((sharePence + feePence) / 100).toFixed(2)}`;
+}
 
 type SettleResult = {
   playerId: string;
@@ -99,6 +140,8 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      const purpose = purposeOf(it);
+
       try {
         const pi = await stripe.paymentIntents.create({
           amount: amountPence,
@@ -108,7 +151,9 @@ export async function POST(req: NextRequest) {
           off_session: true,
           confirm: true,
           metadata: {
-            type: "match_settlement",
+            // Never "team_credits" — that is the webhook's signal to credit a
+            // team itself, and this route has already done it below.
+            type: purpose,
             playerId: callerId,
             matchId: it.matchId ?? "",
             openMatchId: it.openMatchId ?? "",
@@ -117,7 +162,7 @@ export async function POST(req: NextRequest) {
             pitchShare: sharePence,
             uniterFee: feePence,
           },
-          description: `Uniter match settlement — £${(sharePence / 100).toFixed(2)} pitch + £${(feePence / 100).toFixed(2)} fee`,
+          description: describe(purpose, sharePence, feePence),
         });
 
         if (pi.status === "succeeded") {

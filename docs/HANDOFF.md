@@ -1,6 +1,184 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-21, Codex: Vercel build lint fix
+## Latest completed work — 2026-09-25, Claude Code: the joining fee is the team's current fee
+
+**Needs SQL: `supabase_joining_fee_current.sql`** — run it in the Supabase SQL
+editor, after `supabase_joining_fees.sql`, `supabase_captain_joining_fee.sql`
+and `supabase_pilot_security.sql` (all three are already applied on the pilot
+database). Until it is run, nothing changes: the old snapshot behaviour stands.
+
+**The problem.** The fee was snapshotted per person and never re-taken — at
+approval for a member, at the first non-zero fee for the captain. A captain who
+changed the fee changed it for arrivals only, so Payment Status showed a squad
+carrying several different fees at once and measured each person's payments
+against a number nobody was being asked for any more (the £5/£6 rows in the
+report).
+
+**The fix.** `teams.joining_fee_pence` is now simply the team's fee, and a write
+to it restandardises everyone onto it in the same write:
+
+- `trg_restandardise_joining_fee` (AFTER, on `teams`) sets
+  `team_members.joining_fee_due_pence` to the new fee for every **approved**
+  member, and DMs the ones whose share just went up.
+- `snapshot_captain_joining_fee` lost its `is null` guard, so the captain's
+  `captain_joining_fee_due_pence` follows the fee too, and
+  `notify_captain_joining_fee` now fires whenever what they owe **rises**
+  rather than only on the first fee ever set.
+- `paid_pence` is never touched — it is still only advanced by
+  `credit_from_payment` / `record_cash_credit`. Raising the fee leaves the
+  difference owed; lowering it below what somebody has paid settles them and
+  refunds nothing, because the money is in team credit either way. Payment
+  Status prints what they actually put in, not the smaller figure now asked.
+- `guard_team_member_money` (from `supabase_pilot_security.sql`) is redefined
+  with one extra branch: a `due`-only change carrying the transaction-local
+  flag the trigger sets, for that one team. Without it a **co-captain** saving
+  Team Settings would be refused, since the guard only recognises the captain's
+  own session. It is redefined only if that file has been run.
+- The file ends by bringing every existing team and approved member onto its
+  team's current fee, silently.
+
+**App side** — copy only, no logic: Settle Payments → Joining fee, Team
+Settings and team registration now say the whole squad moves onto a change, and
+`JoiningFeePanels` shows the real paid figure when a lowered fee sits under it.
+
+## Previous completed work — 2026-09-22, Claude Code: kick a team out, leave a team
+
+Two independent features, one session. **No SQL** — both reuse what already
+exists (`refund_event_buyin` from `supabase_event_takedown.sql`, and the plain
+`team_members` delete).
+
+**1. Uniter staff can remove one team from an event they host.** Previously the
+only lever over an unwanted entry was cancelling the whole event.
+
+- **New route `app/api/events/kick-team/route.ts`** — the narrow sibling of
+  `/api/events/take-down`, behind the same three refusals (admin caller,
+  `organiser_admin_id` set, before kickoff), plus: never the organiser's own
+  team, and never a team that isn't entered. It **refunds before it removes**,
+  using the same idempotent `refund_event_buyin`, so a failed refund leaves the
+  team entered and the removal retryable rather than out of the event and out of
+  pocket; a missing migration (42883) refuses outright.
+- Undoing the entry is more than the `open_match_teams` row. Also cleaned up,
+  best-effort: the squad's `match_confirmations` for that event, the
+  `tournament_matches` the team was drawn into, referees drawn from its squad,
+  its pending invitation, the pending `replenish` `player_payments`
+  `/api/tournaments/join` pre-created, and unreceived `payment_collection_status`
+  rows. Anything already paid is left alone. A `full` listing goes back to
+  `open`. The captain gets a bell notification with the reason and the refund.
+- **New `lib/kick-team.ts`** (mirrors `lib/take-down-event.ts`) and the UI on
+  `/play/tournament/[id]`: for staff on their own event before kickoff, the
+  Teams card renders a row per team with **Remove**, which opens an inline
+  reason box and a confirm. Everyone else still sees the chip row, unchanged.
+  The refund total stays on screen afterwards — the only place it's shown.
+- `teamId` is validated as a uuid before it reaches the PostgREST `or` filter.
+
+**2. A player can leave the team they're in.** Red **Leave team** at the bottom
+of My Team, under every tab, with a second confirmation.
+
+- **New `lib/leave-team.ts`** — the only place a membership is given up. Deletes
+  the `team_members` row (which is what `RoleContext`, the derived team-chat
+  membership, `is_co_captain` and the joining-fee snapshot all hang off), plus
+  the leaver's `team_chat_members` row so a rejoin isn't frozen by a stale
+  `left_at`. It **withdraws forward-looking commitments only**:
+  `match_confirmations` for fixtures that haven't kicked off (resolved through
+  `isKickoffPast` against both `matches` and `open_matches`) and live-poll
+  `availability_responses`. Answers for games already played stay — they're the
+  record Settle Payments reads.
+- **Money is untouched.** The confirmation warns what is still owed (reusing
+  `useAvailabilityGate` / `owedSummary`) and that a joining fee is charged again
+  on a rejoin, but leaving is not blocked: trapping someone in a squad is not
+  how a debt gets collected, and Payment Status keeps listing them.
+- **New `components/my-team/LeaveTeamPanel.tsx`**. The captain sees it **greyed**
+  with the reason (they hold the team; `teams.captain_id` is immutable from a
+  browser session). A **co-captain can leave** — they have a membership row to
+  give up — so `useRole().isCoCaptain` is now consulted in a second place
+  besides `CoCaptainsPanel`, and `MyTeamPage` passes it down. Success finishes
+  with `hardNavigate("/my-team")`, not a router push.
+
+`CLAUDE.md` updated: a take-down sibling paragraph under Admin, a new "Leaving a
+squad" section under My Team, and the co-captain line corrected.
+
+### Validation
+
+- `npx tsc --noEmit` clean; `npm run lint` clean for the new and changed files
+  (the four pre-existing hook warnings remain); `npm run build` exit 0 with
+  `/api/events/kick-team` in the route table.
+- **Not exercised in a browser or against real data.** No team has been removed
+  from an event, no buy-in refunded and no membership deleted this session, so
+  the refund, the cleanup writes and the leave path are reasoned, not observed.
+  Next step is one of each on a test event and a test membership.
+- Note for whoever runs it: `refund_event_buyin` is service-role only after
+  `supabase_pilot_security.sql`, which is how the route calls it. If that file
+  and `supabase_event_takedown.sql` haven't been applied to the target database,
+  the route refuses the removal with a message naming the file.
+
+## Previous completed work — 2026-09-22, Claude Code: Continue with Google
+
+Google as a way to register and sign in, on the web app. **Not deployed, and the
+Supabase provider is still switched off** — see "Pilot safety" below.
+
+- `lib/google-auth.ts` — `signInWithGoogle(invite)`. `redirectTo` is
+  `<origin>/auth/callback`; an invite code goes into the localStorage backstop
+  `lib/team-invite` already keeps, because it can't ride Google's redirect.
+- `app/auth/callback/page.tsx` — waits for supabase-js to parse the session
+  (default **implicit** flow, so the fragment is handled in the browser and no
+  server route exists), then routes: no `profiles` row → `/welcome`, venue → the
+  portal, otherwise the invite or Home. A refused consent and a 10s silence both
+  end in a sentence and a link back to `/login`.
+- `app/welcome/page.tsx` — the rest of the registration form for a Google
+  account: account type, name (prefilled from Google, editable), and the six
+  player questions. Writes the profile, then lands them as `/register` does.
+  "Use a different account" signs out, so the page isn't a dead end.
+- `components/ProfileGate.tsx` (mounted in `app/layout.tsx`) — a signed-in
+  account with no profile row is sent back to `/welcome` from anywhere but the
+  sign-up screens. Costs no query: `RoleContext` now reports `profileMissing`
+  from the lookup it already does, and is careful to distinguish an absent row
+  from a failed query.
+- `components/RegistrationFields.tsx` + `lib/register-profile.ts` — the question
+  markup and the profile insert, lifted out of `app/register/page.tsx` unchanged
+  and now shared with `/welcome`. `/register`'s rendered output is identical.
+- `components/GoogleAuthButton.tsx` on `/login` and `/register`; `/auth` and
+  `/welcome` added to TopBar's hidden paths and BottomNav's venue allow-list.
+- `components/SignInMethods.tsx` on `/profile` — **Connect Google** for the
+  accounts that were already here. `linkIdentity` attaches Google to whoever is
+  signed in, so it works for the pilot accounts registered with made-up
+  addresses, which email matching can never reach. Disconnect is offered only
+  while another identity remains. `/auth/callback` grew a `?next=` hop for the
+  return trip, path-only so it can't become an open redirect.
+- `/welcome` warns up front that finishing it creates a *new* account, and to
+  sign in with a password instead. The app can't detect the collision itself —
+  `profiles` holds no email and the browser can't read `auth.users`.
+
+**No SQL.** The `profiles` insert policy and the `account_type` guard already
+allow exactly the row this writes.
+
+**`docs/GOOGLE_SIGN_IN.md` is the ordered checklist for switching this on after
+the tournament** — stock-take of existing users (step 0, the one that stops
+being possible later), merge to `main`, the Google Cloud OAuth client, three
+Supabase settings including **Manual linking**, a test gate, what to tell the
+squad, duplicate cleanup, and email confirmation as its own job.
+
+**Email confirmation is off on this project**, so every account that predates
+this work is unconfirmed and would duplicate rather than match. Turning it on is
+not a free switch and should not happen before the tournament: with it on,
+`signUp` returns no session, so `app/register/page.tsx` writes the profile and
+then pushes a **signed-out** member to `/` with nothing explaining why, and
+confirmation mail goes out over Supabase's rate-limited built-in SMTP. It needs
+a "check your inbox" screen and real SMTP first.
+
+Validation: `npx tsc --noEmit` clean, `next lint` clean for the new files (the
+four pre-existing hook warnings remain), `next build` passes with
+`/auth/callback` and `/welcome` in the route table. **No browser flow was
+tested** — the provider is off, so the round trip can't run yet.
+
+Pilot safety: built on the `mobile` branch, which is frozen off Vercel until the
+tournament, so nothing reaches production. Two steps are deliberately left
+undone until after it: enabling the Google provider in the live Supabase project,
+and merging to `main`. Before enabling it, check Authentication → Users for
+**unconfirmed** accounts — Supabase links a Google identity to an existing user
+only when that user's email is confirmed, and an unconfirmed one with the same
+address would get a second user id and none of its squad.
+
+## Previous completed work — 2026-09-21, Codex: Vercel build lint fix
 
 Escaped the apostrophe in the Transfer Market guest message (`we&apos;ll`) in
 `app/my-team/transfer/page.tsx:440`. This fixes the `react/no-unescaped-entities`
@@ -12,7 +190,11 @@ Browserslist notices remain. No browser flow was tested. Preserved existing
 `tsconfig.json` edits and untracked `mobile/` work; the build used that existing
 configuration. User authorized publishing this web fix to `main` for Vercel
 production deployment, excluding all ongoing Claude Code mobile migration
-work. Deployment verification is pending.
+work. Pushed fix commit `81ed081` to `origin/main`; Vercel's GitHub commit
+status is `success` ("Deployment has completed") for deployment
+`https://vercel.com/unit-r/unitr/3GHNQ8ZoZ7C9Q9oUJ2CUfYerbGCk`.
+This final verification note is local to avoid triggering another deployment
+for documentation alone. Live browser/payment flows were not exercised.
 
 ## Previous completed work — 2026-09-15, Claude Code: schedule shape + the app's clock in admin
 

@@ -85,6 +85,7 @@ function PaySavedCard({
           amountPence: matchInfo.totalPence,
           sharePence: matchInfo.sharePence,
           feePence: matchInfo.feePence,
+          purpose: "match_settlement",
           matchId,
           bookingId: matchInfo.bookingId,
         }],

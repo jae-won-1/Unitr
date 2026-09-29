@@ -16,12 +16,21 @@ type RoleContextType = {
    * that needs to tell the two apart.
    */
   isCoCaptain: boolean;
+  /**
+   * Signed in, but there is no `profiles` row. Google sign-in creates the
+   * account before anybody has answered a single question, so this is the
+   * state between the callback and /welcome — components/ProfileGate is what
+   * acts on it. False while signed out, and false on a failed lookup: a query
+   * that errored is not an account without a profile.
+   */
+  profileMissing: boolean;
 };
 
 const RoleContext = createContext<RoleContextType>({
   role: "new_user",
   roleLoading: true,
   isCoCaptain: false,
+  profileMissing: false,
 });
 
 export function RoleProvider({ children }: { children: ReactNode }) {
@@ -29,6 +38,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("new_user");
   const [roleLoading, setRoleLoading] = useState(true);
   const [isCoCaptain, setIsCoCaptain] = useState(false);
+  const [profileMissing, setProfileMissing] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -36,6 +46,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setRole("new_user");
       setIsCoCaptain(false);
+      setProfileMissing(false);
       setRoleLoading(false);
       return;
     }
@@ -48,7 +59,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       .select("account_type")
       .eq("id", user.id)
       .maybeSingle()
-      .then(({ data: profile }) => {
+      .then(({ data: profile, error: profileError }) => {
+        setProfileMissing(!profileError && !profile);
+
         if (profile?.account_type === "venue_manager") {
           setRole("venue_manager");
           setRoleLoading(false);
@@ -98,7 +111,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   }, [user, authLoading]);
 
   return (
-    <RoleContext.Provider value={{ role, roleLoading, isCoCaptain }}>
+    <RoleContext.Provider value={{ role, roleLoading, isCoCaptain, profileMissing }}>
       {children}
     </RoleContext.Provider>
   );
