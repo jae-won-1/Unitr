@@ -4,6 +4,8 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { StripeProvider } from '@stripe/stripe-react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Linking from 'expo-linking';
 import {
   useFonts,
   Poppins_400Regular,
@@ -24,6 +26,16 @@ import { RoleProvider, useRole } from '@/contexts/RoleContext';
 import { colors } from '~/theme';
 
 SplashScreen.preventAutoHideAsync();
+
+// Where a 3D Secure challenge or bank redirect sends the payer back to. In a
+// development or store build that is app.json's "uniter" scheme, but Expo Go
+// can't register a custom scheme — its links are exp://… — so a hardcoded
+// "uniter" would strand a payer outside the app after authenticating.
+// Stripe's own Expo guidance: in Expo Go, pass the /--/ route of Expo Go's URL.
+const stripeUrlScheme =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+    ? Linking.createURL('/--/')
+    : Linking.createURL('');
 
 // Where an opening app lands.
 //
@@ -97,13 +109,12 @@ export default function RootLayout() {
   if (!fontsLoaded) return null; // splash screen is still showing
 
   return (
-    // Test-mode publishableKey only — see mobile/.env. urlScheme matches
-    // app.json's "scheme": 3D Secure and any bank redirect returns to the app
-    // through it, not to a web page. No merchantIdentifier: Apple Pay isn't
-    // offered yet, and that prop is for nothing else.
+    // Test-mode publishableKey only — see mobile/.env. urlScheme: see
+    // stripeUrlScheme above. No merchantIdentifier: Apple Pay isn't offered
+    // yet, and that prop is for nothing else.
     <StripeProvider
       publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''}
-      urlScheme="uniter">
+      urlScheme={stripeUrlScheme}>
       <AuthProvider>
         <RoleProvider>
           <StatusBar style="dark" />

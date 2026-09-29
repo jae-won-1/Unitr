@@ -81,10 +81,9 @@ tops up separately, beforehand, on its own screen
 `authedPost` calls to existing routes, not a Stripe integration — the caveat
 is what happens on insufficient credit, which the web app answers by sending
 the captain to a top-up sheet that isn't ported (Phase 4, the captain control
-panel). Until that sheet exists, Challenge/Enter can be wired for the success
-path with a plain "top up on the web app" message on the failure path, or left
-greyed until Phase 4 lands together with it — worth deciding rather than
-assuming.
+panel). **Decided 2026-09-29: they stay greyed until Phase 4**, and land
+together with the top-up sheet, so the insufficient-credit case always has
+somewhere real to send the captain.
 
 **Real-device testing is still outstanding for Fill In**, and is the one thing
 that can't be done from a simulator: the migration plan is explicit that both
