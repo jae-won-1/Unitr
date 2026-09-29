@@ -35,13 +35,16 @@ import {
 } from '@/lib/team-leadership';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
+import LeaveTeamPanel from '~/components/leave-team-panel';
 
 type Team = {
+  id: string;
   name: string | null;
   location: string | null;
   level: string | null;
   format: string | null;
   description: string | null;
+  joining_fee_pence: number | null;
 };
 
 export default function MyTeam() {
@@ -63,7 +66,7 @@ export default function MyTeam() {
     }
     const { data } = await supabase
       .from('teams')
-      .select('name, location, level, format, description')
+      .select('id, name, location, level, format, description, joining_fee_pence')
       .eq('id', teamId)
       .maybeSingle();
     setTeam((data as Team) ?? null);
@@ -172,6 +175,20 @@ export default function MyTeam() {
         Tactics, settle payments, team settings and match management arrive in Phase 4. They
         remain on the web app until then.
       </Text>
+
+      {/* Bottom of the screen, under everything: leaving is about the squad, not
+          whichever section you're scrolled to. A co-captain is still a squad
+          member with a membership row to give up, so only the actual captain
+          gets the greyed version — same split as CoCaptainsPanel. */}
+      {user && team && (
+        <LeaveTeamPanel
+          teamId={team.id}
+          teamName={team.name ?? 'this team'}
+          userId={user.id}
+          isCaptain={isCaptain && !isCoCaptain}
+          joiningFeePence={team.joining_fee_pence}
+        />
+      )}
     </ScrollView>
   );
 }
