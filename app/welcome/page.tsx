@@ -117,16 +117,17 @@ export default function WelcomePage() {
         </header>
 
         {/* The app can't detect this itself: `profiles` stores no email and the
-            browser can't read auth.users. An account registered with an
-            unconfirmed address is a *different* user to Supabase, so finishing
+            browser can't read auth.users. An account registered with a
+            different address from this Google one is a *different* user to Supabase, so finishing
             here would leave the original one — squad, stats, payments — sitting
             untouched behind a password they still have. Say so before they fill
             anything in. */}
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-btn px-4 py-3 mt-4">
           <p className="text-sm font-semibold text-amber-700">Had a Uniter account already?</p>
           <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-            This is a new one. Sign in with your email and password instead, then connect
-            Google from your profile — that keeps your team and everything on it.
+            If it used a different email from this Google account, this is a new one. Sign in
+            with your email and password instead, then connect Google from your profile — that
+            keeps your team and everything on it.
           </p>
         </div>
 
