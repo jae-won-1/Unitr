@@ -15,7 +15,7 @@
 // comes back, including on a recovery where the browser has forgotten
 // everything the form knew.
 
-import { authedPost } from "@/lib/authed-fetch";
+import { authedGet, authedPost } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
 
 export type SavedCard = { brand: string | null; last4: string | null };
@@ -45,4 +45,25 @@ export function paymentMethodIdOf(pm: unknown): string | null {
   if (typeof pm === "string") return pm;
   if (pm && typeof pm === "object" && "id" in pm) return (pm as { id: string }).id;
   return null;
+}
+
+// Moved here from components/SaveCardPrompt.tsx (unchanged) so the mobile app
+// can save the card off an intent it has just paid, the same way the web does.
+// Copy the card Stripe attached during `paymentIntentId` onto the profile.
+// Resolves regardless of outcome; callers continue on either way.
+export async function saveCardFromIntent(userId: string, paymentIntentId: string): Promise<boolean> {
+  try {
+    const res = await authedGet(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
+    const data = await res.json();
+    if (!data.paymentMethodId || !data.customerId) return false;
+    await supabase.from("profiles").update({
+      stripe_customer_id: data.customerId,
+      stripe_payment_method_id: data.paymentMethodId,
+      card_brand: data.brand ?? null,
+      card_last4: data.last4 ?? null,
+    }).eq("id", userId);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { authedGet } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
+import { saveCardFromIntent } from "@/lib/save-card";
 
 // "Save this card for future payments" — a tick box in the card form, on
 // every surface that takes one (match fee, team credit top-up, ringer spot,
@@ -28,24 +28,9 @@ import { supabase } from "@/lib/supabase";
 // All four intent routes do this — see /api/create-payment-intent,
 // /api/create-credits-intent and /api/ringer/create-intent.
 
-// Copy the card Stripe attached during `paymentIntentId` onto the profile.
-// Resolves regardless of outcome; callers continue on either way.
-export async function saveCardFromIntent(userId: string, paymentIntentId: string): Promise<boolean> {
-  try {
-    const res = await authedGet(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
-    const data = await res.json();
-    if (!data.paymentMethodId || !data.customerId) return false;
-    await supabase.from("profiles").update({
-      stripe_customer_id: data.customerId,
-      stripe_payment_method_id: data.paymentMethodId,
-      card_brand: data.brand ?? null,
-      card_last4: data.last4 ?? null,
-    }).eq("id", userId);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// saveCardFromIntent lives in lib/save-card.ts so the mobile app can share it;
+// re-exported so an import from this file keeps working.
+export { saveCardFromIntent };
 
 // ── The tick box ──────────────────────────────────────────────────────────
 // Asked BEFORE paying, in the card form itself, rather than as a popup after
