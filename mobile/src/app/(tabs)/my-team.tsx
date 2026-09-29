@@ -189,10 +189,16 @@ export default function MyTeam() {
             </Pressable>
           </View>
         )}
-        {/* Not captain-gated: the chat is the whole squad's. */}
-        <Pressable onPress={() => router.push('/messages/team' as Href)} style={styles.action}>
-          <Text style={styles.actionText}>Team chat</Text>
-        </Pressable>
+        {/* Not captain-gated: the chat is the whole squad's, and players read
+            the captain's saved tactics. */}
+        <View style={styles.actionRow}>
+          <Pressable onPress={() => router.push('/messages/team' as Href)} style={styles.action}>
+            <Text style={styles.actionText}>Team chat</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push('/tactics')} style={styles.action}>
+            <Text style={styles.actionText}>Tactics</Text>
+          </Pressable>
+        </View>
       </View>
 
       {isCaptain && teamId && <JoinRequests teamId={teamId} onChanged={load} />}
@@ -248,7 +254,7 @@ export default function MyTeam() {
       )}
 
       <Text style={styles.footnote}>
-        Tactics and managing a friendly are on the web app for now.
+        Managing a friendly is on the web app for now.
       </Text>
 
       {/* Bottom of the screen, under everything: leaving is about the squad, not

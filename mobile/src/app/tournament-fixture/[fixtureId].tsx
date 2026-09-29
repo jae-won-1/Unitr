@@ -12,8 +12,8 @@
 //
 // The web's Info / Attendance / Lineup / Tactics tabs become three: Tactics
 // (style and notes) sits under the lineup board, which is where a captain is
-// when they think of it. Not ported: loading a saved team preset into the
-// lineup — presets live in the web's TacticsTab component, not in lib/.
+// when they think of it. A saved setup can be loaded into the lineup
+// (lib/team-tactics.ts), its players filtered to who can play this game.
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -55,6 +55,7 @@ import { useTheme } from '~/use-theme';
 import { AvailabilityButtons } from '~/components/availability-buttons';
 import { PitchBoard } from '~/components/pitch-board';
 import { initialsOf } from '~/components/chat';
+import { loadTeamTactics, type TeamTactic } from '@/lib/team-tactics';
 
 type Tournament = { id: string; title: string; match_date: string; start_time: string; pitch_name: string; format: string | null };
 type SquadMember = { player_id: string; full_name: string; status: string; is_ringer: boolean };
@@ -78,6 +79,8 @@ export default function TournamentFixture() {
   const [pickerSlot, setPickerSlot] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [presets, setPresets] = useState<TeamTactic[] | null>(null);
+  const [presetOpen, setPresetOpen] = useState(false);
 
   useEffect(() => {
     if (!user || !fixtureId) return;
@@ -138,6 +141,11 @@ export default function TournamentFixture() {
   }, [loadSquad]);
 
   useEffect(() => {
+    if (!teamId || !canManage) return;
+    void loadTeamTactics(teamId).then(setPresets);
+  }, [teamId, canManage]);
+
+  useEffect(() => {
     if (!teamId || !fixtureId) return;
     void loadFixtureTactics(fixtureId, teamId).then((t) => {
       if (t === null) {
@@ -193,6 +201,17 @@ export default function TournamentFixture() {
     else delete next[slot];
     setTac({ lineup: next });
     setPickerSlot(null);
+  };
+
+  // Load a saved setup: its shape, style and notes, and its players — only
+  // those who can play this game (anyone who said Out, or has left, is
+  // dropped). A setup for another match size falls back to this size's
+  // default shape when saved, as on the web.
+  const loadPreset = (p: TeamTactic) => {
+    const allowed = new Set(candidates.map((c) => c.player_id));
+    const lineup = Object.fromEntries(Object.entries(p.lineup ?? {}).filter(([, pid]) => allowed.has(pid))) as Record<number, string>;
+    setTac({ formation: p.formation, style: p.style, notes: p.notes ?? tactics.notes, lineup });
+    setPresetOpen(false);
   };
 
   const save = async () => {
@@ -331,6 +350,12 @@ export default function TournamentFixture() {
                 {formatLabelForSize(teamSize)} · {canEdit ? 'tap a position to pick a player' : 'set by your captain'}
               </Text>
               {!tacticsAvailable && <Text style={styles.muted}>Fixture lineups aren&apos;t set up on this database yet.</Text>}
+              {canEdit && presets && presets.length > 0 && (
+                <Pressable onPress={() => setPresetOpen(true)} style={styles.loadPreset}>
+                  <Ionicons name="download-outline" size={16} color={theme.accentInk} />
+                  <Text style={styles.loadPresetText}>Load a saved setup</Text>
+                </Pressable>
+              )}
               {canEdit && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                   {formationKeysFor(teamSize).map((f) => (
@@ -385,6 +410,22 @@ export default function TournamentFixture() {
           )}
         </>
       )}
+
+      <Modal visible={presetOpen} transparent animationType="slide" onRequestClose={() => setPresetOpen(false)}>
+        <Pressable style={styles.scrim} onPress={() => setPresetOpen(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.cardTitle}>Load a saved setup</Text>
+            <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 6 }}>
+              {(presets ?? []).map((p) => (
+                <Pressable key={p.id} onPress={() => loadPreset(p)} style={styles.pick}>
+                  <Text style={styles.personName}>{p.title}</Text>
+                  <Text style={styles.small}>{[p.formation, p.situation, p.style].filter(Boolean).join(' · ')}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={pickerSlot !== null} transparent animationType="slide" onRequestClose={() => setPickerSlot(null)}>
         <Pressable style={styles.scrim} onPress={() => setPickerSlot(null)}>
@@ -532,6 +573,19 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     primaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15 },
     scrim: { flex: 1, backgroundColor: theme.scrim, justifyContent: 'flex-end' },
     sheet: { backgroundColor: theme.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 34, gap: 8 },
+    loadPreset: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: theme.successBorder,
+      backgroundColor: theme.successBg,
+      borderRadius: radius.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    loadPresetText: { color: theme.accentInk, fontFamily: fonts.semibold, fontSize: 12 },
     pick: { borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
     textBtn: { alignItems: 'center', paddingVertical: 8 },
     textBtnText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
