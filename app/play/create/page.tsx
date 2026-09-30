@@ -9,6 +9,7 @@ import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 import BookPitchPanel from "@/components/BookPitchPanel";
 import { loadLedTeam } from "@/lib/team-leadership";
 import { UNITER_FEE_RATE } from "@/lib/uniter-fee";
+import { buildMatchPostRows } from "@/lib/match-post";
 
 type ConfirmedDate = {
   id: string;
@@ -262,51 +263,10 @@ export default function CreateMatchPage() {
     setLoading(true);
     setError(null);
 
-    const base = {
-      team_id: team.id,
-      // Filed under the team's captain even when a co-captain posts it, so
-      // every "my team's posts" query keeps finding it.
-      captain_id: team.captain_id ?? user.id,
-      team_name: team.name,
-      team_location: team.location ?? "",
-      description,
-      status: "open",
-      payment_mode: "individual",
-      hold_pence: 0,
-    };
-
-    // For each date: pitches kept at the original time are bundled into one main
-    // post (ranked options the opponent chooses from). Each pitch given an
-    // alternative time becomes its own standalone post alongside the main one.
-    const inserts: Record<string, unknown>[] = [];
-    for (const d of datesToPost) {
-      const withTimes = pitchOptions.map(({ slotTimes, ...p }) => ({
-        ...p,
-        time: slotTimes?.[d.date] ?? d.time,
-      }));
-
-      const originalTimePitches = withTimes.filter((p) => p.time === d.time);
-      const altTimePitches = withTimes.filter((p) => p.time !== d.time);
-
-      if (originalTimePitches.length > 0) {
-        inserts.push({
-          ...base,
-          match_date: d.date,
-          match_time: d.time,
-          day_name: d.dayName,
-          pitch_options: originalTimePitches,
-        });
-      }
-      for (const p of altTimePitches) {
-        inserts.push({
-          ...base,
-          match_date: d.date,
-          match_time: p.time,
-          day_name: d.dayName,
-          pitch_options: [p],
-        });
-      }
-    }
+    // One bundled post per date for the pitches at that date's time, plus a
+    // standalone post per pitch given an alternative time — lib/match-post.ts,
+    // shared with the mobile app.
+    const inserts = buildMatchPostRows(team, user.id, datesToPost, pitchOptions, description);
 
     const { error: insertError } = await supabase.from("match_posts").insert(inserts);
 
