@@ -27,6 +27,34 @@ not evidence that work remains undone. Check the relevant code before acting on 
 - Do not assume either tool can see the other's conversations, private memory,
   permissions or integrations. Put durable decisions in the repository.
 
+## Two folders, two branches (set up 30 Sep 2026)
+
+One repository, checked out twice with `git worktree`:
+
+| Folder | Branch | Who | What |
+|---|---|---|---|
+| `C:\Users\jay1c\unitr-main` | `main` | Codex | Web features. Pushing `main` deploys the live site |
+| `C:\Users\jay1c\unitr` | `mobile` | Claude Code | The React Native port in `mobile/` |
+
+- **Never switch branches in either folder.** Git refuses to open one branch in
+  two folders, and switching swaps every file under whoever else is working there.
+- **Commits in one folder are visible in the other at once** — they share one
+  repository. Pushing to GitHub is only for deploying and backing up.
+- **`main` flows into `mobile`, never the reverse.** Claude merges `main` into
+  `mobile` regularly, so shared code (`lib/`, `contexts/`, `app/api/`, SQL)
+  reaches the phone. `mobile/` must never land on `main`.
+- **A shared fix Claude needs on `main`** is committed on `mobile` and copied
+  across with `git cherry-pick` in `unitr-main` — only while Codex has no
+  uncommitted edits to the same files.
+- **Changing shared code on `main`** (`lib/`, `contexts/`, `app/api/`, SQL)
+  changes the phone too once merged: keep function names and return shapes
+  stable, or note the change in `docs/HANDOFF.md` so the port can follow.
+  A new or changed web **screen** is not ported automatically — note it in the
+  handoff.
+- **Dev servers:** `unitr` runs `npm run dev` on port 3000 (the phone and the
+  Stripe webhook forwarder point there); run `unitr-main`'s on another port,
+  e.g. `npm run dev -- -p 3001`.
+
 ## Development and validation
 
 - Stack: Next.js 14 App Router, React 18, strict TypeScript, Tailwind 3, Supabase
