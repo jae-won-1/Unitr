@@ -40,6 +40,7 @@ import { GameFeed } from '~/components/game-feed';
 import { StatusStrips } from '~/components/status-strips';
 import { useIsDark, useTheme } from '~/use-theme';
 import { TopActions } from '~/components/top-actions';
+import { QuickNav } from '~/components/quick-nav';
 
 export default function Home() {
   const theme = useTheme();
@@ -100,6 +101,8 @@ export default function Home() {
       <Text style={styles.roleLine}>
         {roleLoading ? 'Loading…' : role === 'captain' ? 'Captain' : role === 'player' ? 'Player' : 'No team yet'}
       </Text>
+
+      <QuickNav role={role} />
 
       {user && (
         <StatusStrips role={role} userId={user.id} teamId={teamId} isCaptain={canManage} />

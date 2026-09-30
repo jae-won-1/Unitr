@@ -20,8 +20,9 @@
 // for, not around a balance (see pay-sheet.tsx for why).
 
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 
 import { supabase } from '@/lib/supabase';
 import {
@@ -42,7 +43,6 @@ import { useAvailabilityPoll } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
-const money = (pence: number) => `£${(pence / 100).toFixed(2).replace(/\.00$/, '')}`;
 
 export function StatusStrips({
   role,
@@ -63,6 +63,9 @@ export function StatusStrips({
   const [joinRequests, setJoinRequests] = useState(0);
   const [suggestions, setSuggestions] = useState(0);
   const [credit, setCredit] = useState<number | null>(null);
+  // The captain's poll tile: how many of the squad have answered the live poll.
+  const [pollReplies, setPollReplies] = useState(0);
+  const [squadSize, setSquadSize] = useState(0);
   const [myPending, setMyPending] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { dues, owedPence: duesOwed, reload: reloadDues } = useMyDues(teamId, userId);
@@ -128,6 +131,14 @@ export function StatusStrips({
         .maybeSingle();
       const row = cr.data as { balance_pence?: number; reserved_pence?: number } | null;
       setCredit(row ? (row.balance_pence ?? 0) - (row.reserved_pence ?? 0) : null);
+
+      // Squad = approved members + the captain, who has no team_members row.
+      const sq = await supabase
+        .from('team_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('team_id', teamId)
+        .eq('status', 'approved');
+      setSquadSize((sq.count ?? 0) + 1);
     }
     setLoading(false);
   }, [teamId, userId, isCaptain]);
@@ -135,6 +146,18 @@ export function StatusStrips({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isCaptain || !poll) {
+      setPollReplies(0);
+      return;
+    }
+    void supabase
+      .from('availability_responses')
+      .select('id', { count: 'exact', head: true })
+      .eq('request_id', poll.id)
+      .then(({ count }) => setPollReplies(count ?? 0));
+  }, [isCaptain, poll]);
 
   if (loading) return null;
 
@@ -186,7 +209,52 @@ export function StatusStrips({
         </Pressable>
       )}
 
-      {isCaptain && (joinRequests > 0 || suggestions > 0 || credit != null) && (
+      {/* The web captain Home's money row and poll tile, in the same order.
+          No "top up" here: on the phone every payment names what it's for
+          (App Store rules — see pay-sheet.tsx), so the balance is read-only
+          and the squad pays through what they owe. Payment Status — ticking
+          who has paid — stays on the web for now, greyed rather than hidden. */}
+      {isCaptain && (
+        <View>
+          <Text style={styles.sectionTitle}>Team money</Text>
+          <View style={styles.moneyGrid}>
+            <View style={[styles.moneyBtn, styles.moneyWide]}>
+              <Ionicons name="wallet-outline" size={16} color={theme.accentInk} />
+              <Text style={styles.moneyValue}>{credit != null ? fmtFee(Math.max(0, credit)) : '—'}</Text>
+              <Text style={styles.moneyHint}>available</Text>
+            </View>
+            <View style={styles.moneyRow}>
+              <Pressable
+                onPress={() =>
+                  Alert.alert('Payment Status', 'Marking who has paid is on the web app for now.')
+                }
+                style={[styles.moneyBtn, styles.moneyOff]}>
+                <Text style={[styles.moneyText, { color: theme.textSecondary }]}>Payment Status</Text>
+              </Pressable>
+              <Pressable onPress={() => router.push('/settle')} style={styles.moneyBtn}>
+                <Text style={styles.moneyText}>Settle Payments</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Pressable onPress={() => router.push('/poll')} style={[styles.card, styles.pollTile]}>
+            <View style={styles.pollIcon}>
+              <Ionicons name="checkbox-outline" size={20} color="#fff" />
+            </View>
+            <View style={styles.stripBody}>
+              <Text style={styles.pollTitle}>Availability Poll</Text>
+              <Text style={styles.stripSub}>
+                {!poll
+                  ? 'No poll running · tap to start one'
+                  : `${pollReplies} of ${squadSize} replied${pollAnswer === null ? " · you haven't voted yet" : pollReplies >= squadSize ? ' · all in' : ` · waiting on ${Math.max(0, squadSize - pollReplies)}`}`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+          </Pressable>
+        </View>
+      )}
+
+      {isCaptain && (joinRequests > 0 || suggestions > 0) && (
         <View style={styles.tileRow}>
           {joinRequests > 0 && (
             <Tile
@@ -207,15 +275,6 @@ export function StatusStrips({
               theme={theme}
             />
           )}
-          {credit != null && (
-            <Tile
-              icon="wallet-outline"
-              value={money(credit)}
-              label="available credit"
-              styles={styles}
-              theme={theme}
-            />
-          )}
         </View>
       )}
 
@@ -226,7 +285,7 @@ export function StatusStrips({
           <Ionicons name="calendar-outline" size={18} color={pollAnswer === null ? '#B07400' : theme.accentInk} />
           <View style={styles.stripBody}>
             <Text style={pollAnswer === null ? styles.stripTitleWarn : styles.stripTitlePoll}>
-              {pollAnswer === null ? 'Your captain proposed dates' : 'Proposed dates'}
+              {pollAnswer === null ? (isCaptain ? 'Your vote on the dates' : 'Your captain proposed dates') : 'Proposed dates'}
             </Text>
             <Text style={styles.stripSub}>
               {pollAnswer === null
@@ -417,6 +476,43 @@ function EventAnswer({
 
 const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
+    sectionTitle: {
+      color: theme.textPrimary,
+      fontFamily: fonts.extrabold,
+      fontSize: 15,
+      textTransform: 'uppercase',
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    moneyGrid: { gap: 8 },
+    moneyRow: { flexDirection: 'row', gap: 8 },
+    moneyBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: radius.pill,
+      paddingVertical: 13,
+    },
+    moneyWide: { flex: 0 },
+    moneyOff: { opacity: 0.55 },
+    moneyValue: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 15 },
+    moneyHint: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },
+    moneyText: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 14 },
+    pollTile: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 },
+    pollIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.accent2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pollTitle: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 15 },
     wrap: { gap: 10, marginTop: 18 },
     strip: {
       flexDirection: 'row',
