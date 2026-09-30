@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { saveCardFromIntent } from '@/lib/save-card';
+import { STRIPE_TEST_MODE } from '@/lib/stripe-mode';
 
 // A PaymentIntent's client secret is always "{intent_id}_secret_{random}".
 // PaymentSheet confirms the intent but hands back no id on success — only an
@@ -63,7 +64,9 @@ export function useSaveCardChoice(userId: string | undefined) {
 
   // Shown while the lookup is in flight too — a first-time payer is the common
   // case, and hiding the option until the answer lands is how it gets missed.
-  const offer = !!userId && hasSavedCard !== true;
+  // Never in Stripe test mode: the card could only be saved over the player's
+  // live one, which lib/save-card.ts refuses (lib/stripe-mode.ts).
+  const offer = !!userId && hasSavedCard !== true && !STRIPE_TEST_MODE;
 
   return { offer, checked, setChecked, commit };
 }

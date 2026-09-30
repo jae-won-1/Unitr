@@ -40,6 +40,7 @@ import { authedPost } from '@/lib/authed-fetch';
 import { applyTopUp, useMyDues, type MyDue, type SavedCard } from '@/lib/dues';
 import { fmtFee, useJoiningFee } from '@/lib/joining-fee';
 import { waitForCredit } from '@/lib/credit-sync';
+import { STRIPE_TEST_MODE } from '@/lib/stripe-mode';
 import { toDateKey } from '@/lib/match-dates';
 import { fonts, radius } from '~/theme';
 import { useTheme } from '~/use-theme';
@@ -97,7 +98,9 @@ export function PaySheet({
       .maybeSingle()
       .then(({ data }) => {
         setSavedCard(
-          data?.stripe_customer_id && data?.stripe_payment_method_id
+          // The profile's card is a LIVE card; a test key can't charge it, so
+          // test mode always pays with a new one (lib/stripe-mode.ts).
+          !STRIPE_TEST_MODE && data?.stripe_customer_id && data?.stripe_payment_method_id
             ? {
                 customerId: data.stripe_customer_id,
                 paymentMethodId: data.stripe_payment_method_id,

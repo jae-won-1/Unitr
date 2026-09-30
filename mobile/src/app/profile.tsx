@@ -36,6 +36,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { authedPost } from '@/lib/authed-fetch';
 import { persistSavedCard } from '@/lib/save-card';
+import { STRIPE_TEST_MODE } from '@/lib/stripe-mode';
 import { useLeadership } from '@/lib/team-leadership';
 import {
   AGE_GROUPS,
@@ -388,6 +389,14 @@ function PaymentMethod({
           Save a card so your share of match fees is charged automatically when your squad is
           confirmed.
         </Text>
+        {STRIPE_TEST_MODE && (
+          // Testing runs Stripe in test mode against the live database: adding
+          // a card here would replace this player's real one, and removing it
+          // would remove the real one. So neither is offered (lib/stripe-mode.ts).
+          <Text style={styles.cardRowSub}>
+            Adding or removing a card is off while testing — it would change the real card saved on this account.
+          </Text>
+        )}
         {card && (
           <View style={styles.cardRow}>
             <Ionicons name="card-outline" size={20} color={theme.accentInk} />
@@ -397,18 +406,22 @@ function PaymentMethod({
               </Text>
               <Text style={styles.cardRowSub}>Saved · ready for automatic payments</Text>
             </View>
-            <Pressable onPress={removeCard} hitSlop={8}>
-              <Text style={styles.remove}>Remove</Text>
-            </Pressable>
+            {!STRIPE_TEST_MODE && (
+              <Pressable onPress={removeCard} hitSlop={8}>
+                <Text style={styles.remove}>Remove</Text>
+              </Pressable>
+            )}
           </View>
         )}
-        <Pressable onPress={addCard} disabled={busy} style={[styles.secondaryBtn, busy && { opacity: 0.6 }]}>
-          {busy ? (
-            <ActivityIndicator color={theme.accentInk} />
-          ) : (
-            <Text style={styles.secondaryBtnText}>{card ? 'Update card' : 'Add a card'}</Text>
-          )}
-        </Pressable>
+        {!STRIPE_TEST_MODE && (
+          <Pressable onPress={addCard} disabled={busy} style={[styles.secondaryBtn, busy && { opacity: 0.6 }]}>
+            {busy ? (
+              <ActivityIndicator color={theme.accentInk} />
+            ) : (
+              <Text style={styles.secondaryBtnText}>{card ? 'Update card' : 'Add a card'}</Text>
+            )}
+          </Pressable>
+        )}
       </View>
     </>
   );
