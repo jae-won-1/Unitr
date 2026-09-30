@@ -22,6 +22,22 @@ export async function ensureStripeCustomer(
   email?: string | null,
   name?: string | null,
 ): Promise<string> {
+  // Test mode shares the live database, and every stored customer id there is
+  // a LIVE customer that a test key can't see ("No such customer"). So a test
+  // key keeps its own customers: found by the player id in their metadata,
+  // never read from or written to the profile — writing one would break that
+  // player's live card. See lib/stripe-mode.ts.
+  if (process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
+    const found = await stripe.customers.search({ query: `metadata['playerId']:'${userId}'`, limit: 1 });
+    if (found.data[0]) return found.data[0].id;
+    const created = await stripe.customers.create({
+      email: email ?? undefined,
+      name: name ?? undefined,
+      metadata: { app: "uniter", playerId: userId },
+    });
+    return created.id;
+  }
+
   const { data } = await adminSupabase
     .from("profiles").select("stripe_customer_id").eq("id", userId).maybeSingle();
   const existing = (data?.stripe_customer_id as string | null) ?? null;
