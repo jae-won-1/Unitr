@@ -41,15 +41,22 @@ polls (answer and run); announcements, join requests, Team Settings, Tactics,
 Transfer Market; the tournament page, per-game fixtures with lineups, and
 settling a tournament's payments.
 
-**Still web-only:** the friendly flow (post, Challenge, Manage match, results,
-ringer requests), pitch booking, marking a payment received by hand, Connect
-Google, and every organiser / admin / venue tool (out of v1 scope by design).
+**Still web-only:** the rest of the friendly flow (post, Challenge, Submit
+result), pitch booking, marking a payment received by hand, Connect Google, and
+every organiser / admin / venue tool (out of v1 scope by design).
+
+**30 September, later:** Manage Match for friendlies is ported (Info /
+Attendance / Lineup / Tactics, match tasks, ringer requests — no money moves).
+Remaining order: Submit result → Post a match + Challenge (these hold and move
+team money: review with the user first) → Book a pitch → Phase 7.
 
 **Decisions that shape the rest:**
 
 - **App Store wording (decided 2026-09-29).** Mobile payment screens name what
-  the money is for, never "top up", "credit" or "balance"; no free-amount top-up
-  screen exists on the phone. See "The in-app-purchase trap" below.
+  the money is for, never "top up", "credit" or "balance". The one exception is a
+  testing-only "+ Top Up" on the captain's Team Money, gated on `__DEV__`
+  (`mobile/src/store-review.ts`) so no store build carries it — decide it
+  before submission. See "The in-app-purchase trap" below.
 - **Payments are tested against a local test-mode server.** `mobile/.env`
   holds a `pk_test_` key and points `EXPO_PUBLIC_API_BASE_URL` at `npm run dev`
   on the developer's PC, with `.env.development.local` supplying test keys. The

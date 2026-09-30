@@ -38,10 +38,13 @@ export function AvailabilityButtons({
   target,
   playerId,
   teamId,
+  onChanged,
 }: {
   target: AvailabilityTarget;
   playerId: string;
   teamId: string;
+  /** After a saved answer — so a list on the same screen can move this player's row. */
+  onChanged?: (status: ConfirmStatus) => void;
 }) {
   const theme = useTheme();
   const styles = makeStyles(theme);
@@ -69,9 +72,10 @@ export function AvailabilityButtons({
       setSaving(true);
       const ok = await writeMyStatus(target, { playerId, teamId, status: next });
       if (!ok) setStatus(previous); // shared helper reports failure so we can revert
+      else onChanged?.(next);
       setSaving(false);
     },
-    [saving, status, target, playerId, teamId],
+    [saving, status, target, playerId, teamId, onChanged],
   );
 
   if (status === null) {

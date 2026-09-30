@@ -6,9 +6,10 @@
 // part — shared, so the mobile sheet can never offer a captain something the
 // web sheet would not, or miss something it would.
 //
-// A tournament's CTA opens the phone's read-only tournament page. The others
-// route to screens that are not ported yet (Manage match, Submit result, Edit
-// post) and are shown GREYED with where to find them, rather than hidden: the
+// A tournament's CTA opens the phone's read-only tournament page, and a
+// friendly's (Manage match / View match details) opens app/match/[matchId].
+// The rest route to screens that are not ported yet (Edit post) and are shown
+// GREYED with where to find them, rather than hidden: the
 // house convention, and it also tells a captain the mobile app knows the
 // action exists rather than implying the fixture has none.
 //
@@ -164,7 +165,18 @@ export function FixtureDetailSheet({
               </Pressable>
             )}
 
-            {action && !action.href.startsWith('/play/tournament/') && (
+            {action && action.href.startsWith('/my-team/match/') && (
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  router.push({ pathname: '/match/[matchId]', params: { matchId: action.href.split('/').pop() ?? '' } });
+                }}
+                style={styles.ctaLive}>
+                <Text style={styles.ctaLiveText}>{action.label}</Text>
+              </Pressable>
+            )}
+
+            {action && !action.href.startsWith('/play/tournament/') && !action.href.startsWith('/my-team/match/') && (
               // Greyed rather than hidden — the screen it opens is not ported.
               <View style={styles.ctaBox}>
                 <View style={styles.ctaDisabled}>
