@@ -59,3 +59,4 @@ expo-env.d.ts
 # ringer-test-fixture.mjs state between seed and undo
 scripts/.ringer-fixture.json
 scripts/.friendly-fixture.json
+scripts/.test-pitches.json
