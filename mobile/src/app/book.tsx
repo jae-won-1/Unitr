@@ -62,13 +62,15 @@ export default function BookPitch() {
   const [slots, setSlots] = useState<Record<string, DaySlot[]> | null>(null);
   const [pending, setPending] = useState<{ pitch: Pitch; time: string } | null>(null);
 
-  // Real venue-registered pitches only — a pitch no venue owns has nobody to
-  // honour the booking (and /api/book/pitch refuses it).
+  // Verified venue pitches only — a pitch no venue owns has nobody to honour
+  // the booking, and an unverified one hasn't been vouched for
+  // (/api/book/pitch refuses both).
   useEffect(() => {
     void supabase
       .from('pitches')
       .select('id, name, address, price_per_hour, formats, surfaces, rating, is_verified')
       .not('venue_owner_id', 'is', null)
+      .eq('is_verified', true)
       .order('rating', { ascending: false })
       .then(({ data }) => setPitches((data ?? []) as Pitch[]));
   }, []);
