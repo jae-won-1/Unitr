@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
-import { pitchFormatFor } from "@/lib/formations";
+import { loadPitchDay, type DaySlot } from "@/lib/pitch-day";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
@@ -37,15 +37,7 @@ type Pitch = {
   is_verified: boolean;
 };
 
-type SlotStatus = "available" | "booked" | "closed";
-type DaySlot = { time: string; status: SlotStatus };
-
 type SavedCard = { customerId: string; paymentMethodId: string; brand: string | null; last4: string | null };
-
-// Display window for the day grid (matches venue portal default hours)
-const ALL_HOURS = Array.from({ length: 16 }, (_, i) => `${String(i + 7).padStart(2, "0")}:00`); // 07:00–22:00
-const DEFAULT_OPEN = 7;
-const DEFAULT_CLOSE = 22;
 
 function localISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -55,11 +47,6 @@ function fmtDate(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-}
-
-function getDayName(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()];
 }
 
 function Stars({ rating }: { rating: number }) {
@@ -125,34 +112,13 @@ function CardBookingForm({ totalPence, clientSecret, working, saveCardSlot, onPa
 }
 
 // ── Pay instantly with the card already saved on the profile ──
-function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, onUseDifferentCard }: {
+// /api/book/pitch charges it off-session and books in the same request.
+function PaySavedCardInline({ totalPence, savedCard, working, onPay, onUseDifferentCard }: {
   totalPence: number; savedCard: SavedCard; working: boolean;
-  onPaid: (intentId: string) => void; onError: (msg: string) => void; onUseDifferentCard: () => void;
+  onPay: () => void; onUseDifferentCard: () => void;
 }) {
-  const { user } = useAuth();
-  const [paying, setPaying] = useState(false);
-
-  const handlePay = async () => {
-    if (!user) return;
-    setPaying(true);
-    onError("");
-    try {
-      // Card ids come from the caller's profile server-side now; the session
-      // token says who is paying.
-      const res = await authedPost("/api/settle-match", {
-        items: [{ amountPence: totalPence, sharePence: totalPence, feePence: 0, purpose: "pitch_booking" }],
-      });
-      const data = await res.json();
-      const result = data.results?.[0];
-      if (result?.ok) { onPaid(result.paymentIntentId); return; }
-      onError(result?.error ?? "Payment failed with your saved card.");
-    } catch {
-      onError("Could not reach the payment service.");
-    }
-    setPaying(false);
-  };
-
-  const busy = paying || working;
+  const handlePay = onPay;
+  const busy = working;
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 bg-surface border border-border rounded-btn px-3 py-2.5">
@@ -178,13 +144,15 @@ function PaySavedCardInline({ totalPence, savedCard, working, onPaid, onError, o
 // ── Confirm & Pay for a booking ───────────────────────────────
 // Captains choose team credit or card; everyone else pays by card only.
 // Only the pitch fee is debited from credit; card payments add the 5% fee.
-function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, working, error, saveCardSlot, onCancel, onPayCredit, onCardPaid, onError, onTopUp }: {
+function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, savedCard, forceCardEntry, working, error, saveCardSlot, onCancel, onPayCredit, onPaySavedCard, onCardPaid, onError, onTopUp }: {
   pitch: Pitch; date: string; time: string;
   isCaptain: boolean; teamCreditPence: number | null; savedCard: SavedCard | null;
+  forceCardEntry: boolean;
   working: boolean; error: string | null;
   saveCardSlot?: ReactNode;
   onCancel: () => void;
   onPayCredit: () => void;
+  onPaySavedCard: () => void;
   onCardPaid: (intentId: string) => void;
   onError: (msg: string) => void;
   onTopUp: (shortfallPence: number) => void;
@@ -200,18 +168,20 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loadingSecret, setLoadingSecret] = useState(false);
 
-  const showSavedCard = method === "card" && savedCard && !useManualEntry;
+  const showSavedCard = method === "card" && savedCard && !useManualEntry && !forceCardEntry;
 
   // Lazily create a PaymentIntent the first time manual card entry is needed.
   useEffect(() => {
     if (method !== "card" || showSavedCard || clientSecret || loadingSecret) return;
     setLoadingSecret(true);
-    authedPost("/api/create-payment-intent", { amountPence: cardTotalPence })
+    // The route prices the booking itself and ties the intent to this pitch
+    // and hour, so the payment can only ever pay for this booking.
+    authedPost("/api/book/pitch", { method: "intent", pitchId: pitch.id, date, time })
       .then((r) => r.json())
       .then((d) => { if (d.clientSecret) setClientSecret(d.clientSecret); else onError(d.error ?? "Could not start card payment."); })
       .catch(() => onError("Could not reach the payment service."))
       .finally(() => setLoadingSecret(false));
-  }, [method, showSavedCard, clientSecret, loadingSecret, cardTotalPence, onError]);
+  }, [method, showSavedCard, clientSecret, loadingSecret, pitch.id, date, time, onError]);
 
   const endTime = `${String(Math.min(Number(time.slice(0, 2)) + 1, 23)).padStart(2, "0")}:00`;
 
@@ -299,8 +269,7 @@ function BookingPaymentModal({ pitch, date, time, isCaptain, teamCreditPence, sa
             totalPence={cardTotalPence}
             savedCard={savedCard}
             working={working}
-            onPaid={onCardPaid}
-            onError={onError}
+            onPay={onPaySavedCard}
             onUseDifferentCard={() => setUseManualEntry(true)}
           />
         ) : loadingSecret || !clientSecret ? (
@@ -450,61 +419,12 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
       });
   }, [user]);
 
-  // Build the full-day slot grid per pitch for the selected date.
-  // Reads availability + bookings + blocks straight from the venue portal tables.
+  // Build the full-day slot grid per pitch for the selected date — the same
+  // rule /api/book/pitch checks before it books (lib/pitch-day.ts).
   useEffect(() => {
     if (!filterDate || pitches.length === 0) { setSlotMap({}); return; }
     setCheckingSlots(true);
-    const pitchIds = pitches.map((p) => p.id);
-    const dayOfWeek = new Date(filterDate + "T12:00:00").getDay();
-
-    Promise.all([
-      supabase.from("pitch_availability")
-        .select("pitch_id, open_time, close_time, is_active")
-        .in("pitch_id", pitchIds).eq("day_of_week", dayOfWeek),
-      supabase.from("pitch_bookings")
-        .select("pitch_id, start_time, end_time").in("pitch_id", pitchIds).eq("match_date", filterDate).neq("status", "cancelled"),
-      supabase.from("pitch_blocks")
-        .select("pitch_id, start_time, end_time").in("pitch_id", pitchIds).eq("block_date", filterDate),
-    ]).then(([{ data: avails }, { data: bookings }, { data: blocks }]) => {
-      const map: Record<string, DaySlot[]> = {};
-      for (const pitch of pitches) {
-        const avail = avails?.find((a) => a.pitch_id === pitch.id);
-        // No explicit availability row → fall back to default open hours (venue portal default)
-        if (avail && !avail.is_active) {
-          map[pitch.id] = ALL_HOURS.map((t) => ({ time: t, status: "closed" as SlotStatus }));
-          continue;
-        }
-        const oh = avail ? Number(avail.open_time.split(":")[0]) : DEFAULT_OPEN;
-        const ch = avail ? Number(avail.close_time.split(":")[0]) : DEFAULT_CLOSE;
-
-        // Hours taken by bookings or blocks. An hourly slot H (H:00–H+1:00) is
-        // taken if any booking/block overlaps it — so a part-hour booking like
-        // 18:30–19:30 correctly blocks BOTH the 18:00 and 19:00 slots.
-        const taken = new Set<string>();
-        const pitchBookings = (bookings ?? []).filter((b) => b.pitch_id === pitch.id);
-        const pitchBlocks = (blocks ?? []).filter((b) => b.pitch_id === pitch.id);
-        const wholeDayBlocked = pitchBlocks.some((b) => !b.start_time);
-        const toMins = (t: string) => {
-          const [hh, mm] = t.split(":");
-          return Number(hh) * 60 + (Number(mm) || 0);
-        };
-        for (const b of [...pitchBookings, ...pitchBlocks]) {
-          if (!b.start_time) continue;
-          const startMins = toMins(b.start_time);
-          const endMins = b.end_time ? toMins(b.end_time) : startMins + 60;
-          const firstHour = Math.floor(startMins / 60);
-          const lastHour = Math.ceil(endMins / 60); // exclusive
-          for (let h = firstHour; h < lastHour; h++) taken.add(`${String(h).padStart(2, "0")}:00`);
-        }
-
-        map[pitch.id] = ALL_HOURS.map((t) => {
-          const h = Number(t.split(":")[0]);
-          if (wholeDayBlocked || h < oh || h >= ch) return { time: t, status: "closed" as SlotStatus };
-          if (taken.has(t)) return { time: t, status: "booked" as SlotStatus };
-          return { time: t, status: "available" as SlotStatus };
-        });
-      }
+    loadPitchDay(supabase, pitches.map((p) => p.id), filterDate).then((map) => {
       setSlotMap(map);
       setCheckingSlots(false);
     });
@@ -531,129 +451,52 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
     setFilterDate(localISO(new Date()));
   };
 
-  // Finalise a booking after the chosen payment succeeds.
-  //   method "credit" — captain pays the pitch fee from the team pot (no 5%).
-  //   method "card"    — card already charged (intentId set); records the payment.
-  // Writes to pitch_bookings so the venue portal sees it, then pays the venue.
-  const completeBooking = async (method: "credit" | "card", intentId?: string) => {
+  // Book through /api/book/pitch, which prices the pitch, checks the hour is
+  // still free, takes the payment and writes the booking (and, for "lock in a
+  // pitch first", the secured match post).
+  //   "credit"     — captain pays from the team's account;
+  //   "saved_card" — the card on file is charged off-session;
+  //   "card"       — the card form already confirmed the route's intent.
+  // A saved card whose bank wants the payer present falls back to the form.
+  const [forceCardEntry, setForceCardEntry] = useState(false);
+  const markTaken = (pitchId: string, time: string) =>
+    setSlotMap((prev) => prev[pitchId]
+      ? { ...prev, [pitchId]: prev[pitchId].map((s) => s.time === time ? { ...s, status: "booked" } : s) }
+      : prev);
+
+  const completeBooking = async (method: "credit" | "saved_card" | "card", intentId?: string) => {
     if (!pendingSlot) return;
     const { pitch, date, time } = pendingSlot;
     if (!user) { setError("You must be signed in to book."); setPendingSlot(null); return; }
     setBooking(true);
     setError(null);
 
-    const h = Number(time.split(":")[0]);
-    const endTime = `${String(Math.min(h + 1, 23)).padStart(2, "0")}:00`;
-    const pitchFeePence = Math.round(pitch.price_per_hour * 100);   // what the venue receives
-    const uniterFeePence = feeOn(pitchFeePence);
-
-    const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
-      pitch_id: pitch.id,
-      booked_by: user.id,
-      match_date: date,
-      start_time: time,
-      end_time: endTime,
-      booker_name: bookerName || "Session booking",
-      booking_type: "platform",
-      total_price_pence: pitchFeePence,
-      player_count: 0,
-      per_player_pence: 0,
-      unitr_fee_pence: uniterFeePence,
-      status: "confirmed",
-      // Credit is debited just below; card was already charged upstream.
-      payment_status: method === "card" ? "paid" : "pending",
-      stripe_payment_intent_id: intentId ?? null,
-    }).select("id").single();
-
-    if (bookingErr || !bookingRow) { setBooking(false); setError("Couldn't complete the booking. Please try again."); setPendingSlot(null); return; }
-
-    // ── Collect payment ──
-    if (method === "credit") {
-      if (!team) { setBooking(false); setError("Only team captains can pay with credit."); return; }
-      const res = await authedPost("/api/book/pay-credit", {
-        teamId: team.id, feePence: pitchFeePence + uniterFeePence, bookingId: bookingRow.id,
-      }).catch(() => null);
-      const d = res ? await res.json().catch(() => null) : null;
-      if (!res || !res.ok || !d?.ok) {
-        // Roll the booking back so we never hold a slot without payment.
-        await supabase.from("pitch_bookings").update({ status: "cancelled", payment_status: "failed" }).eq("id", bookingRow.id);
-        setBooking(false);
-        setError(d?.error === "INSUFFICIENT_CREDIT" ? "Not enough team credit. Top up in My Team." : (d?.error ?? "Couldn't debit team credit."));
-        return;
-      }
-      if (typeof d.newBalancePence === "number") setTeamCreditPence(d.newBalancePence);
-    } else {
-      // Card path: record the per-payment row so finance/reporting sees the charge.
-      await supabase.from("player_payments").insert({
-        booking_id: bookingRow.id,
-        player_id: user.id,
-        amount_pence: pitchFeePence,
-        unitr_fee_pence: uniterFeePence,
-        total_pence: pitchFeePence + uniterFeePence,
-        status: "paid",
-        purpose: "individual",
-        stripe_payment_intent_id: intentId ?? null,
-      });
-    }
-
-    // Cash side: pay the venue its pitch fee (Stripe Connect, test mode). Every
-    // paid booking produces exactly one venue_transfers row so in-app payments
-    // reconcile against real payouts. Best-effort: an unconnected venue or empty
-    // test balance is recorded as a failed transfer and must not block booking.
-    authedPost("/api/connect/venue-transfer", {
-      pitchId: pitch.id,
-      bookingId: bookingRow.id,
+    const res = await authedPost("/api/book/pitch", {
+      method, pitchId: pitch.id, date, time,
       teamId: team?.id ?? null,
-      amountPence: pitchFeePence,
-    }).catch(() => {});
-
-    // If the captain came from "lock in a pitch first", their intent was to post
-    // a match — so turn this fresh booking straight into a secured match post
-    // (pitch already paid for, opponents can join immediately) instead of making
-    // them convert it manually from My Bookings.
-    let posted = false;
-    if (autoPost && team && bookingRow?.id) {
-      const pitchOption = {
-        id: pitch.id,
-        name: pitch.name,
-        address: pitch.address,
-        price: pitch.price_per_hour,
-        format: pitchFormatFor(pitch.formats, team?.format),
-        distance: "",
-        time,
-      };
-      const { data: post } = await supabase.from("match_posts").insert({
-        team_id: team.id,
-        captain_id: team.captain_id ?? user.id,
-        team_name: team.name,
-        team_location: team.location ?? "",
-        match_date: date,
-        match_time: time,
-        day_name: getDayName(date),
-        pitch_options: [pitchOption],
-        description: null,
-        status: "open",
-        payment_mode: "secured",
-        hold_pence: 0,
-        pitch_secured: true,
-        secured_booking_id: bookingRow.id,
-      }).select("id").single();
-      if (post) {
-        await supabase.from("pitch_bookings").update({ post_id: post.id }).eq("id", bookingRow.id);
-        posted = true;
-      }
-    }
-
+      paymentIntentId: intentId ?? null,
+      autoPost: Boolean(autoPost && team),
+    }).catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
     setBooking(false);
+
+    if (!d?.ok) {
+      if (d?.code === "REQUIRES_ACTION") { setForceCardEntry(true); setError(d.error); return; }
+      if (d?.code === "SLOT_TAKEN") { markTaken(pitch.id, time); setPendingSlot(null); setError(d.error); return; }
+      if (d?.code === "SHORTFALL") { setError("Not enough team credit. Top up in My Team."); return; }
+      setError(d?.error ?? "Couldn't complete the booking. Please try again.");
+      return;
+    }
+    if (typeof d.newBalancePence === "number") setTeamCreditPence(d.newBalancePence);
+
     // Reflect the new booking locally so the slot flips to "taken" instantly
-    setSlotMap((prev) => prev[pitch.id]
-      ? { ...prev, [pitch.id]: prev[pitch.id].map((s) => s.time === time ? { ...s, status: "booked" } : s) }
-      : prev);
+    markTaken(pitch.id, time);
     setPendingSlot(null);
-    // Card path only — the credit path never touched a card. commit() is a
-    // no-op unless the payer ticked the box on the way in.
+    setForceCardEntry(false);
+    // Card-form path only — a saved card is already saved, and credit never
+    // touched a card. commit() is a no-op unless the payer ticked the box.
     if (method === "card") await saveCard.commit(intentId);
-    setBookedInfo({ pitch, date, time, posted });
+    setBookedInfo({ pitch, date, time, posted: Boolean(d.posted) });
   };
 
   return (
@@ -867,11 +710,13 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
           isCaptain={isCaptain}
           teamCreditPence={teamCreditPence}
           savedCard={savedCard}
+          forceCardEntry={forceCardEntry}
           working={booking}
           error={error}
           saveCardSlot={saveCard.checkbox}
-          onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); } }}
+          onCancel={() => { if (!booking) { setPendingSlot(null); setError(null); setForceCardEntry(false); } }}
           onPayCredit={() => completeBooking("credit")}
+          onPaySavedCard={() => completeBooking("saved_card")}
           onCardPaid={(intentId) => completeBooking("card", intentId)}
           onError={(msg) => setError(msg || null)}
           onTopUp={(shortfallPence) => setTopUpShortfall(shortfallPence)}
