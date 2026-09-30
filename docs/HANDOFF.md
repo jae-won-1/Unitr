@@ -31,6 +31,15 @@ Two folders now — see AGENTS.md "Two folders, two branches". Codex works in
   re-submitting a result and clearing a score conflict silently did nothing on
   the web. Verified as a captain on a test fixture before the fix.
 
+- **Accepting a match post runs on the server** (`/api/challenges/accept`,
+  `bfffd02`) and **`supabase_challenge_lockdown.sql`** locks the five ledger
+  functions to the service role. They had been callable by anyone with the
+  anon key, no session needed (verified) — `reimburse_secured_pitch` could move
+  any team's credit into another's. The route was tested on the live database
+  with a 2p post (strangers/players refused, exactly 1p per team, no double
+  charge) and cleaned up. `ChallengePanel` calls it; UI unchanged. **If you
+  change the accept flow, change the route, not the panel.**
+
 **Phone (`mobile` only):** captain Home's Availability Poll opens a sheet like
 the web; poll form laid out like the web's; a testing-only "+ Top Up"
 (`__DEV__`, never in a store build — decide before submission); Manage Match
