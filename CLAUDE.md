@@ -692,7 +692,9 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   caller relies on it. Pass `minuteStep` (5 is the only value used) to ask for minutes as
   well: the dial then runs hours-first, minutes-second like a phone's clock picker, with a
   tappable `9:30 AM` read-out to go back. Off by default, so nothing that wants an hour can
-  be handed `:37`.
+  be handed `:37`. Both the calendar and the dial open **centred over a scrim**, portalled to
+  `<body>` at `z-[70]` (above sheets), not as a dropdown under the field; the dial closes with
+  Done or a tap outside.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.
