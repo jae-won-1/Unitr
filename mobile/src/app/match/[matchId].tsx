@@ -15,12 +15,13 @@
 //   • a saved setup loads as a copy, its players filtered to who can play;
 //   • tasks and ringer requests are their own components, same tables.
 //
-// Not here yet: Submit Result (greyed with where to find it — the next port).
-// Nothing on this screen moves money.
+// Submit Result is its own screen (app/result/[matchId].tsx); this one
+// re-reads on focus so a result filed there shows on return. Nothing on this
+// screen moves money.
 
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -194,9 +195,12 @@ export default function ManageMatch() {
     }
   }, [user, matchId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // On focus, not just on mount: coming back from Submit Result must show it.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   if (match === undefined) {
     return (
@@ -368,10 +372,9 @@ export default function ManageMatch() {
               </>
             )}
             {!myResult && isCaptain && (
-              // Greyed rather than hidden: the result screen is the next port.
               <Pressable
-                onPress={() => Alert.alert('Submit Result', 'Submitting a result is on the web app for now.')}
-                style={[styles.resultBtn, { opacity: 0.5 }]}>
+                onPress={() => router.push({ pathname: '/result/[matchId]', params: { matchId: match.id } })}
+                style={styles.resultBtn}>
                 <Text style={styles.primaryText}>Submit Result</Text>
               </Pressable>
             )}
