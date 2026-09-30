@@ -364,6 +364,12 @@ that owns the pitch — its calendar, manual bookings and payment marks. Only th
 `is_verified` or `rating`. Before this, `pitches` and `pitch_bookings` were both
 `update using (true)` — anyone could re-price any pitch, which the server routes read.
 
+**Only verified pitches can be booked** (`pitches.is_verified`): `/api/book/pitch` and
+`/api/challenges/accept` refuse any other, and every pitch picker on both apps filters to
+them. A pitch registered at `/pitches/register` starts unverified; staff flip the flag in the
+Supabase SQL editor (`update pitches set is_verified = true where …`) — the lock-down keeps
+a venue from doing it to itself, and there is no admin screen for it yet.
+
 **A secured post has to rest on a booking paid through Uniter** (`lib/secured-booking.ts`):
 made by one of the posting team's leaders, paid, not cancelled, no dearer than the pitch's list
 price for its length, and carrying proof only the server can write — a Stripe intent id or a

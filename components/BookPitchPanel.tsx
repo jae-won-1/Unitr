@@ -376,6 +376,7 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   useEffect(() => {
     supabase.from("pitches").select("*")
       .not("venue_owner_id", "is", null)
+      .eq("is_verified", true)
       .order("rating", { ascending: false })
       .then(({ data }) => { setPitches((data ?? []) as Pitch[]); setLoading(false); });
   }, []);

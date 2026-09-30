@@ -101,9 +101,11 @@ export async function POST(req: NextRequest) {
     // Real venue-registered pitches only — a pitch no venue owns has nobody to
     // honour the booking.
     const { data: pitchRow } = await adminSupabase
-      .from("pitches").select("id, name, address, price_per_hour, formats, venue_owner_id")
+      .from("pitches").select("id, name, address, price_per_hour, formats, venue_owner_id, is_verified")
       .eq("id", pitchId).maybeSingle();
-    if (!pitchRow || !pitchRow.venue_owner_id) {
+    // Verified pitches only: anyone can register a pitch, and a booking pays
+    // Uniter on the strength of it, so Uniter vouches for a venue first.
+    if (!pitchRow || !pitchRow.venue_owner_id || !pitchRow.is_verified) {
       return NextResponse.json({ error: "That pitch isn't bookable." }, { status: 404 });
     }
     const pitch = pitchRow as Pitch;
