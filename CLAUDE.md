@@ -649,6 +649,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
+| `supabase_match_result_deletes.sql` | DELETE policies on `match_results` / `match_result_players` for team leaders — without them re-submitting a result and clearing a score conflict silently did nothing; run after `supabase_match_results.sql` and `supabase_co_captains.sql` |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
 | `supabase_tournament_match_tactics.sql` | `match_tactics.tournament_match_id` — a lineup targets a friendly **or** a tournament fixture; run after `supabase_match_tactics.sql` and `supabase_tournament_schedule.sql` |
