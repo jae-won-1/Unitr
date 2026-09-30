@@ -64,7 +64,7 @@ export async function loadTournamentEntries(teamId: string): Promise<HistoryFixt
   // Two debit shapes, because the two ways to be in a tournament cost
   // different amounts: a team that JOINED paid the buy-in (recorded against
   // open_match_id by tournaments/join), while the team that HOSTED paid the
-  // whole pitch block up front via /api/book/pay-credit (recorded against the
+  // whole pitch block up front via /api/book/pitch (recorded against the
   // reservation's booking_id). Look up both.
   const bookingIds = (oms ?? []).map((t) => t.booking_id).filter(Boolean) as string[];
   const [{ data: buyIns }, { data: hostPayments }] = await Promise.all([

@@ -109,48 +109,25 @@ export default function CreateTournamentPage() {
     setSaving(true);
     setError(null);
 
-    // 1) Availability guard: no existing booking overlaps this block.
-    const { data: existing } = await supabase.from("pitch_bookings")
-      .select("start_time, end_time").eq("pitch_id", pitch.id).eq("match_date", date).neq("status", "cancelled");
-    const toMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
-    const blockStart = toMins(startTime);
-    const blockEnd = toMins(endTime);
-    const clash = (existing ?? []).some((b) => {
-      const s = toMins(b.start_time);
-      const e = b.end_time ? toMins(b.end_time) : s + 60;
-      return blockStart < e && s < blockEnd;
-    });
-    if (clash) { setSaving(false); setError("That pitch is already booked during part of this slot. Pick another time or pitch."); return; }
-
-    // 2) Reserve the pitch block on the venue calendar.
-    const { data: booking, error: bookErr } = await supabase.from("pitch_bookings").insert({
-      pitch_id: pitch.id,
-      booked_by: user.id,
-      match_date: date,
-      start_time: startTime,
-      end_time: endTime,
-      booker_name: `Tournament: ${title.trim()}`,
-      booking_type: "open_match",
-      total_price_pence: pitchFeePence,
-      player_count: 0,
-      per_player_pence: 0,
-      unitr_fee_pence: uniterFeePence,
-      status: "confirmed",
-      payment_status: "pending",
-    }).select("id").single();
-    if (bookErr || !booking) { setSaving(false); setError("Couldn't reserve the pitch. Please try again."); return; }
-
-    // 3) Pay the pitch from team credit (fee + 5%). Roll back the booking on failure.
-    const payRes = await authedPost("/api/book/pay-credit", {
-      teamId: team.id, feePence: totalPence, bookingId: booking.id,
+    // 1–3) Book and pay for the block on the server: /api/book/pitch prices it
+    //      from the pitch, checks every hour is free, takes it from the team's
+    //      account, writes the booking and pays the venue. (This page used to
+    //      write the booking itself, price included.)
+    const payRes = await authedPost("/api/book/pitch", {
+      method: "credit", pitchId: pitch.id, date, time: startTime, hours,
+      teamId: team.id, tournamentTitle: title.trim(),
     }).catch(() => null);
     const payData = payRes ? await payRes.json().catch(() => null) : null;
-    if (!payRes || !payRes.ok || !payData?.ok) {
-      await supabase.from("pitch_bookings").update({ status: "cancelled", payment_status: "failed" }).eq("id", booking.id);
+    if (!payData?.ok || !payData.bookingId) {
       setSaving(false);
-      setError(payData?.error === "INSUFFICIENT_CREDIT" ? "Not enough team credit. Top up in My Team." : (payData?.error ?? "Couldn't debit team credit."));
+      setError(payData?.code === "SLOT_TAKEN"
+        ? "That pitch is already booked during part of this slot. Pick another time or pitch."
+        : payData?.code === "SHORTFALL"
+          ? "Not enough team credit. Top up in My Team."
+          : (payData?.error ?? "Couldn't reserve the pitch. Please try again."));
       return;
     }
+    const booking = { id: payData.bookingId as string };
 
     // 4) Post the tournament listing.
     const { data: om, error: omErr } = await supabase.from("open_matches").insert({
@@ -218,11 +195,6 @@ export default function CreateTournamentPage() {
         playerIds: squad,
       });
     }
-
-    // 6) Cash side: pay the venue the pitch fee (Stripe Connect, test mode).
-    authedPost("/api/connect/venue-transfer", {
-      pitchId: pitch.id, bookingId: booking.id, teamId: team.id, openMatchId: om.id, amountPence: pitchFeePence,
-    }).catch(() => {});
 
     setSaving(false);
     router.push("/calendar?filter=tournaments");

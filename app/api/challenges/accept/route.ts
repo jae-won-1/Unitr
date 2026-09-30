@@ -3,6 +3,8 @@ import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll } from "@/lib/event-availability";
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { feeOn } from "@/lib/uniter-fee";
+import { payVenue } from "@/lib/venue-payout";
+import { securedBookingPence } from "@/lib/secured-booking";
 
 // Accept a match post: the challenger's captain (or a co-captain) takes one of
 // the poster's pitch options, and both teams pay their half of the pitch out of
@@ -26,7 +28,8 @@ import { feeOn } from "@/lib/uniter-fee";
 //     challenger reimburses their half into the poster's credit;
 //   • both squads get a pending "are you playing?" row, pre-filled from a poll
 //     that proposed this exact date.
-// Paying the venue stays a separate call to /api/connect/venue-transfer.
+// The fee is read from `pitches` (or a verified secured booking), never from
+// the post, and the venue is paid here too.
 //
 // Errors come back with a `code` the caller can act on:
 //   SHORTFALL (with shortfallPence / halfPence) — the challenger's own team
@@ -74,7 +77,32 @@ export async function POST(req: NextRequest) {
     if (!pitch) return fail(400, "BAD_PITCH", "That pitch isn't one of this post's options.");
 
     const isSecured = post.payment_mode === "secured";
-    const feePence = Math.round((pitch.price ?? 0) * 100);
+
+    // The fee comes from the database, never from the post: pitch_options is
+    // written by the posting captain, and a price there was believed until
+    // 1 Oct — a post could list a pitch at 1p (the venue short-changed) or,
+    // secured, at £500 (the challenger reimbursing half of a fee nobody paid).
+    //   • ordinary post — the pitch's list price for the hour;
+    //   • secured post — what the poster's booking actually cost, and only if
+    //     that booking is real and was paid through Uniter
+    //     (lib/secured-booking.ts).
+    let feePence: number;
+    const { data: pitchRow } = pitch.id
+      ? await adminSupabase.from("pitches").select("price_per_hour").eq("id", pitch.id).maybeSingle()
+      : { data: null };
+    if (!pitchRow) return fail(400, "BAD_PITCH", "That pitch isn't bookable any more.");
+    const listPence = Math.round(Number(pitchRow.price_per_hour) * 100);
+    if (isSecured) {
+      const secured = await securedBookingPence(post.secured_booking_id, post.team_id as string, {
+        pitchId: pitch.id, date: post.match_date as string,
+      });
+      if (secured === null) {
+        return fail(409, "BAD_SECURED", "This post's pitch booking can't be verified, so it can't be accepted.");
+      }
+      feePence = secured;
+    } else {
+      feePence = listPence;
+    }
     const posterHalfPence = Math.ceil(feePence / 2); // poster absorbs the odd penny
     const challengerHalfPence = feePence - posterHalfPence;
     const pitchTime = (pitch.time as string | undefined) ?? post.match_time;
@@ -221,6 +249,15 @@ export async function POST(req: NextRequest) {
         });
         if (!relErr) await adminSupabase.from("match_posts").update({ hold_pence: 0 }).eq("id", holdOwner.id);
       }
+    }
+
+    // Pay the venue its fee for the new booking, here rather than from the
+    // browser (/api/connect/venue-transfer is staff-only now). A secured post's
+    // venue was paid when its booking was made. Best-effort: an unconnected
+    // venue is recorded as a failed transfer and must not undo the match.
+    if (!isSecured && pitch.id) {
+      await payVenue({ pitchId: pitch.id, bookingId: pitchBookingId, matchId: matchRecord.id, teamId: post.team_id, amountPence: feePence })
+        .catch((e) => console.error("challenge venue payout failed:", e));
     }
 
     // The poster's other open posts are withdrawn — one fixture at a time.

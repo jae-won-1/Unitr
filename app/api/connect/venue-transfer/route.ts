@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, isAdmin, isTeamMember, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue, payoutCeilingPence, type VenuePayout } from "@/lib/venue-payout";
 
 // Pay a venue its pitch fee. The transfer itself lives in lib/venue-payout.ts;
@@ -13,46 +13,16 @@ import { payVenue, payoutCeilingPence, type VenuePayout } from "@/lib/venue-payo
 // not harmless on a live one. Three things gate it now:
 //
 //   1. a valid session — no anonymous payouts;
-//   2. a caller with a stake in the fixture being paid for;
+//   2. an admin caller;
 //   3. an amount capped by what that booking/tournament actually costs, read
 //      from the database rather than believed from the body.
 //
-// The worst a determined caller can now do is pay a real venue money it was
-// already owed, slightly early.
-
-// Does this caller have a stake in the thing being paid for? Anyone who could
-// legitimately trigger this payout in the UI passes one of these:
-//   - the person who reserved the pitch (direct booking, tournament host);
-//   - a member of the team being charged;
-//   - a member of either side of the match (the challenger confirms, but the
-//     fee and teamId belong to the posting team);
-//   - an admin.
-async function callerHasStake(userId: string, p: VenuePayout): Promise<boolean> {
-  if (p.bookingId) {
-    const { data } = await adminSupabase
-      .from("pitch_bookings").select("booked_by").eq("id", p.bookingId).maybeSingle();
-    if (data?.booked_by === userId) return true;
-  }
-  if (p.teamId && (await isTeamMember(userId, p.teamId))) return true;
-  if (p.matchId) {
-    const { data } = await adminSupabase
-      .from("matches")
-      .select("posting_team_id, challenging_team_id")
-      .eq("id", p.matchId)
-      .maybeSingle();
-    for (const t of [data?.posting_team_id, data?.challenging_team_id]) {
-      if (t && (await isTeamMember(userId, t as string))) return true;
-    }
-  }
-  if (p.openMatchId) {
-    const { data } = await adminSupabase
-      .from("open_match_teams").select("team_id").eq("open_match_id", p.openMatchId);
-    for (const row of data ?? []) {
-      if (await isTeamMember(userId, row.team_id as string)) return true;
-    }
-  }
-  return isAdmin(userId);
-}
+// Since 1 Oct it is staff-only: every payout the apps make now happens inside
+// the server route that took the money (/api/book/pitch,
+// /api/challenges/accept, /api/tournaments/join), for an amount that route
+// worked out. A booker could otherwise raise their own booking's price and
+// have the platform pay the venue that much. This stays for reconciling a
+// failed transfer by hand.
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,8 +38,8 @@ export async function POST(req: NextRequest) {
       amountPence: Math.round(amountPence),
     };
 
-    if (!(await callerHasStake(callerId, payout))) {
-      return forbidden("You're not part of this booking.");
+    if (!(await isAdmin(callerId))) {
+      return forbidden("Venue payouts are made by Uniter.");
     }
 
     // Cap before paying: the body says what to send, the database says what it
