@@ -199,7 +199,7 @@ Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
 | `/my-team/collect-availability` | Captain creates an availability poll |
 | `/my-team/history` | **Settle Payments** — issuing what the squad owes, not a results archive |
 | `/my-team/match/[matchId]` | Manage Match — overview / squad / payment / tactics / result tabs, plus ringer requests |
-| `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad |
+| `/my-team/match/[matchId]/result` | Submit the final score, scorers, and participating squad — load, rules and the write (incl. cross-team verification) live in `lib/submit-result.ts`, shared with the mobile app |
 | `/my-team/tournament-match/[fixtureId]` | Manage Tournament Fixture — the same info / attendance / lineup / tactics surface for one game inside a tournament |
 
 #### Leaving a squad

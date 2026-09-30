@@ -3,18 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase";
-import { loadLedTeam } from "@/lib/team-leadership";
-
-type Match = {
-  id: string;
-  posting_team_id: string;
-  challenging_team_id: string;
-  match_date: string;
-};
-
-type RosterPlayer = { player_id: string; name: string };
-type PlayerStats = { goals: number; assists: number };
+import {
+  loadResultForm, validateResult, submitMatchResult, totalOf, SCORE_CONFLICT_MESSAGE,
+  type ResultMatch as Match, type RosterPlayer, type PlayerStats,
+} from "@/lib/submit-result";
 
 function Counter({
   value, onChange, disabled, min = 0, max,
@@ -49,63 +41,22 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
 
   useEffect(() => {
     if (!user) return;
+    // The load, the rules and the write all live in lib/submit-result.ts,
+    // shared with the mobile app.
     async function load() {
-      const { data: m } = await supabase.from("matches")
-        .select("id, posting_team_id, challenging_team_id, match_date")
-        .eq("id", params.matchId).maybeSingle();
-      if (!m) { setMatch(null); return; }
-      setMatch(m);
-
-      const captainTeam = await loadLedTeam<{ id: string; name: string }>(user!.id, "id, name");
-      let tid = captainTeam?.id ?? null;
-      let resolvedName = captainTeam?.name;
-      if (!tid) {
-        // Fallback: generic lookup can fail if captain_id isn't set correctly.
-        // Check the two teams in this match directly.
-        const { data: matchTeams } = await supabase.from("teams").select("id, name, captain_id").in("id", [m.posting_team_id, m.challenging_team_id]);
-        const myTeam = (matchTeams ?? []).find((t) => t.captain_id === user!.id);
-        if (myTeam) { tid = myTeam.id; resolvedName = myTeam.name; }
+      const form = await loadResultForm(params.matchId, user!.id);
+      if (!form) { setMatch(null); return; }
+      setMatch(form.match);
+      setMyTeamId(form.myTeamId);
+      setMyTeamName(form.myTeamName);
+      setOpponentName(form.opponentName);
+      setRoster(form.roster);
+      setAlreadySubmitted(!!form.existing);
+      if (form.existing) {
+        setTeamScore(String(form.existing.teamScore));
+        setOpponentScore(String(form.existing.opponentScore));
       }
-      setMyTeamId(tid);
-      if (resolvedName) setMyTeamName(resolvedName);
-
-      const oppId = m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id;
-      const { data: oppTeam } = await supabase.from("teams").select("name").eq("id", oppId).maybeSingle();
-      if (oppTeam?.name) setOpponentName(oppTeam.name);
-
-      if (tid) {
-        const [{ data: members }, { data: team }] = await Promise.all([
-          supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", tid).eq("status", "approved"),
-          supabase.from("teams").select("captain_id").eq("id", tid).maybeSingle(),
-        ]);
-        const { data: captainProfile } = team?.captain_id
-          ? await supabase.from("profiles").select("full_name").eq("id", team.captain_id).maybeSingle()
-          : { data: null };
-        const rosterList: RosterPlayer[] = [
-          ...(team?.captain_id ? [{ player_id: team.captain_id as string, name: captainProfile?.full_name ?? "Captain" }] : []),
-          ...(members ?? []).map((mm) => ({ player_id: mm.player_id as string, name: (mm.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player" })),
-        ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
-        setRoster(rosterList);
-
-        const { data: existingResult } = await supabase.from("match_results")
-          .select("team_score, opponent_score").eq("match_id", params.matchId).eq("team_id", tid).maybeSingle();
-        setAlreadySubmitted(!!existingResult);
-        if (existingResult) {
-          setTeamScore(String(existingResult.team_score));
-          setOpponentScore(String(existingResult.opponent_score));
-        }
-        const { data: existingPlayers } = await supabase.from("match_result_players")
-          .select("player_id, goals, assists").eq("match_id", params.matchId).eq("team_id", tid);
-        if (existingPlayers && existingPlayers.length > 0) {
-          const prefill: Record<string, PlayerStats> = {};
-          for (const p of existingPlayers) {
-            if (p.goals > 0 || p.assists > 0) {
-              prefill[p.player_id] = { goals: p.goals, assists: p.assists ?? 0 };
-            }
-          }
-          setStats(prefill);
-        }
-      }
+      setStats(form.stats);
     }
     load();
   }, [user, params.matchId]);
@@ -117,84 +68,23 @@ export default function SubmitResultPage({ params }: { params: { matchId: string
     }));
   };
 
-  const totalGoals = Object.values(stats).reduce((s, p) => s + p.goals, 0);
-  const totalAssists = Object.values(stats).reduce((s, p) => s + p.assists, 0);
+  const totalGoals = totalOf(stats, "goals");
+  const totalAssists = totalOf(stats, "assists");
   const ts = parseInt(teamScore, 10);
 
   const handleSubmit = async () => {
     if (!user || !myTeamId || !match) return;
-    const m = match;
-    if (teamScore.trim() === "" || opponentScore.trim() === "") {
-      setError("Enter the final score for both teams.");
-      return;
-    }
-    if (isNaN(ts) || isNaN(parseInt(opponentScore, 10)) || ts < 0 || parseInt(opponentScore, 10) < 0) {
-      setError("Scores must be valid non-negative numbers.");
-      return;
-    }
-    if (totalGoals !== ts) {
-      setError(`Goals scored by players (${totalGoals}) must add up exactly to your team's score (${ts}).`);
-      return;
-    }
-    if (totalAssists > ts) {
-      setError(`Total assists (${totalAssists}) can't exceed total goals (${ts}).`);
-      return;
-    }
+    const invalid = validateResult(teamScore, opponentScore, stats);
+    if (invalid) { setError(invalid); return; }
 
     setSaving(true);
     setError(null);
-    const os = parseInt(opponentScore, 10);
-
-    await supabase.from("match_results").upsert({
-      match_id: params.matchId,
-      team_id: myTeamId,
-      team_score: ts,
-      opponent_score: os,
-      submitted_by: user.id,
-    }, { onConflict: "match_id,team_id" });
-
-    // Delete old player rows then insert fresh ones (only players with any stat).
-    await supabase.from("match_result_players").delete()
-      .eq("match_id", params.matchId).eq("team_id", myTeamId);
-
-    const playerRows = Object.entries(stats)
-      .filter(([, p]) => p.goals > 0 || p.assists > 0)
-      .map(([playerId, p]) => ({
-        match_id: params.matchId,
-        team_id: myTeamId,
-        player_id: playerId,
-        started: false,
-        subbed_on: false,
-        goals: p.goals,
-        assists: p.assists,
-      }));
-    if (playerRows.length > 0) {
-      await supabase.from("match_result_players").insert(playerRows);
-    }
-
-    const oppTeamId = m.posting_team_id === myTeamId ? m.challenging_team_id : m.posting_team_id;
-    const { data: oppResult } = await supabase.from("match_results")
-      .select("team_score, opponent_score, submitted_by").eq("match_id", params.matchId).eq("team_id", oppTeamId).maybeSingle();
-
-    if (oppResult) {
-      const scoresMatch = oppResult.team_score === os && oppResult.opponent_score === ts;
-      if (scoresMatch) {
-        await supabase.from("matches").update({ result_submitted: true, result_verified: true }).eq("id", params.matchId);
-      } else {
-        await supabase.from("match_results").delete().eq("match_id", params.matchId);
-        await supabase.from("matches").update({ result_submitted: false, result_verified: false }).eq("id", params.matchId);
-        const msg = `⚠️ Score conflict for your match on ${m.match_date}. Please re-submit the correct result.`;
-        await supabase.from("messages").insert([
-          { sender_id: user.id, receiver_id: oppResult.submitted_by, type: "score_conflict", body: msg },
-          { sender_id: user.id, receiver_id: user.id, type: "score_conflict", body: `⚠️ Score conflict on ${m.match_date}. Your submission differed from the opponent's. Please re-submit.` },
-        ]);
-        setSaving(false);
-        setError("Score conflict: the opponent submitted a different result. Both submissions have been cleared — please coordinate and re-submit.");
-        return;
-      }
-    }
-
+    const { conflict } = await submitMatchResult({
+      match, myTeamId, userId: user.id,
+      teamScore: ts, opponentScore: parseInt(opponentScore, 10), stats,
+    });
     setSaving(false);
+    if (conflict) { setError(SCORE_CONFLICT_MESSAGE); return; }
     router.push("/my-team/history");
   };
 
