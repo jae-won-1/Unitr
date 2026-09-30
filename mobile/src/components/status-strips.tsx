@@ -39,6 +39,7 @@ import { fmtFee, useJoiningFee } from '@/lib/joining-fee';
 import { fmtKickoff } from '@/lib/match-dates';
 import { PaySheet } from '~/components/pay-sheet';
 import { PollSheet } from '~/components/poll-sheet';
+import { CaptainPollSheet } from '~/components/captain-poll-sheet';
 import { useAvailabilityPoll } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
@@ -75,6 +76,11 @@ export function StatusStrips({
   // committed to (those are the per-game answers further down).
   const { request: poll, myAnswer: pollAnswer, reload: reloadPoll } = useAvailabilityPoll(teamId, userId);
   const [pollOpen, setPollOpen] = useState(false);
+  // The captain's tile opens a sheet over Home, as on the web, rather than a
+  // page: the poll's votes, the confirmed games' answers and Start a poll all
+  // live in it. `voteFromSheet` sends the captain back to it after voting.
+  const [captainSheet, setCaptainSheet] = useState<'status' | 'create' | null>(null);
+  const [voteFromSheet, setVoteFromSheet] = useState(false);
   // Bumped after the pay sheet closes so each EventAnswer remounts and
   // re-reads its availability gate — a payment is exactly what lifts it.
   const [gateKey, setGateKey] = useState(0);
@@ -188,6 +194,19 @@ export function StatusStrips({
         ? 'Your joining fee'
         : `Your share of ${dues.length} game${dues.length === 1 ? '' : 's'} already played`;
 
+  // The web tile's badge: the captain's own missing vote outranks the squad
+  // count, because it's the one number on the tile they can fix right now.
+  const unansweredMine = events.filter((e) => e.myStatus === 'pending').length;
+  const pollBadge = !poll
+    ? unansweredMine > 0
+      ? { label: 'Your reply', warn: true }
+      : null
+    : pollAnswer === null
+      ? { label: 'Your vote', warn: false }
+      : pollReplies < squadSize
+        ? { label: `${squadSize - pollReplies} left`, warn: true }
+        : { label: 'Complete', warn: false };
+
   const closePay = () => {
     setPayOpen(false);
     void reloadDues();
@@ -237,7 +256,9 @@ export function StatusStrips({
             </View>
           </View>
 
-          <Pressable onPress={() => router.push('/poll')} style={[styles.card, styles.pollTile]}>
+          <Pressable
+            onPress={() => setCaptainSheet(poll || events.length > 0 ? 'status' : 'create')}
+            style={[styles.card, styles.pollTile]}>
             <View style={styles.pollIcon}>
               <Ionicons name="checkbox-outline" size={20} color="#fff" />
             </View>
@@ -245,10 +266,19 @@ export function StatusStrips({
               <Text style={styles.pollTitle}>Availability Poll</Text>
               <Text style={styles.stripSub}>
                 {!poll
-                  ? 'No poll running · tap to start one'
+                  ? events.length > 0
+                    ? `${events.length} confirmed game${events.length === 1 ? '' : 's'} · tap to set availability`
+                    : 'No poll running · tap to start one'
                   : `${pollReplies} of ${squadSize} replied${pollAnswer === null ? " · you haven't voted yet" : pollReplies >= squadSize ? ' · all in' : ` · waiting on ${Math.max(0, squadSize - pollReplies)}`}`}
               </Text>
             </View>
+            {pollBadge && (
+              <View style={[styles.pollBadge, pollBadge.warn ? styles.pollBadgeWarn : styles.pollBadgeDone]}>
+                <Text style={[styles.pollBadgeText, { color: pollBadge.warn ? '#B45309' : theme.accentInk }]}>
+                  {pollBadge.label}
+                </Text>
+              </View>
+            )}
             <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
           </Pressable>
         </View>
@@ -278,7 +308,7 @@ export function StatusStrips({
         </View>
       )}
 
-      {poll && poll.date_options.length > 0 && (
+      {!isCaptain && poll && poll.date_options.length > 0 && (
         <Pressable
           onPress={() => setPollOpen(true)}
           style={[styles.strip, styles.stripPoll, pollAnswer === null && styles.stripPollDue]}>
@@ -299,7 +329,7 @@ export function StatusStrips({
         </Pressable>
       )}
 
-      {unanswered.length > 0 && (
+      {!isCaptain && unanswered.length > 0 && (
         <View style={styles.card}>
           <Text style={styles.cardLabel}>
             {isCaptain ? 'Your squad needs answers' : 'Your captain needs an answer'}
@@ -331,10 +361,59 @@ export function StatusStrips({
           onClose={(answered) => {
             setPollOpen(false);
             if (answered) void reloadPoll();
+            if (voteFromSheet) {
+              setVoteFromSheet(false);
+              setCaptainSheet('status');
+            }
           }}
           onPay={() => {
             setPollOpen(false);
+            setVoteFromSheet(false);
             setPayOpen(true);
+          }}
+        />
+      )}
+      {isCaptain && (
+        <CaptainPollSheet
+          visible={captainSheet !== null}
+          view={captainSheet ?? 'status'}
+          onView={setCaptainSheet}
+          onClose={() => setCaptainSheet(null)}
+          teamId={teamId}
+          userId={userId}
+          poll={poll}
+          myAnswer={pollAnswer}
+          squadSize={squadSize}
+          confirmedGames={
+            events.length > 0
+              ? events.map((e) => (
+                  <EventAnswer
+                    key={`${e.key}:${gateKey}`}
+                    event={e}
+                    teamId={teamId}
+                    userId={userId}
+                    tally={answers[e.key]}
+                    onAnswered={load}
+                    onPay={() => {
+                      setCaptainSheet(null);
+                      setPayOpen(true);
+                    }}
+                    styles={styles}
+                    theme={theme}
+                  />
+                ))
+              : null
+          }
+          onVote={() => {
+            setCaptainSheet(null);
+            setVoteFromSheet(true);
+            setPollOpen(true);
+          }}
+          onCreated={async () => {
+            await reloadPoll();
+            setCaptainSheet(null);
+            setVoteFromSheet(true);
+            setPollOpen(true);
           }}
         />
       )}
@@ -409,6 +488,11 @@ function EventAnswer({
         {fmtKickoff(event.matchDate, event.matchTime)}
         {event.venueName ? ` · ${event.venueName}` : ''}
       </Text>
+      {event.myStatus !== 'pending' && (
+        <Text style={[styles.eventWhen, { color: event.myStatus === 'confirmed' ? theme.accentInk : theme.danger }]}>
+          You said: {event.myStatus === 'confirmed' ? 'Available' : "Can't play"}
+        </Text>
+      )}
 
       {tally && answered > 0 && (
         <Pressable onPress={() => setExpanded((v) => !v)} style={styles.tallyRow}>
@@ -512,6 +596,10 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    pollBadge: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
+    pollBadgeWarn: { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' },
+    pollBadgeDone: { backgroundColor: theme.successBg, borderColor: theme.successBorder },
+    pollBadgeText: { fontFamily: fonts.bold, fontSize: 10 },
     pollTitle: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 15 },
     wrap: { gap: 10, marginTop: 18 },
     strip: {

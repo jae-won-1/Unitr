@@ -19,7 +19,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -29,14 +28,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { loadLedTeam } from '@/lib/team-leadership';
 import {
-  createAvailabilityPoll,
   deleteAvailabilityPoll,
   type DateOption,
-  type PollRow,
 } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
-import { DatePicker, TimePicker } from '~/components/date-time-pickers';
+import { PollComposer } from '~/components/poll-composer';
 import { initialsOf } from '~/components/chat';
 
 type Poll = { id: string; date_options: DateOption[] };
@@ -53,14 +50,6 @@ function isExpired(opt: DateOption): boolean {
   const [h, min] = opt.time.split(':').map(Number);
   return new Date(Number(m[3]), mo, Number(m[1]), h, min) < new Date();
 }
-
-// The phone's local calendar date; toISOString() is UTC and can name the wrong day near midnight.
-function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-const emptyRow = (): PollRow & { location: string } => ({ date: '', time: '', location: '' });
 
 export default function CaptainPoll() {
   const theme = useTheme();
@@ -153,17 +142,16 @@ export default function CaptainPoll() {
       ) : !team ? (
         <Text style={styles.muted}>Only the team captain or a co-captain can run a poll.</Text>
       ) : composing || !poll ? (
-        <Composer
-          team={team}
-          replacing={!!poll}
+        <PollComposer
+          teamId={team.id}
+          captainId={team.captain_id ?? user?.id ?? ''}
+          intro={`Add the dates you're considering. Your squad votes on which they can make.${poll ? ' Sending replaces the current poll and its answers.' : ''}`}
           onCancel={poll ? () => setComposing(false) : undefined}
           onSent={() => {
             setComposing(false);
             setLoading(true);
             void load();
           }}
-          styles={styles}
-          theme={theme}
         />
       ) : (
         <>
@@ -229,112 +217,6 @@ export default function CaptainPoll() {
   );
 }
 
-type Styles = ReturnType<typeof makeStyles>;
-
-function Composer({
-  team,
-  replacing,
-  onCancel,
-  onSent,
-  styles,
-  theme,
-}: {
-  team: { id: string; captain_id: string };
-  replacing: boolean;
-  onCancel?: () => void;
-  onSent: () => void;
-  styles: Styles;
-  theme: ReturnType<typeof useTheme>;
-}) {
-  const { user } = useAuth();
-  const [rows, setRows] = useState([emptyRow()]);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const update = (i: number, patch: Partial<ReturnType<typeof emptyRow>>) =>
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-
-  const filled = rows.filter((r) => r.date && r.time);
-
-  const send = async () => {
-    if (!user || filled.length === 0) {
-      setError('Add at least one date and time.');
-      return;
-    }
-    setSending(true);
-    setError(null);
-    const res = await createAvailabilityPoll(team.id, team.captain_id ?? user.id, filled);
-    setSending(false);
-    if (res.error) {
-      setError(res.error);
-      return;
-    }
-    onSent();
-  };
-
-  return (
-    <>
-      {/* Laid out as the web's "Start a poll" (components/AvailabilityPollForm.tsx):
-          Date n, then Date and Time side by side, then an optional location. */}
-      <Text style={styles.muted}>
-        Add the dates you're considering. Your squad votes on which they can make.
-        {replacing ? ' Sending replaces the current poll and its answers.' : ''}
-      </Text>
-      {rows.map((row, i) => (
-        <View key={i} style={styles.slot}>
-          <Text style={styles.slotTitle}>Date {i + 1}</Text>
-          <View style={styles.slotRow}>
-            <View style={styles.slotCol}>
-              <Text style={styles.fieldLabel}>Date</Text>
-              <DatePicker
-                value={row.date}
-                onChange={(d) =>
-                  // A kick-off hour already gone on the newly picked day is dropped, not kept.
-                  update(i, { date: d, time: d === todayIso() && row.time && Number(row.time.slice(0, 2)) <= new Date().getHours() ? '' : row.time })
-                }
-              />
-            </View>
-            <View style={styles.slotCol}>
-              <Text style={styles.fieldLabel}>Time</Text>
-              <TimePicker value={row.time} selectedDate={row.date} onChange={(t) => update(i, { time: t })} />
-            </View>
-            {rows.length > 1 && (
-              <Pressable onPress={() => setRows((p) => p.filter((_, idx) => idx !== i))} hitSlop={8} style={styles.trash}>
-                <Ionicons name="trash-outline" size={16} color={theme.danger} />
-              </Pressable>
-            )}
-          </View>
-          <Text style={styles.fieldLabel}>
-            Location <Text style={{ opacity: 0.6 }}>(optional)</Text>
-          </Text>
-          <TextInput
-            value={row.location}
-            onChangeText={(v) => update(i, { location: v })}
-            placeholder="Where you'd play this slot"
-            placeholderTextColor={theme.textSecondary}
-            style={styles.input}
-          />
-        </View>
-      ))}
-      {rows.length < 5 && (
-        <Pressable onPress={() => setRows((p) => [...p, emptyRow()])} style={styles.addRow}>
-          <Ionicons name="add" size={18} color={theme.accentInk} />
-          <Text style={styles.addRowText}>Add date option</Text>
-        </Pressable>
-      )}
-      {!!error && <Text style={styles.error}>{error}</Text>}
-      <Pressable onPress={send} disabled={sending || filled.length === 0} style={[styles.primary, (sending || filled.length === 0) && { opacity: 0.5 }]}>
-        {sending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Send to Squad</Text>}
-      </Pressable>
-      {onCancel && (
-        <Pressable onPress={onCancel} style={styles.textBtn}>
-          <Text style={styles.textBtnText}>Keep the current poll</Text>
-        </Pressable>
-      )}
-    </>
-  );
-}
-
 const makeStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     page: { flex: 1, backgroundColor: theme.background },
@@ -379,38 +261,6 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       justifyContent: 'center',
     },
     discText: { color: theme.accentInk, fontFamily: fonts.bold, fontSize: 10 },
-    slot: { gap: 6, paddingTop: 4 },
-    slotTitle: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
-    slotRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-    slotCol: { flex: 1, gap: 4 },
-    fieldLabel: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12 },
-    trash: {
-      width: 36,
-      height: 36,
-      marginBottom: 4,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.danger + '55',
-      backgroundColor: theme.danger + '14',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: radius.btn,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      color: theme.textPrimary,
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      backgroundColor: theme.background,
-    },
-    addRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-    addRowText: { color: theme.accentInk, fontFamily: fonts.semibold, fontSize: 14 },
-    error: { color: theme.danger, fontFamily: fonts.regular, fontSize: 12 },
-    primary: { backgroundColor: theme.accent, borderRadius: radius.btn, paddingVertical: 14, alignItems: 'center' },
-    primaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15 },
     textBtn: { alignItems: 'center', paddingVertical: 8 },
     textBtnText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
   });
