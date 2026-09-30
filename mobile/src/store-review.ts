@@ -8,7 +8,12 @@
 // Before a store submission, decide each one for real (see mobile/PORTED.md,
 // the Wording note):
 //
-// TEST_TOP_UP — the web's free-amount "+ Top Up" on the captain's Team Money.
+// TEST_TOP_UP — payments the web's way (user's call, 30 Sep: "make it work
+//   like the web; grey or take them out before submitting"). Two places:
+//     • "+ Top Up" beside the balance on the captain's Team Money;
+//     • a shortfall in Challenge or Enter a tournament opens that Top Up,
+//       pre-filled with the gap, then retries — instead of the named
+//       "Pay £X towards your half of the pitch" that store builds show.
 //   Kept out of store builds because a stored balance topped up by card reads
 //   to Apple (and Google Play's equivalent payments policy) as a digital
 //   wallet, which they can require to go through their own billing. Every

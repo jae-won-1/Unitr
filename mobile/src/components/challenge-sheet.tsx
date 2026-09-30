@@ -30,6 +30,8 @@ import type { MatchPost } from '@/lib/game-feed';
 import { fonts, radius } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { paymentIntentIdFrom, useSaveCardChoice } from '~/payments';
+import { TopUpSheet } from '~/components/top-up-sheet';
+import { TEST_TOP_UP } from '~/store-review';
 
 type Stage =
   | { kind: 'pick' }
@@ -76,6 +78,24 @@ export function ChallengeSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const paid = useRef(false);
+  // Testing builds pay a shortfall the web's way — the Top Up sheet, pre-filled
+  // with the gap — then retry by themselves (TEST_TOP_UP, src/store-review.ts).
+  // Store builds keep the named payment below.
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const afterTopUp = async (didPay: boolean) => {
+    setTopUpOpen(false);
+    if (!didPay) return;
+    paid.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await tryAccept();
+    } catch {
+      setError("Couldn't reach Uniter. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Which pitch options are still free at this slot — the web's check. A
   // secured post already owns its booking, which is the pitch both teams play on.
@@ -199,7 +219,8 @@ export function ChallengeSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={close}>
+    <>
+    <Modal visible={!topUpOpen} transparent animationType="slide" onRequestClose={close}>
       <Pressable style={styles.scrim} onPress={close}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.header}>
@@ -282,12 +303,12 @@ export function ChallengeSheet({
                 </Pressable>
               )}
               {!!error && <Text style={styles.error}>{error}</Text>}
-              <Pressable onPress={() => payShortfallAndAccept(stage.shortPence)} disabled={busy} style={[styles.primary, busy && { opacity: 0.6 }]}>
+              <Pressable onPress={() => (TEST_TOP_UP ? setTopUpOpen(true) : payShortfallAndAccept(stage.shortPence))} disabled={busy} style={[styles.primary, busy && { opacity: 0.6 }]}>
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.primaryText}>
-                    Pay {fmtFee(Math.max(stage.shortPence, MIN_PAYMENT_PENCE))} towards your half of the pitch
+                    {TEST_TOP_UP ? 'Top up team credit' : `Pay ${fmtFee(Math.max(stage.shortPence, MIN_PAYMENT_PENCE))} towards your half of the pitch`}
                   </Text>
                 )}
               </Pressable>
@@ -336,6 +357,16 @@ export function ChallengeSheet({
         </Pressable>
       </Pressable>
     </Modal>
+    {TEST_TOP_UP && (
+      <TopUpSheet
+        visible={topUpOpen}
+        teamId={teamId}
+        userId={userId}
+        suggestedPence={stage.kind === 'short' ? stage.shortPence : undefined}
+        onClose={(didPay) => void afterTopUp(didPay)}
+      />
+    )}
+    </>
   );
 }
 

@@ -29,6 +29,8 @@ import type { Tournament } from '@/lib/game-feed';
 import { fonts, radius } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { paymentIntentIdFrom, useSaveCardChoice } from '~/payments';
+import { TopUpSheet } from '~/components/top-up-sheet';
+import { TEST_TOP_UP } from '~/store-review';
 
 type Stage =
   | { kind: 'confirm' }
@@ -66,6 +68,24 @@ export function EnterTournamentSheet({
   // to pay again, which is how someone tapping twice would be charged twice.
   // A ref, not state: it's read in the same call that sets it.
   const paid = useRef(false);
+  // Testing builds pay a shortfall the web's way — the Top Up sheet, pre-filled
+  // with the gap — then retry by themselves (TEST_TOP_UP, src/store-review.ts).
+  // Store builds keep the named payment below.
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const afterTopUp = async (didPay: boolean) => {
+    setTopUpOpen(false);
+    if (!didPay) return;
+    paid.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await tryEnter();
+    } catch {
+      setError("Couldn't reach Uniter. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const buyIn = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
   const organiser = t.organiserAdminName ?? t.organiserTeamName ?? t.pitchName;
@@ -150,7 +170,8 @@ export function EnterTournamentSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <>
+    <Modal visible={!topUpOpen} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={busy ? undefined : onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.header}>
@@ -201,12 +222,12 @@ export function EnterTournamentSheet({
                 </Pressable>
               )}
               {!!error && <Text style={styles.error}>{error}</Text>}
-              <Pressable onPress={() => payShortfallAndEnter(stage.shortPence)} disabled={busy} style={[styles.primary, busy && { opacity: 0.6 }]}>
+              <Pressable onPress={() => (TEST_TOP_UP ? setTopUpOpen(true) : payShortfallAndEnter(stage.shortPence))} disabled={busy} style={[styles.primary, busy && { opacity: 0.6 }]}>
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.primaryText}>
-                    Pay {fmtFee(Math.max(stage.shortPence, MIN_PAYMENT_PENCE))} towards the buy-in
+                    {TEST_TOP_UP ? 'Top up team credit' : `Pay ${fmtFee(Math.max(stage.shortPence, MIN_PAYMENT_PENCE))} towards the buy-in`}
                   </Text>
                 )}
               </Pressable>
@@ -242,6 +263,16 @@ export function EnterTournamentSheet({
         </Pressable>
       </Pressable>
     </Modal>
+    {TEST_TOP_UP && (
+      <TopUpSheet
+        visible={topUpOpen}
+        teamId={teamId}
+        userId={userId}
+        suggestedPence={stage.kind === 'short' ? stage.shortPence : undefined}
+        onClose={(didPay) => void afterTopUp(didPay)}
+      />
+    )}
+    </>
   );
 }
 

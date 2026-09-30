@@ -3,9 +3,9 @@
 // muscle memory. A slot the viewer can't use yet is greyed, never removed
 // (the house convention): a missing icon shifts everything beside it.
 //
-// Two slots are greyed for a reason the web doesn't have — the screen isn't on
-// the phone yet (posting a match, booking a pitch). Tapping a greyed slot says
-// why rather than doing nothing.
+// Book a Pitch is greyed for a reason the web doesn't have — the screen isn't
+// on the phone yet. Post a Match is live for captains and co-captains. Tapping
+// a greyed slot says why rather than doing nothing.
 
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
@@ -27,16 +27,13 @@ export function QuickNav({ role }: { role: string }) {
   const styles = makeStyles(theme);
 
   const items: Item[] = [
-    {
-      label: 'Post a Match',
-      icon: 'football-outline',
-      reason:
-        role === 'new_user'
-          ? 'Join or register a team first.'
-          : role !== 'captain'
-            ? 'Only your captain can post a match.'
-            : 'Posting a match is on the web app for now.',
-    },
+    role === 'captain'
+      ? { label: 'Post a Match', icon: 'football-outline', href: '/post-match' }
+      : {
+          label: 'Post a Match',
+          icon: 'football-outline',
+          reason: role === 'new_user' ? 'Join or register a team first.' : 'Only your captain can post a match.',
+        },
     { label: 'Book a Pitch', icon: 'tablet-landscape-outline', reason: 'Booking a pitch is on the web app for now.' },
     { label: 'Transfer Market', icon: 'swap-horizontal', href: '/transfer' },
     { label: 'Stats', icon: 'stats-chart', href: '/profile' },

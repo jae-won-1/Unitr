@@ -39,12 +39,17 @@ export function TopUpSheet({
   teamId,
   userId,
   availablePence,
+  suggestedPence,
   onClose,
 }: {
   visible: boolean;
   teamId: string;
   userId: string;
-  availablePence: number;
+  /** The team's available balance, for the "New balance" line; omit to hide it. */
+  availablePence?: number;
+  /** A shortfall to cover, as on the web's TopUpModal: pre-fills the amount,
+   *  rounded up to the next whole pound. */
+  suggestedPence?: number;
   /** `paid` — something was charged, so the caller should re-read the balance. */
   onClose: (paid: boolean) => void;
 }) {
@@ -61,11 +66,13 @@ export function TopUpSheet({
 
   useEffect(() => {
     if (!visible) return;
-    setPreset(null);
-    setCustom('');
+    const suggested = suggestedPence && suggestedPence > 0 ? Math.ceil(suggestedPence / 100) : null;
+    // A suggested amount that isn't one of the preset chips goes in the box.
+    setPreset(suggested !== null && PRESETS_POUNDS.includes(suggested) ? suggested : null);
+    setCustom(suggested !== null && !PRESETS_POUNDS.includes(suggested) ? String(suggested) : '');
     setError(null);
     setDone(null);
-  }, [visible]);
+  }, [visible, suggestedPence]);
 
   const pounds = custom ? Number(custom.replace(',', '.')) : preset;
   const amountPence = pounds && Number.isFinite(pounds) ? Math.round(pounds * 100) : 0;
@@ -136,7 +143,11 @@ export function TopUpSheet({
                   <Ionicons name="close" size={22} color={theme.textSecondary} />
                 </Pressable>
               </View>
-              <Text style={styles.sub}>Add funds to your team&apos;s balance.</Text>
+              <Text style={styles.sub}>
+                {suggestedPence && suggestedPence > 0
+                  ? `Add at least £${Math.ceil(suggestedPence / 100)} to cover this.`
+                  : 'Add funds to your team’s balance.'}
+              </Text>
               <View style={styles.testNote}>
                 <Text style={styles.testNoteText}>Testing only — hidden in App Store and Play Store builds.</Text>
               </View>
@@ -175,10 +186,10 @@ export function TopUpSheet({
                     <Text style={styles.summaryLabel}>Adding</Text>
                     <Text style={styles.summaryValue}>{fmtFee(amountPence)}</Text>
                   </View>
-                  <View style={styles.summaryRow}>
+                  {availablePence !== undefined && <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>New balance</Text>
                     <Text style={[styles.summaryValue, { color: theme.accentInk }]}>{fmtFee(Math.max(0, availablePence) + amountPence)}</Text>
-                  </View>
+                  </View>}
                 </View>
               )}
 

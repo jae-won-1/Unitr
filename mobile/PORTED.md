@@ -86,6 +86,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 | Manage Match — friendly | `app/my-team/match/[matchId]/page.tsx` (Info / Attendance / Lineup / Tactics, `MatchTasks`, `RingerRequestPanel`) | — | done — `match/[matchId].tsx`, opened from the fixture sheet's Manage match / View match details (Calendar and My Team). Same `match_tactics` upsert with the resolved formation, saved setups load as a filtered copy, tasks and ringer requests are `match-tasks.tsx` / `ringer-request-panel.tsx`. Moves no money. Submit Result opens `result/[matchId].tsx` |
 | Submit Result — friendly | `app/my-team/match/[matchId]/result/page.tsx`, `lib/submit-result.ts` | — | done — `result/[matchId].tsx`, from Manage Match (captain / co-captain). Load, rules and write are the shared `lib/submit-result.ts` (moved out of the web page on `main`). Needs `supabase_match_result_deletes.sql` for re-submits and score conflicts to work — on web too. Returns to Manage Match rather than Settle Payments |
 | Challenge a match post (captain) | `components/ChallengePanel.tsx`, `/api/challenges/accept` | — | done — `challenge-sheet.tsx` from the feed's Challenge. Same server route as the web (moved server-side 30 Sep for security — see CLAUDE.md). Pick a pitch option (booked ones greyed), see your half; a shortfall is paid as a named amount "towards your half of the pitch", then the challenge retries automatically; never a second payment offer once paid |
+| Post a Match (captain) | `app/play/create/page.tsx`, pitch picker of `app/pitches/page.tsx`, `lib/match-post.ts` | — | done — `post-match.tsx` from Home's Post a Match and My Team. Dates from the live poll (with votes) or by hand; up to 3 real pitches, filtered by format, each shown as free / partly free / not free at your times; reorder; description. Rows built by the shared `buildMatchPostRows`. **Not yet:** "Lock in a pitch first" (Book a Pitch port) and per-pitch alternative times |
 | _(bridge spike)_ | `lib/match-dates.ts` | `667f757` | Phase 0 passed 12/12 on device — kept at `/spike` |
 
 <!-- Add a row per screen as Phase 1+ lands. Suggested shape:
@@ -154,8 +155,8 @@ up", "credit" or "balance". The money still lands in `team_credits`. A stored
 balance you add money to is what an App Store reviewer reads as a digital
 wallet (Apple's own 30% payment system); a real-world pitch is exempt.
 
-**Exception while testing (2026-09-30):** the captain's Team Money has the web's
-"+ Top Up" (`top-up-sheet.tsx`), gated on `TEST_TOP_UP` in `src/store-review.ts`,
+**Exception while testing (2026-09-30):** payments work the web's way — the captain's Team Money has the web's
+"+ Top Up", and a shortfall in Challenge / Enter opens it pre-filled with the gap, (`top-up-sheet.tsx`), gated on `TEST_TOP_UP` in `src/store-review.ts`,
 which is `__DEV__` — on under `npx expo start`, off in every release build.
 **Before any App Store or Play Store submission**, decide whether it ships;
 Google Play has the same rule for digital goods as Apple.

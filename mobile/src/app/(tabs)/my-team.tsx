@@ -21,7 +21,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -266,13 +265,11 @@ export default function MyTeam() {
               <Text style={styles.emptyTitle}>No confirmed fixtures yet</Text>
               <Text style={styles.emptyBody}>
                 {isCaptain
-                  ? 'Enter a tournament from Home, or post a match on the web, to get one in the diary.'
+                  ? 'Post a match or enter a tournament from Home to get one in the diary.'
                   : 'Games your captain commits to will appear here.'}
               </Text>
               {isCaptain && (
-                <Pressable
-                  onPress={() => Alert.alert('Post a Match', 'Posting a match is on the web app for now.')}
-                  style={[styles.smallPrimary, { opacity: 0.5 }]}>
+                <Pressable onPress={() => router.push('/post-match')} style={styles.smallPrimary}>
                   <Text style={styles.actionPrimaryText}>Post a Match</Text>
                 </Pressable>
               )}
