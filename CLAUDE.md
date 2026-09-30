@@ -761,6 +761,11 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   each and a profile pointing at none of them — which is how a saved card fails off-session
   with "no such payment method for this customer". All four routes now go through the one
   helper, which persists the id before the intent is created.
+  **Except under a test key:** local development runs Stripe in test mode against the *live*
+  database, whose customer ids are all live ones a test key can't see. So with `sk_test_` the
+  helper finds or creates a test customer by `metadata.playerId` and never touches the profile,
+  and `lib/stripe-mode.ts` (`STRIPE_TEST_MODE`) stops every client from writing card details
+  to a profile or offering "Save this card" — a test card would overwrite a real player's.
 - **"Save this card" is a tick box in the card form, not a prompt after the charge**
   (`useSaveCardTickbox` in `components/SaveCardPrompt.tsx`). Unticked by default — it is
   consent to store a card. The old popup only appeared for a player the profile lookup said

@@ -17,6 +17,7 @@
 
 import { authedGet, authedPost } from "@/lib/authed-fetch";
 import { supabase } from "@/lib/supabase";
+import { STRIPE_TEST_MODE } from "@/lib/stripe-mode";
 
 export type SavedCard = { brand: string | null; last4: string | null };
 
@@ -29,6 +30,10 @@ export async function persistSavedCard(userId: string, paymentMethodId: string):
   } catch {
     // brand/last4 are cosmetic — the card is still saved and still chargeable.
   }
+
+  // Test mode shares the live database: a test card written here would replace
+  // this player's live one. Report it as saved to the screen, write nothing.
+  if (STRIPE_TEST_MODE) return { brand, last4 };
 
   await supabase.from("profiles").update({
     stripe_payment_method_id: paymentMethodId,
@@ -52,6 +57,8 @@ export function paymentMethodIdOf(pm: unknown): string | null {
 // Copy the card Stripe attached during `paymentIntentId` onto the profile.
 // Resolves regardless of outcome; callers continue on either way.
 export async function saveCardFromIntent(userId: string, paymentIntentId: string): Promise<boolean> {
+  // Never in test mode — see persistSavedCard above and lib/stripe-mode.ts.
+  if (STRIPE_TEST_MODE) return false;
   try {
     const res = await authedGet(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
     const data = await res.json();

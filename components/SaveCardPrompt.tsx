@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { saveCardFromIntent } from "@/lib/save-card";
+import { STRIPE_TEST_MODE } from "@/lib/stripe-mode";
 
 // "Save this card for future payments" — a tick box in the card form, on
 // every surface that takes one (match fee, team credit top-up, ringer spot,
@@ -68,7 +69,9 @@ export function useSaveCardTickbox(userId: string | undefined, opts?: { label?: 
   // (terms.card: "never" in lib/stripe-client.ts), so this is now the ONLY place
   // the payer is told their card may be kept. It has to carry that meaning and
   // be impossible to miss — hence the filled panel rather than a grey footnote.
-  const checkbox = userId && hasSavedCard !== true ? (
+  // Not offered in Stripe test mode at all: the card could only be saved over
+  // the player's live one, which lib/save-card.ts refuses (lib/stripe-mode.ts).
+  const checkbox = userId && hasSavedCard !== true && !STRIPE_TEST_MODE ? (
     <label
       className={`flex items-start gap-3 p-4 rounded-btn border-2 cursor-pointer select-none transition-colors ${
         checked ? "border-accent bg-accent/10" : "border-border bg-surface-2"
