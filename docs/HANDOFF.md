@@ -1,6 +1,54 @@
 # Uniter handoff
 
-## Latest completed work — 2026-09-30, Claude Code: React Native port, Phases 3–5 (overnight)
+## Web changes awaiting a phone port
+
+Codex (or anyone working on `main`): when you add or change a web **screen**,
+or change a shared rule in `lib/` / `app/api/` / SQL without changing its
+shape, add a line here. Claude Code ports it on `mobile` and removes the line.
+
+- *(none yet)*
+
+## Latest completed work — 2026-09-30 (day), Claude Code: port continued, shared fixes
+
+Two folders now — see AGENTS.md "Two folders, two branches". Codex works in
+`unitr-main` on `main`; Claude Code in `unitr` on `mobile`.
+
+**Shared fixes that landed on `main` (all build-checked):**
+
+- **Date and time pickers open centred** over a scrim (`d65f830`), everywhere
+  `DatePicker` / `TimePicker` are used; the dial gained a Done button.
+- **Stripe test mode no longer touches live customer ids** (`d1a27c0`). Local
+  development runs test keys against the live database, whose saved customers
+  are all live ones — every local payment failed "Payment setup failed", and
+  saving a card locally would have overwritten a real player's. Under
+  `sk_test_`, `ensureStripeCustomer` uses its own test customers by
+  `metadata.playerId`; `lib/stripe-mode.ts` stops clients writing card details
+  or offering Save this card. Live mode unchanged.
+- **Submit result moved to `lib/submit-result.ts`** (`7f299ad`) — the web page
+  calls it, behaviour unchanged; the phone uses the same file.
+- **`supabase_match_result_deletes.sql`** (`1ab5673`, **run by the user
+  30 Sep**): `match_results` / `match_result_players` had no DELETE policy, so
+  re-submitting a result and clearing a score conflict silently did nothing on
+  the web. Verified as a captain on a test fixture before the fix.
+
+**Phone (`mobile` only):** captain Home's Availability Poll opens a sheet like
+the web; poll form laid out like the web's; a testing-only "+ Top Up"
+(`__DEV__`, never in a store build — decide before submission); Manage Match
+and Submit Result for friendlies; `mobile/scripts/friendly-test-fixture.mjs`
+seeds a £0 friendly for NMcaptain's Test team (`undo` removes it).
+
+**Local payments testing:** the Stripe CLI must forward the **UNITR** test
+account (`stripe listen --api-key <sk_test> --forward-to
+localhost:3000/api/webhooks/stripe`) — it was logged into "UnitR sandbox",
+so no confirmation ever reached the local server and balances never moved.
+The matching `whsec_` is in `.env.development.local`. Two test £1 top-ups for
+Ballers United (30 Sep, 15:58 and 16:08) were deliberately never credited.
+
+**Next on the port:** Post a match and Challenge (they hold and move team
+money — agree the phone flow with the user first), then Book a pitch, then
+store submission.
+
+## Earlier — 2026-09-30, Claude Code: React Native port, Phases 3–5 (overnight)
 
 On the `mobile` branch, while the user slept, on their instruction to carry on
 and approve anything non-critical. **Nothing has run on a phone yet.** Read
