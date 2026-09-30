@@ -36,7 +36,7 @@ import {
 } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
-import { SlotPicker } from '~/components/slot-picker';
+import { DatePicker, TimePicker } from '~/components/date-time-pickers';
 import { initialsOf } from '~/components/chat';
 
 type Poll = { id: string; date_options: DateOption[] };
@@ -52,6 +52,12 @@ function isExpired(opt: DateOption): boolean {
   if (mo === undefined) return false;
   const [h, min] = opt.time.split(':').map(Number);
   return new Date(Number(m[3]), mo, Number(m[1]), h, min) < new Date();
+}
+
+// The phone's local calendar date; toISOString() is UTC and can name the wrong day near midnight.
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const emptyRow = (): PollRow & { location: string } => ({ date: '', time: '', location: '' });
@@ -268,25 +274,43 @@ function Composer({
 
   return (
     <>
+      {/* Laid out as the web's "Start a poll" (components/AvailabilityPollForm.tsx):
+          Date n, then Date and Time side by side, then an optional location. */}
       <Text style={styles.muted}>
-        Propose 1–5 slots. Your squad picks every one they could play.
+        Add the dates you're considering. Your squad votes on which they can make.
         {replacing ? ' Sending replaces the current poll and its answers.' : ''}
       </Text>
       {rows.map((row, i) => (
-        <View key={i} style={styles.card}>
-          <View style={styles.rowHead}>
-            <Text style={styles.optTitle}>Option {i + 1}</Text>
+        <View key={i} style={styles.slot}>
+          <Text style={styles.slotTitle}>Date {i + 1}</Text>
+          <View style={styles.slotRow}>
+            <View style={styles.slotCol}>
+              <Text style={styles.fieldLabel}>Date</Text>
+              <DatePicker
+                value={row.date}
+                onChange={(d) =>
+                  // A kick-off hour already gone on the newly picked day is dropped, not kept.
+                  update(i, { date: d, time: d === todayIso() && row.time && Number(row.time.slice(0, 2)) <= new Date().getHours() ? '' : row.time })
+                }
+              />
+            </View>
+            <View style={styles.slotCol}>
+              <Text style={styles.fieldLabel}>Time</Text>
+              <TimePicker value={row.time} selectedDate={row.date} onChange={(t) => update(i, { time: t })} />
+            </View>
             {rows.length > 1 && (
-              <Pressable onPress={() => setRows((p) => p.filter((_, idx) => idx !== i))} hitSlop={8}>
-                <Ionicons name="trash-outline" size={18} color={theme.danger} />
+              <Pressable onPress={() => setRows((p) => p.filter((_, idx) => idx !== i))} hitSlop={8} style={styles.trash}>
+                <Ionicons name="trash-outline" size={16} color={theme.danger} />
               </Pressable>
             )}
           </View>
-          <SlotPicker date={row.date} time={row.time} onChange={(v) => update(i, v)} />
+          <Text style={styles.fieldLabel}>
+            Location <Text style={{ opacity: 0.6 }}>(optional)</Text>
+          </Text>
           <TextInput
             value={row.location}
             onChangeText={(v) => update(i, { location: v })}
-            placeholder="Where you'd play (optional)"
+            placeholder="Where you'd play this slot"
             placeholderTextColor={theme.textSecondary}
             style={styles.input}
           />
@@ -295,12 +319,12 @@ function Composer({
       {rows.length < 5 && (
         <Pressable onPress={() => setRows((p) => [...p, emptyRow()])} style={styles.addRow}>
           <Ionicons name="add" size={18} color={theme.accentInk} />
-          <Text style={styles.addRowText}>Add another option</Text>
+          <Text style={styles.addRowText}>Add date option</Text>
         </Pressable>
       )}
       {!!error && <Text style={styles.error}>{error}</Text>}
       <Pressable onPress={send} disabled={sending || filled.length === 0} style={[styles.primary, (sending || filled.length === 0) && { opacity: 0.5 }]}>
-        {sending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Send to squad</Text>}
+        {sending ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Send to Squad</Text>}
       </Pressable>
       {onCancel && (
         <Pressable onPress={onCancel} style={styles.textBtn}>
@@ -355,7 +379,22 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       justifyContent: 'center',
     },
     discText: { color: theme.accentInk, fontFamily: fonts.bold, fontSize: 10 },
-    rowHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    slot: { gap: 6, paddingTop: 4 },
+    slotTitle: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
+    slotRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+    slotCol: { flex: 1, gap: 4 },
+    fieldLabel: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12 },
+    trash: {
+      width: 36,
+      height: 36,
+      marginBottom: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.danger + '55',
+      backgroundColor: theme.danger + '14',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     input: {
       borderWidth: 1,
       borderColor: theme.border,
