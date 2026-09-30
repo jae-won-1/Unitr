@@ -152,6 +152,7 @@ Tests:
       second confirmation for a player. (Don't confirm on a real account.)
 - [ ] **What you owe** strip on Home (needs Stripe CLI webhooks — see
       `mobile/PORTED.md`, Phase 3 note — and writes to the live ledger).
+- [ ] **+ Top Up** (captain, Home → Team Money): pick £10 or type an amount, pay with a test card; expect "Top up complete" and the balance to go up. Needs the Stripe CLI webhook forwarding, like the other payment tests. Testing only — it will not appear in store builds.
 - [ ] **Save this card** in the pay sheet: with no card on file, the switch shows; turn it on, pay, then reopen the sheet — it should now say payments go to your saved card, and ask you to confirm before charging.
 - [ ] **Profile**: tap the avatar (top right) on Home, Calendar and My Team. Check name, positions, About you. Edit Profile: change positions (first pick shows "main") and an answer, save, and see it update.
 - [ ] **Add a card** on Profile (test key, `4242 4242 4242 4242`, or `4000 0027 6000 3184` for 3D Secure). Expect "Visa •••• 4242 · Saved". Then **Remove** it. Uses a test account only — it writes the card to that account's profile.

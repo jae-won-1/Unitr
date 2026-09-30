@@ -40,6 +40,8 @@ import { fmtKickoff } from '@/lib/match-dates';
 import { PaySheet } from '~/components/pay-sheet';
 import { PollSheet } from '~/components/poll-sheet';
 import { CaptainPollSheet } from '~/components/captain-poll-sheet';
+import { TopUpSheet } from '~/components/top-up-sheet';
+import { TEST_TOP_UP } from '~/store-review';
 import { useAvailabilityPoll } from '@/lib/availability-poll';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
@@ -81,6 +83,7 @@ export function StatusStrips({
   // live in it. `voteFromSheet` sends the captain back to it after voting.
   const [captainSheet, setCaptainSheet] = useState<'status' | 'create' | null>(null);
   const [voteFromSheet, setVoteFromSheet] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
   // Bumped after the pay sheet closes so each EventAnswer remounts and
   // re-reads its availability gate — a payment is exactly what lifts it.
   const [gateKey, setGateKey] = useState(0);
@@ -237,10 +240,19 @@ export function StatusStrips({
         <View>
           <Text style={styles.sectionTitle}>Team money</Text>
           <View style={styles.moneyGrid}>
-            <View style={[styles.moneyBtn, styles.moneyWide]}>
-              <Ionicons name="wallet-outline" size={16} color={theme.accentInk} />
-              <Text style={styles.moneyValue}>{credit != null ? fmtFee(Math.max(0, credit)) : '—'}</Text>
-              <Text style={styles.moneyHint}>available</Text>
+            {/* The web's credits pill + "+ Top Up". The Top Up half is testing
+                only (TEST_TOP_UP, src/store-review.ts): never in a store build. */}
+            <View style={styles.moneyRow}>
+              <View style={[styles.moneyBtn, !TEST_TOP_UP && styles.moneyWide]}>
+                <Ionicons name="wallet-outline" size={16} color={theme.accentInk} />
+                <Text style={styles.moneyValue}>{credit != null ? fmtFee(Math.max(0, credit)) : '—'}</Text>
+                <Text style={styles.moneyHint}>available</Text>
+              </View>
+              {TEST_TOP_UP && (
+                <Pressable onPress={() => setTopUpOpen(true)} style={[styles.moneyBtn, styles.topUp]}>
+                  <Text style={styles.topUpText}>+ Top Up</Text>
+                </Pressable>
+              )}
             </View>
             <View style={styles.moneyRow}>
               <Pressable
@@ -370,6 +382,22 @@ export function StatusStrips({
             setPollOpen(false);
             setVoteFromSheet(false);
             setPayOpen(true);
+          }}
+        />
+      )}
+      {isCaptain && TEST_TOP_UP && (
+        <TopUpSheet
+          visible={topUpOpen}
+          teamId={teamId}
+          userId={userId}
+          availablePence={credit ?? 0}
+          onClose={(paid) => {
+            setTopUpOpen(false);
+            if (paid) {
+              // A top-up pays the joining fee down first, which can lift the
+              // availability gate — the same refresh as closing the pay sheet.
+              closePay();
+            }
           }}
         />
       )}
@@ -582,7 +610,9 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       borderRadius: radius.pill,
       paddingVertical: 13,
     },
-    moneyWide: { flex: 0 },
+    moneyWide: { flex: 1 },
+    topUp: { backgroundColor: theme.accent, borderColor: theme.accent },
+    topUpText: { color: '#fff', fontFamily: fonts.bold, fontSize: 14 },
     moneyOff: { opacity: 0.55 },
     moneyValue: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 15 },
     moneyHint: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13 },

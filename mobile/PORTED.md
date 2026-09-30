@@ -151,6 +151,12 @@ up", "credit" or "balance". The money still lands in `team_credits`. A stored
 balance you add money to is what an App Store reviewer reads as a digital
 wallet (Apple's own 30% payment system); a real-world pitch is exempt.
 
+**Exception while testing (2026-09-30):** the captain's Team Money has the web's
+"+ Top Up" (`top-up-sheet.tsx`), gated on `TEST_TOP_UP` in `src/store-review.ts`,
+which is `__DEV__` — on under `npx expo start`, off in every release build.
+**Before any App Store or Play Store submission**, decide whether it ships;
+Google Play has the same rule for digital goods as Apple.
+
 ## Shared, so never listed here
 
 These need no row because they are not copied — both apps use the same file or the same
