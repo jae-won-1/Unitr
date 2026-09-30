@@ -5,9 +5,8 @@ import { authedPost } from "@/lib/authed-fetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import TopUpModal from "@/components/TopUpModal";
-import { seedAvailabilityFromPoll } from "@/lib/event-availability";
 import { loadLedTeam } from "@/lib/team-leadership";
-import { feeOn, UNITER_FEE_RATE } from "@/lib/uniter-fee";
+import { UNITER_FEE_RATE } from "@/lib/uniter-fee";
 
 // The challenger's side of a match post: pick one of the poster's pitch
 // options, confirm, and both teams are debited their half of the fee (or, for
@@ -81,276 +80,72 @@ export default function ChallengePanel({
   const allPitchesTaken = !checkingAvail && post.pitchOptions.length > 0 &&
     post.pitchOptions.every((p) => pitchAvail[p.id] === false);
 
+  // The accept runs server-side (/api/challenges/accept): claiming the post,
+  // the challenge, match, booking and squad rows, and both teams' halves of
+  // the pitch fee. It used to run here, calling the ledger functions straight
+  // from the browser — see that route for why it can't. What stays here is the
+  // venue payout, which is its own authed, capped route.
   const handleConfirm = async () => {
     if (!selectedPitch || !user) return;
     setSaving(true);
     setSlotTakenError(null);
     setShortfall(null);
 
-    // Guard: check post is still open (race condition — someone else may have just taken it)
-    const { data: current } = await supabase
-      .from("match_posts").select("status").eq("id", post.id).maybeSingle();
-    if (current?.status !== "open") {
-      setSaving(false);
-      setAlreadyTaken(true);
-      return;
-    }
-
-    // Get challenger's team — captain or co-captain, either can accept a game
+    // Captain or co-captain — either can accept a game for the team.
     const team = await loadLedTeam<{ id: string; name: string; captain_id: string }>(
       user.id, "id, name, captain_id",
     );
     if (!team) { setSaving(false); return; }
 
-    const pitch = post.pitchOptions.find((p) => p.id === selectedPitch);
-    const isSecured = post.payment_mode === "secured";
-
-    // Both credit/individual modes split the pitch fee evenly between the two
-    // teams' credit at confirm time — each side is debited their own half
-    // directly, no fronting/reimbursement step. A "secured" post already has
-    // its pitch paid for via a direct booking, so it skips credit entirely —
-    // joining is immediate and players settle their share post-match as usual.
-    const feePence = Math.round((pitch?.price ?? 0) * 100);
-    const posterHalfPence = Math.ceil(feePence / 2); // poster absorbs the odd penny
-    const challengerHalfPence = feePence - posterHalfPence;
-
-    if (!isSecured) {
-      // Challenger must be able to cover their half.
-      const { data: chalCr } = await supabase
-        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
-      const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
-      if (chalAvail < challengerHalfPence) {
-        setSaving(false);
-        setShortfall({
-          teamId: team.id,
-          shortfallPence: challengerHalfPence - chalAvail,
-          balancePence: chalCr?.balance_pence ?? 0,
-        });
-        setSlotTakenError(
-          `Your team needs to top up — £${(challengerHalfPence / 100).toFixed(2)} of available credit covers your half of this pitch, £${((challengerHalfPence - chalAvail) / 100).toFixed(2)} short.`
-        );
-        return;
-      }
-
-      // Poster must be able to cover their half too — no fronting the full fee.
-      const { data: postCr } = await supabase
-        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", post.team_id).maybeSingle();
-      const postAvail = (postCr?.balance_pence ?? 0) - (postCr?.reserved_pence ?? 0);
-      if (postAvail < posterHalfPence) {
-        setSaving(false);
-        setSlotTakenError(
-          `The posting team no longer has enough credit to cover their half of this pitch (£${(posterHalfPence / 100).toFixed(2)} needed). This match can't be confirmed right now.`
-        );
-        return;
-      }
-    } else {
-      // Secured post: the poster already paid the venue in cash via the direct
-      // booking, so only the challenger needs credit — to reimburse their half.
-      const { data: chalCr } = await supabase
-        .from("team_credits").select("balance_pence, reserved_pence").eq("team_id", team.id).maybeSingle();
-      const chalAvail = (chalCr?.balance_pence ?? 0) - (chalCr?.reserved_pence ?? 0);
-      if (chalAvail < challengerHalfPence) {
-        setSaving(false);
-        setShortfall({
-          teamId: team.id,
-          shortfallPence: challengerHalfPence - chalAvail,
-          balancePence: chalCr?.balance_pence ?? 0,
-        });
-        setSlotTakenError(
-          `Your team needs to top up — £${(challengerHalfPence / 100).toFixed(2)} of available credit covers your half of this secured pitch, £${((challengerHalfPence - chalAvail) / 100).toFixed(2)} short.`
-        );
-        return;
-      }
+    let data: {
+      code?: string; error?: string; shortfallPence?: number; halfPence?: number; balancePence?: number;
+      matchId?: string; pitchBookingId?: string | null; feePence?: number; pitchId?: string | null;
+    } = {};
+    try {
+      const res = await authedPost("/api/challenges/accept", { postId: post.id, pitchOptionId: selectedPitch, teamId: team.id });
+      data = await res.json();
+    } catch {
+      setSaving(false);
+      setSlotTakenError("Couldn't reach Uniter. Nothing was charged — try again.");
+      return;
     }
-
-    // Record the challenge (first-come-first-served → immediately accepted)
-    await supabase.from("challenges").insert({
-      post_id: post.id,
-      challenger_team_id: team.id,
-      challenger_team_name: team.name,
-      // The team's captain, whoever pressed the button — the challenge is the
-      // team's, and every "our fixtures" query keys off this id.
-      challenger_captain_id: team.captain_id ?? user.id,
-      selected_pitch: pitch,
-      status: "accepted",
-    });
-
-    const pitchTime = pitch?.time ?? post.match_time;
-
-    // Final double-booking check: pitch slot may have been taken since panel opened.
-    // Secured posts already own their slot via the existing booking — nothing to race.
-    if (!isSecured && pitch?.id) {
-      const { data: slotConflict } = await supabase
-        .from("pitch_bookings")
-        .select("id")
-        .eq("pitch_id", pitch.id)
-        .eq("match_date", post.match_date)
-        .eq("start_time", pitchTime)
-        .neq("status", "cancelled")
-        .maybeSingle();
-
-      if (slotConflict) {
-        setPitchAvail((prev) => ({ ...prev, [pitch.id]: false }));
-        setSelectedPitch(null);
-        setSaving(false);
-        setSlotTakenError(`${pitch.name} was just booked by another team. Select a different pitch option.`);
-        return;
-      }
-    }
-
-    // Create a pitch_bookings row so the venue portal calendar shows this booking.
-    // Secured posts already have a booking row (the original direct /book reservation)
-    // — just update its player count/split rather than creating a duplicate.
-    let pitchBookingId: string | null = null;
-    if (isSecured && post.securedBookingId) {
-      const perPlayerPence = Math.round(feePence / 22);
-      await supabase.from("pitch_bookings").update({
-        booker_name: `${post.team} vs ${team.name}`,
-        player_count: 22,
-        per_player_pence: perPlayerPence,
-        unitr_fee_pence: feeOn(perPlayerPence),
-      }).eq("id", post.securedBookingId);
-      pitchBookingId = post.securedBookingId;
-    } else if (pitch?.id) {
-      const perPlayerPence = Math.round((pitch.price * 100) / 22);
-      const startTime = pitchTime || "12:00";
-      const [h, m] = startTime.split(":").map(Number);
-      const endTime = `${String(Math.min((h || 12) + 1, 23)).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
-      const { data: bookingRow, error: bookingErr } = await supabase.from("pitch_bookings").insert({
-        pitch_id: pitch.id,
-        post_id: post.id,
-        booked_by: user.id,
-        match_date: post.match_date,
-        start_time: startTime,
-        end_time: endTime,
-        booker_name: `${post.team} vs ${team.name}`,
-        booking_type: "platform",
-        total_price_pence: pitch.price * 100,
-        player_count: 22,
-        per_player_pence: perPlayerPence,
-        unitr_fee_pence: feeOn(perPlayerPence),
-        status: "confirmed",
-      }).select("id").single();
-      if (bookingErr) console.error("pitch_bookings insert failed:", bookingErr.message, bookingErr.details);
-      else pitchBookingId = bookingRow?.id ?? null;
-    }
-
-    // Lock the post
-    await supabase.from("match_posts").update({ status: "matched" }).eq("id", post.id);
-
-    // Cancel the posting team's other open posts
-    await supabase.from("match_posts")
-      .update({ status: "cancelled" }).eq("team_id", post.team_id).eq("status", "open").neq("id", post.id);
-
-    // Create matches record
-    if (pitch) {
-      const { data: matchRecord } = await supabase.from("matches").insert({
-        post_id: post.id,
-        posting_team_id: post.team_id,
-        challenging_team_id: team.id,
-        confirmed_pitch: pitch,
-        match_date: post.match_date,
-        match_time: pitchTime,
-      }).select("id").single();
-
-      if (matchRecord) {
-        setMatchId(matchRecord.id);
-        const { data: members } = await supabase
-          .from("team_members").select("player_id, team_id")
-          .in("team_id", [post.team_id, team.id]).eq("status", "approved");
-
-        // Build full player list: approved members + both captains
-        const allPlayers: { player_id: string; team_id: string }[] = [
-          ...(members ?? []),
-          { player_id: post.captain_id, team_id: post.team_id },
-          { player_id: team.captain_id ?? user.id, team_id: team.id },
-        ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
-
-        if (allPlayers.length > 0) {
-          await supabase.from("match_confirmations").insert(
-            allPlayers.map((m) => ({ match_id: matchRecord.id, player_id: m.player_id, team_id: m.team_id, status: "pending" }))
-          );
-
-          // If either captain ran a poll that proposed this exact date, it
-          // already asked the squad this question — carry the answers over
-          // rather than making everyone reply twice. Per team, since each side
-          // answered its own poll.
-          for (const squadTeamId of [post.team_id, team.id]) {
-            await seedAvailabilityFromPoll(supabase, {
-              teamId: squadTeamId,
-              target: { matchId: matchRecord.id },
-              date: post.match_date,
-              time: pitchTime,
-              playerIds: allPlayers.filter((p) => p.team_id === squadTeamId).map((p) => p.player_id),
-            });
-          }
-        }
-
-        // ── Secure the pitch with team credit (credit/individual modes — PAYMENT_PLAN §10) ──
-        // Phase 2: each team's credit is debited its own half directly — no
-        // fronting/reimbursement. No per-player replenishment is created here —
-        // the squad is still fluid; settlement is deferred to roster-lock (see
-        // the match page "Settle" step).
-        if (!isSecured) {
-          const { error: settleErr } = await supabase.rpc("split_pitch_fee", {
-            p_match_id: matchRecord.id,
-            p_posting_team: post.team_id,
-            p_challenging_team: team.id,
-            p_fee_pence: feePence,
-          });
-          if (settleErr) console.error("split_pitch_fee failed:", settleErr.message);
-          // The pitch is paid for the moment both halves leave team credit. Say
-          // so on the booking, or the venue portal shows this slot as unpaid
-          // forever — nothing else ever writes payment_status after insert.
-          else if (pitchBookingId) {
-            await supabase.from("pitch_bookings").update({ payment_status: "paid" }).eq("id", pitchBookingId);
-          }
-
-          // Release the poster's batch earmark, if any (credit mode placed one at
-          // post time). Clear it so it can't be released twice.
-          const { data: holdOwner } = await supabase
-            .from("match_posts").select("id, hold_pence")
-            .eq("team_id", post.team_id).gt("hold_pence", 0).limit(1).maybeSingle();
-          if (holdOwner?.hold_pence) {
-            await supabase.rpc("release_hold", {
-              p_team_id: post.team_id,
-              p_amount_pence: holdOwner.hold_pence,
-              p_post_id: holdOwner.id,
-            });
-            await supabase.from("match_posts").update({ hold_pence: 0 }).eq("id", holdOwner.id);
-          }
-        } else {
-          // Secured post: the poster fronted the whole pitch fee via the direct
-          // booking. The challenger reimburses their half into the poster's
-          // credit now; both teams' players replenish their own share post-match.
-          const { error: reimburseErr } = await supabase.rpc("reimburse_secured_pitch", {
-            p_match_id: matchRecord.id,
-            p_posting_team: post.team_id,
-            p_challenging_team: team.id,
-            p_fee_pence: feePence,
-          });
-          if (reimburseErr) console.error("reimburse_secured_pitch failed:", reimburseErr.message);
-        }
-
-        // ── Cash side: pay the venue (Stripe Connect, test mode) ──
-        // The teams settle the fee between them in credit above; separately,
-        // Uniter transfers the full pitch fee out to the venue's connected
-        // account. Best-effort — a missing/unconnected venue account or empty
-        // test balance must not block match confirmation. Records a
-        // venue_transfers row either way so credit↔cash can be reconciled.
-        if (pitch?.id) {
-          authedPost("/api/connect/venue-transfer", {
-            pitchId: pitch.id,
-            bookingId: pitchBookingId,
-            matchId: matchRecord.id,
-            teamId: post.team_id,
-            amountPence: feePence,
-          }).catch(() => {});
-        }
-      }
-    }
-
     setSaving(false);
+
+    if (!data.matchId) {
+      if (data.code === "TAKEN") { setAlreadyTaken(true); return; }
+      if (data.code === "SLOT_TAKEN") {
+        setPitchAvail((prev) => ({ ...prev, [selectedPitch]: false }));
+        setSelectedPitch(null);
+      }
+      if (data.code === "SHORTFALL" && data.shortfallPence != null && data.halfPence != null) {
+        setShortfall({ teamId: team.id, shortfallPence: data.shortfallPence, balancePence: data.balancePence ?? 0 });
+        setSlotTakenError(
+          `Your team needs to top up — £${(data.halfPence / 100).toFixed(2)} of available credit covers your half of this ${post.payment_mode === "secured" ? "secured " : ""}pitch, £${(data.shortfallPence / 100).toFixed(2)} short.`
+        );
+        return;
+      }
+      setSlotTakenError(data.error ?? "Couldn't accept this match. Nothing was charged.");
+      return;
+    }
+
+    setMatchId(data.matchId);
+
+    // ── Cash side: pay the venue (Stripe Connect, test mode) ──
+    // The teams settled the fee between them in credit on the server; separately,
+    // Uniter transfers the full pitch fee out to the venue's connected
+    // account. Best-effort — a missing/unconnected venue account or empty
+    // test balance must not block match confirmation. Records a
+    // venue_transfers row either way so credit↔cash can be reconciled.
+    if (data.pitchId) {
+      authedPost("/api/connect/venue-transfer", {
+        pitchId: data.pitchId,
+        bookingId: data.pitchBookingId ?? null,
+        matchId: data.matchId,
+        teamId: post.team_id,
+        amountPence: data.feePence,
+      }).catch(() => {});
+    }
+
     setConfirmed(true);
     onMatched(post.id);
   };

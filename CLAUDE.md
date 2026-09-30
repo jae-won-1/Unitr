@@ -649,6 +649,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
+| `supabase_challenge_lockdown.sql` | Ledger functions service-role only; `match_posts` writes limited to that team's leaders; no client writes to `challenges`; `matches` updatable only by the two teams' leaders. **Run only once `/api/challenges/accept` is deployed**; after `supabase_credit_ledger.sql`, `supabase_secured_posts.sql`, `supabase_core_tables_rls.sql`, `supabase_co_captains.sql` |
 | `supabase_match_result_deletes.sql` | DELETE policies on `match_results` / `match_result_players` for team leaders — without them re-submitting a result and clearing a score conflict silently did nothing; run after `supabase_match_results.sql` and `supabase_co_captains.sql` |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
@@ -800,6 +801,14 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   refuses callers with no stake in the fixture. The transfer itself lives in
   `lib/venue-payout.ts` so `/api/tournaments/join` can pay a venue by calling the function
   rather than forging an HTTP request to a route that now demands a session.
+- **Accepting a match post runs on the server** (`/api/challenges/accept`). It claims the
+  post with a conditional update, reads the teams, fee and mode from the database, writes
+  the challenge / match / booking / squad rows and charges both halves via
+  `split_pitch_fee` or `reimburse_secured_pitch` — rolling back what it wrote if the charge
+  fails. `ChallengePanel` (and the phone) only name the post, the pitch option and their
+  team. The ledger functions (`hold_credit`, `release_hold`, `split_pitch_fee`,
+  `reimburse_secured_pitch`, `capture_and_settle`) were callable by anyone with the anon key
+  until `supabase_challenge_lockdown.sql` made them service-role only.
 
 ## Technical areas still requiring real expertise
 
