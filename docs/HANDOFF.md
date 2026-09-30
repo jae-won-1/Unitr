@@ -53,9 +53,29 @@ so no confirmation ever reached the local server and balances never moved.
 The matching `whsec_` is in `.env.development.local`. Two test £1 top-ups for
 Ballers United (30 Sep, 15:58 and 16:08) were deliberately never credited.
 
-**Next on the port:** Post a match and Challenge (they hold and move team
-money — agree the phone flow with the user first), then Book a pitch, then
-store submission.
+**Later the same day:** Challenge and Post a Match are ported (see
+`mobile/PORTED.md`); `lib/match-post.ts` holds the posts-from-dates rule for
+both apps. `supabase_challenge_lockdown.sql` was run twice by the user — the
+second, amended version drops every policy on `match_posts` / `challenges` /
+`matches` by whatever name and rebuilds them; verified afterwards that a
+captain can post only as their own team, and nobody can write a match or a
+challenge from a browser. Payments on the phone work the web's way in
+testing builds (Top Up; a shortfall opens it pre-filled) behind
+`TEST_TOP_UP` — decide before any store submission.
+
+**Test data currently in the live database (remove with each script's `undo`):**
+
+- `node mobile/scripts/test-pitches.mjs` — four `[TEST] …` pitches owned by
+  testvenue@gmail.com (visible to real users while seeded). There is no
+  `pitch_availability` table on this database (`supabase_venue.sql` not run),
+  so every pitch counts as always open.
+- `node mobile/scripts/friendly-test-fixture.mjs` — a £0 friendly for
+  NMcaptain's "Test " team vs a temporary opponent team (testcaptain@gmail.com)
+  and an open £2 post by that opponent to Challenge (`open-post [pounds]`).
+
+**Next on the port:** Book a Pitch (web `BookPitchPanel` + `/book`), which
+also unlocks "Lock in a pitch first" in Post a Match; then store submission
+(Phase 7) — raise the `TEST_TOP_UP` decision first.
 
 ## Earlier — 2026-09-30, Claude Code: React Native port, Phases 3–5 (overnight)
 
