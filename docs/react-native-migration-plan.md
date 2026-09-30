@@ -216,6 +216,34 @@ queries, rendered with `View`/`Text`/`Image` + NativeWind classes instead of JSX
   polling when backgrounded, or consider this the natural point to revisit whether Supabase
   realtime gets turned on instead of polling.
 
+**1 October — Phase 7 started (store prep).** Book a pitch and Post a match are
+ported; the booking lock-down SQL is run. Done in the repo:
+
+- Real icons. The app still carried Expo's template artwork; `mobile/scripts/
+  generate-icons.mjs` now exports the approved `assets/icons/uniter-maskable.png`
+  into the icon, Android adaptive foreground (inset for the circular crop), splash
+  and favicon, all on the artwork's own navy `#033240`.
+- `app.json` became `app.config.js`: its `"//"` note keys failed Expo's schema
+  check. Same values, notes kept as comments. `expo-doctor` passes 21/21.
+- `ITSAppUsesNonExemptEncryption: false` (no export-compliance prompt per build).
+- `mobile/eas.json`: `preview` (internal APK) and `production` (store, remote
+  auto-incremented build numbers, Play submit to the internal track as a draft).
+  Both point `EXPO_PUBLIC_API_BASE_URL` at the deployed site.
+
+**Owed by the user before the first cloud build:**
+
+1. `npm i -g eas-cli`, `eas login`, then `eas init` inside `mobile/` (writes the
+   project id into the config).
+2. The other three `EXPO_PUBLIC_*` values, per EAS environment (`preview`,
+   `production`): `eas env:create`. `mobile/.env` is gitignored, so a cloud
+   build never sees it. **Any build pointed at the deployed site needs the
+   `pk_live_` key and takes real money** — the deployed API runs live Stripe.
+3. Apple Developer Program and Google Play Console accounts (see prerequisites).
+4. The `TEST_TOP_UP` decision. Nothing to switch off — it is `__DEV__`-gated and
+   absent from every EAS build — but store builds then show the named-amount
+   shortfall flow, which is the path least tested on a phone.
+
+
 ## Suggested phase order
 
 0. **Foundation — no RN screens yet.** Create `mobile/` with the Expo scaffold; **prove

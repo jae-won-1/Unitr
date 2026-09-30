@@ -28,7 +28,7 @@ import { colors } from '~/theme';
 SplashScreen.preventAutoHideAsync();
 
 // Where a 3D Secure challenge or bank redirect sends the payer back to. In a
-// development or store build that is app.json's "uniter" scheme, but Expo Go
+// development or store build that is app.config.js's "uniter" scheme, but Expo Go
 // can't register a custom scheme — its links are exp://… — so a hardcoded
 // "uniter" would strand a payer outside the app after authenticating.
 // Stripe's own Expo guidance: in Expo Go, pass the /--/ route of Expo Go's URL.

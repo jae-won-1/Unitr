@@ -60,7 +60,7 @@ config.resolver.nodeModulesPaths = [path.resolve(projectRoot, "node_modules")];
 // Module aliases.
 //
 // These are the ONLY aliases in the app: Expo's tsconfigPaths experiment is
-// switched off in app.json (see the note there), so Metro reads this and
+// switched off in app.config.js (see the note there), so Metro reads this and
 // nothing else, and tsconfig.json mirrors it by hand for the editor.
 //
 // This app's own code is reached as "~/…", NOT "@/…", so that "@/" can belong

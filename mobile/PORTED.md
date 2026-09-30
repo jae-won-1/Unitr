@@ -99,7 +99,7 @@ Scope for v1 is player-facing only — `/admin/*` and `/venue/*` stay on the web
 
 `@stripe/stripe-react-native` is installed, `StripeProvider` wraps the app in
 `_layout.tsx` (test-mode key from `mobile/.env`, `urlScheme="uniter"` matching
-`app.json`'s scheme), and Fill In's Join button is wired end to end with
+`app.config.js`'s scheme), and Fill In's Join button is wired end to end with
 PaymentSheet — see the table row above.
 
 **Challenge and Enter turned out not to need any of this.** They don't run a

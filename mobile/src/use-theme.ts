@@ -9,7 +9,7 @@
 //
 // colors.dark in theme.ts is kept rather than deleted: it is a worked-out
 // palette in the same tokens, ready if the web app ever gains a dark theme.
-// Until then nothing reads it, and `expo.userInterfaceStyle` in app.json is
+// Until then nothing reads it, and `expo.userInterfaceStyle` in app.config.js is
 // pinned to "light" so native chrome does not go dark around light screens.
 import { colors } from '~/theme';
 
