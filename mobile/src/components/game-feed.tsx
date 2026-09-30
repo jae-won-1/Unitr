@@ -14,10 +14,9 @@
 //
 //   captain / co-captain → Enter is live: it opens enter-tournament-sheet.tsx
 //     (the same /api/tournaments/join the web calls, with any shortfall paid
-//     as a named amount towards the buy-in). Challenge stays GREYED until the
-//     friendly flow is ported — it places a hold on the team's money and picks
-//     a pitch, and a button that silently did nothing with that would be worse
-//     than saying it isn't ready.
+//     as a named amount towards the buy-in). Challenge is live too: it opens
+//     challenge-sheet.tsx (the same /api/challenges/accept the web calls, with
+//     any shortfall paid as a named amount towards the team's half).
 //   player → "Suggest to team", which is fully wired: it writes to
 //     match_suggestions, which is exactly what the web app does, and commits
 //     nothing on the team's behalf.
@@ -50,6 +49,7 @@ import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { paymentIntentIdFrom } from '~/payments';
 import { EnterTournamentSheet } from '~/components/enter-tournament-sheet';
+import { ChallengeSheet } from '~/components/challenge-sheet';
 import { supabase } from '@/lib/supabase';
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
@@ -80,7 +80,8 @@ export function GameFeed({
   const [tab, setTab] = useState<Tab>('all');
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const { posts, loading: postsLoading } = useOpenMatchPosts(teamId);
+  const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
+  const [challenging, setChallenging] = useState<MatchPost | null>(null);
   const { tournaments, loading: tourLoading, markJoined } = useOpenTournaments(teamId);
   const [entering, setEntering] = useState<Tournament | null>(null);
   // The join route records the team's name on the entry, as the web passes it.
@@ -243,8 +244,19 @@ export function GameFeed({
             suggested={suggested.has(p.id)}
             suggestUnavailable={unavailable}
             onSuggest={() => suggest(p.id, 'match')}
+            onChallenge={() => setChallenging(p)}
           />
         ))}
+
+      {challenging && teamId && (
+        <ChallengeSheet
+          post={challenging}
+          teamId={teamId}
+          userId={userId}
+          onClose={() => setChallenging(null)}
+          onMatched={() => removePost(challenging.id)}
+        />
+      )}
 
       {showTournaments &&
         tournaments.map((t) => (
@@ -374,6 +386,7 @@ function MatchCard({
   suggested,
   suggestUnavailable,
   onSuggest,
+  onChallenge,
 }: {
   post: MatchPost;
   theme: ReturnType<typeof useTheme>;
@@ -383,6 +396,7 @@ function MatchCard({
   suggested: boolean;
   suggestUnavailable: boolean;
   onSuggest: () => void;
+  onChallenge: () => void;
 }) {
   // Posts carry several pitch options; the cheapest is what the card quotes,
   // since the challenging captain picks which one at challenge time.
@@ -437,6 +451,7 @@ function MatchCard({
           suggestUnavailable={suggestUnavailable}
           onSuggest={onSuggest}
           commitLabel="Challenge"
+          onCommit={onChallenge}
           styles={styles}
         />
       </View>

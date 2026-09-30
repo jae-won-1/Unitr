@@ -2,7 +2,16 @@
 // Manage Match (and anything else friendly-shaped) from the phone or the web.
 //
 //   node mobile/scripts/friendly-test-fixture.mjs seed
+//   node mobile/scripts/friendly-test-fixture.mjs open-post [pounds]
 //   node mobile/scripts/friendly-test-fixture.mjs undo
+//
+// `open-post` (after `seed`) adds an OPEN post by the opponent team for
+// NMcaptain to Challenge from the phone's Find a game feed. The pitch costs
+// [pounds] (default 2, so each side pays £1), and the opponent's account is
+// given enough test credit to pay its own half. Pick more than twice the Test
+// team's balance to try the shortfall ("Pay £X towards your half").
+// Accepting it moves real rows in the live ledger; `undo` puts back whatever
+// the accept took from the Test team and removes the rest.
 //
 // Run from the repo root. Uses the service-role key in .env.local, so it
 // writes to the LIVE database — seed right before testing, undo right after.
@@ -82,7 +91,7 @@ async function seed() {
     throw new Error("testcaptain@gmail.com is already in a team — pick another opponent captain.");
   }
 
-  const state = { oppTeamId: null, postId: null, challengeId: null, matchId: null };
+  const state = { oppTeamId: null, postId: null, challengeId: null, matchId: null, openPostId: null };
   save(state); // first, so a failure below still leaves enough for undo
 
   const when = daysAhead(7);
@@ -162,20 +171,77 @@ async function seed() {
   console.log("Run `undo` when you're done.");
 }
 
+async function openPost(pounds) {
+  if (!fs.existsSync(stateFile)) throw new Error("Run `seed` first — the open post belongs to its opponent team.");
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  if (state.openPostId) throw new Error("There's already an open test post — run `undo` first.");
+  const price = Number.isFinite(pounds) && pounds > 0 ? pounds : 2;
+  const when = daysAhead(9);
+  const pitch = { id: "rn-port-test-option", name: `${TAG} Challenge pitch`, address: "Not a real pitch", price, format: "8-a-side", time: "20:00" };
+  const post = await must("insert open post", db.from("match_posts").insert({
+    team_id: state.oppTeamId,
+    captain_id: OPP_CAPTAIN,
+    team_name: `${TAG} Opponents`,
+    team_location: "Test",
+    status: "open",
+    payment_mode: "individual",
+    hold_pence: 0,
+    match_date: isoOf(when),
+    match_time: "20:00",
+    day_name: DAY_NAMES[when.getDay()],
+    pitch_options: [pitch],
+    description: `${TAG} Testing the mobile app — please don't challenge.`,
+  }).select("id").single());
+  state.openPostId = post.id;
+  save(state);
+  // The opponent pays its own half (the poster absorbs the odd penny).
+  const posterHalf = Math.ceil(Math.round(price * 100) / 2);
+  await must("opponent credit", db.from("team_credits").upsert(
+    { team_id: state.oppTeamId, balance_pence: posterHalf, reserved_pence: 0 }, { onConflict: "team_id" }));
+  const test = await must("Test team credit", db.from("team_credits").select("balance_pence, reserved_pence").eq("team_id", TEST_TEAM).maybeSingle());
+  const half = Math.round(price * 100) - posterHalf;
+  console.log(`Open post by ${TAG} Opponents: ${isoOf(when)} 20:00, pitch £${price.toFixed(2)} (each side ~£${(half / 100).toFixed(2)}).`);
+  console.log(`Test team has £${(((test?.balance_pence ?? 0) - (test?.reserved_pence ?? 0)) / 100).toFixed(2)} available — ${((test?.balance_pence ?? 0) - (test?.reserved_pence ?? 0)) >= half ? "enough to accept outright" : "SHORT, so you'll be asked to pay the gap"}.`);
+  console.log("As nmcaptain: Home → Find a game → Matches → Challenge.");
+}
+
 async function undo() {
   if (!fs.existsSync(stateFile)) {
     console.error("Nothing to undo — no state file.", stateFile);
     process.exit(1);
   }
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  const m = state.matchId;
-
-  // Children of the match first — whatever testing created. A table that
-  // doesn't exist on this database is skipped rather than stopping the undo.
+  // A table that doesn't exist on this database is skipped rather than
+  // stopping the undo.
   const soft = async (label, promise) => {
     const { error } = await promise;
     if (error && !/does not exist|schema cache/i.test(error.message)) throw new Error(`${label}: ${error.message}`);
   };
+
+  // The open post, and anything accepting it did: the ledger debits are put
+  // back on each team's balance before their rows go.
+  if (state.openPostId) {
+    const accepted = (await db.from("matches").select("id").eq("post_id", state.openPostId)).data ?? [];
+    for (const { id } of accepted) {
+      const rows = (await db.from("team_credit_transactions").select("team_id, amount_pence").eq("match_id", id)).data ?? [];
+      for (const r of rows) {
+        const cur = (await db.from("team_credits").select("balance_pence").eq("team_id", r.team_id).maybeSingle()).data;
+        if (cur) await must("restore balance", db.from("team_credits").update({ balance_pence: cur.balance_pence - r.amount_pence }).eq("team_id", r.team_id));
+      }
+      await must("ledger rows", db.from("team_credit_transactions").delete().eq("match_id", id));
+      await must("confirmations", db.from("match_confirmations").delete().eq("match_id", id));
+      await soft("tactics", db.from("match_tactics").delete().eq("match_id", id));
+      await must("accepted match", db.from("matches").delete().eq("id", id));
+    }
+    await must("challenge on open post", db.from("challenges").delete().eq("post_id", state.openPostId));
+    await soft("booking on open post", db.from("pitch_bookings").delete().eq("post_id", state.openPostId));
+    await must("open post", db.from("match_posts").delete().eq("id", state.openPostId));
+  }
+
+  const m = state.matchId;
+
+  // Children of the match first — whatever testing created. A table that
+  // doesn't exist on this database is skipped rather than stopping the undo.
   if (m) {
     const tasks = (await db.from("match_tasks").select("id").eq("match_id", m)).data ?? [];
     if (tasks.length) await soft("task ticks", db.from("match_task_done").delete().in("task_id", tasks.map((t) => t.id)));
@@ -204,9 +270,10 @@ async function undo() {
 const cmd = process.argv[2];
 try {
   if (cmd === "seed") await seed();
+  else if (cmd === "open-post") await openPost(Number(process.argv[3]));
   else if (cmd === "undo") await undo();
   else {
-    console.error("Usage: node mobile/scripts/friendly-test-fixture.mjs seed|undo");
+    console.error("Usage: node mobile/scripts/friendly-test-fixture.mjs seed|open-post [pounds]|undo");
     process.exit(1);
   }
 } catch (err) {
