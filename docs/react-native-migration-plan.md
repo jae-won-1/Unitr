@@ -47,7 +47,7 @@ every organiser / admin / venue tool (out of v1 scope by design).
 
 **30 September, later:** Manage Match for friendlies is ported (Info /
 Attendance / Lineup / Tactics, match tasks, ringer requests — no money moves).
-Remaining order: Submit result → Post a match + Challenge (these hold and move
+Submit result is ported too (shared `lib/submit-result.ts`). Remaining order: Post a match + Challenge (these hold and move
 team money: review with the user first) → Book a pitch → Phase 7.
 
 **Decisions that shape the rest:**
