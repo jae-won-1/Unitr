@@ -338,9 +338,25 @@ finishing it makes a *new* account, because the app can't detect the collision i
 
 ### Book (`app/book/page.tsx`)
 
-Booking a pitch outright, no opponent needed. Purely the browser (`BookPitchPanel`) — the
-resulting bookings are listed on the Calendar, not here. A booked pitch can be turned into a
+Booking a pitch outright, no opponent needed. The browser (`BookPitchPanel`) and the phone
+(`mobile/src/app/book.tsx`) only pick the pitch, the hour and how to pay; the resulting
+bookings are listed on the Calendar, not here. A booked pitch can be turned into a
 **secured match post** that any team can join immediately, with no credit hold.
+
+**Booking runs on the server** (`/api/book/pitch`). It reads the price from `pitches`, checks
+the hour is still free with `lib/pitch-day.ts` — the same rule the day grid draws — takes the
+money and only then writes the `pitch_bookings` row. Four methods: `credit` (a team leader
+pays from the team's account), `saved_card` (charged off-session; `REQUIRES_ACTION` sends the
+payer to the card form), `intent` (a PaymentIntent tied to that pitch, date and hour by its
+metadata) and `card` (that intent confirmed — verified and booked, idempotent on the intent id,
+refunded if the hour was taken meanwhile). `autoPost` makes the booking a secured match post in
+the same request, for Post a Match's "Lock in a pitch first". It used to be the browser that
+inserted the booking, price included, and `/api/book/pay-credit` capped the debit at that
+client-written price — so a booking could be made at any price. Book a Pitch no longer calls
+`/api/book/pay-credit`, but `/play/create-tournament` still does for its multi-hour block, with
+the same weakness. `pitch_bookings` still accepts client inserts
+(`supabase_pitch_bookings_rls.sql`), because the venue portal and `/play/create-tournament`
+write their own — closing that is a separate lock-down.
 
 ### Messages / Profile
 
@@ -809,6 +825,8 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   team. The ledger functions (`hold_credit`, `release_hold`, `split_pitch_fee`,
   `reimburse_secured_pitch`, `capture_and_settle`) were callable by anyone with the anon key
   until `supabase_challenge_lockdown.sql` made them service-role only.
+- **Booking a pitch runs on the server too** (`/api/book/pitch`) — see Book above. If you
+  change how a direct booking is priced, paid or posted, change the route, not the panels.
 
 ## Technical areas still requiring real expertise
 

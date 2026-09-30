@@ -73,9 +73,31 @@ testing builds (Top Up; a shortfall opens it pre-filled) behind
   NMcaptain's "Test " team vs a temporary opponent team (testcaptain@gmail.com)
   and an open £2 post by that opponent to Challenge (`open-post [pounds]`).
 
-**Next on the port:** Book a Pitch (web `BookPitchPanel` + `/book`), which
-also unlocks "Lock in a pitch first" in Post a Match; then store submission
-(Phase 7) — raise the `TEST_TOP_UP` decision first.
+**Book a Pitch ported (30 Sep, evening)**, and moved onto a server route,
+because the web version trusted the browser for the price: it inserted the
+`pitch_bookings` row itself (price and "paid" included), and
+`/api/book/pay-credit` and the venue payout both capped against that
+client-written figure. **`/api/book/pitch`** now prices from `pitches`,
+checks the hour with the shared `lib/pitch-day.ts`, takes the money (team
+account / saved card off-session / a PaymentIntent it mints and later
+verifies) and writes the booking — plus the secured post for "Lock in a pitch
+first". `BookPitchPanel` calls it (UI unchanged); so do the phone's `book.tsx`
+and `book-pitch-sheet.tsx`. Checked: web `tsc`, `next build`, lint (one
+pre-existing warning); mobile `tsc` + `expo lint`; the route refuses an
+unsigned call on the local server. **Not yet run end to end.** It needs a test
+booking on a `[TEST]` pitch each way (team account, new card, saved card on a
+live key only), plus "Lock in a pitch first" from Post a Match. Each writes a
+real `pitch_bookings` row to the live database; cancel it afterwards.
+
+**Still open from this:** `/play/create-tournament` books its multi-hour
+block the old way (client insert + `/api/book/pay-credit`), and
+`pitch_bookings` still takes client inserts. So the hole is narrowed, not
+closed. A lock-down needs the venue portal and tournament creation on server
+routes first. `ResumePaymentBanner`'s `booking` kind could now finish an
+orphaned booking from the intent's metadata; it still only reports it.
+
+**Next on the port:** store submission (Phase 7) — raise the `TEST_TOP_UP`
+decision first.
 
 ## Earlier — 2026-09-30, Claude Code: React Native port, Phases 3–5 (overnight)
 
