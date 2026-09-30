@@ -58,3 +58,4 @@ expo-env.d.ts
 # @end expo-cli
 # ringer-test-fixture.mjs state between seed and undo
 scripts/.ringer-fixture.json
+scripts/.friendly-fixture.json
