@@ -10,10 +10,10 @@
 // picked option becomes its own post, with the squad's votes beside it — or
 // are entered by hand, up to five, exactly as on the web.
 //
-// Not in this first version (decided with the user, 30 Sep): the web's
-// "Lock in a pitch first" (book and pay up front — that's the Book a Pitch
-// port) and giving one pitch an alternative time. Every pitch option is posted
-// at the date's own time.
+// "Lock in a pitch first" opens Book a Pitch (book.tsx, ?post=1) at the first
+// date picked; the booking there becomes a secured post instead of this form.
+// Not in this version (decided with the user, 30 Sep): giving one pitch an
+// alternative time. Every pitch option is posted at the date's own time.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -178,6 +178,27 @@ export default function PostMatch() {
           Nothing is booked or paid yet. When a team accepts, the pitch they pick is booked and each team pays its half
           from its account.
         </Text>
+      </View>
+
+      {/* Lock in a pitch first? — Yes opens Book a Pitch at the first date
+          picked; booking there posts the slot as a secured match instead. */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Lock in a pitch first?</Text>
+        <Text style={styles.small}>
+          Book and pay for a pitch now — it&apos;s reserved straight away and any team can take the match instantly.
+          Your team is paid back their half as soon as one does. Otherwise nothing is booked until an opponent accepts,
+          and the fee is split then.
+        </Text>
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/book',
+              params: { post: '1', ...(dates[0] ? { date: dates[0].date, time: dates[0].time } : {}) },
+            })
+          }
+          style={styles.lockIn}>
+          <Text style={styles.lockInText}>Yes, book a pitch</Text>
+        </Pressable>
       </View>
 
       {!!error && (
@@ -511,6 +532,8 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       ...cardShadow,
     },
     cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    lockIn: { borderWidth: 1, borderColor: theme.accent, borderRadius: radius.btn, paddingVertical: 10, alignItems: 'center' },
+    lockInText: { color: theme.accentInk, fontFamily: fonts.bold, fontSize: 13 },
     cardTitle: { color: theme.textPrimary, fontFamily: fonts.semibold, fontSize: 14 },
     tag: { backgroundColor: theme.successBg, borderColor: theme.successBorder, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
     tagText: { color: theme.accentInk, fontFamily: fonts.medium, fontSize: 11 },

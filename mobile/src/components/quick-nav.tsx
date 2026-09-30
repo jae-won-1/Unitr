@@ -3,9 +3,9 @@
 // muscle memory. A slot the viewer can't use yet is greyed, never removed
 // (the house convention): a missing icon shifts everything beside it.
 //
-// Book a Pitch is greyed for a reason the web doesn't have — the screen isn't
-// on the phone yet. Post a Match is live for captains and co-captains. Tapping
-// a greyed slot says why rather than doing nothing.
+// Book a Pitch is open to everyone, as on the web; Post a Match is live for
+// captains and co-captains. Tapping a greyed slot says why rather than doing
+// nothing.
 
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
@@ -34,7 +34,7 @@ export function QuickNav({ role }: { role: string }) {
           icon: 'football-outline',
           reason: role === 'new_user' ? 'Join or register a team first.' : 'Only your captain can post a match.',
         },
-    { label: 'Book a Pitch', icon: 'tablet-landscape-outline', reason: 'Booking a pitch is on the web app for now.' },
+    { label: 'Book a Pitch', icon: 'tablet-landscape-outline', href: '/book' },
     { label: 'Transfer Market', icon: 'swap-horizontal', href: '/transfer' },
     { label: 'Stats', icon: 'stats-chart', href: '/profile' },
   ];
