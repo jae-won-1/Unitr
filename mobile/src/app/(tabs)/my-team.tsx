@@ -386,6 +386,7 @@ export default function MyTeam() {
           viewerId={user.id}
           viewerTeamId={teamId}
           onClose={() => setOpenEntry(null)}
+          onChanged={() => void load()}
         />
       )}
 

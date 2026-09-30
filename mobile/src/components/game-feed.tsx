@@ -44,12 +44,13 @@ import {
 } from '@/lib/game-feed';
 import { useRingerPosts, fmtRingerDate, type RingerPost } from '@/lib/ringer-feed';
 import { authedPost } from '@/lib/authed-fetch';
-import { fmtKickoff } from '@/lib/match-dates';
+import { fmtKickoff, toDateKey } from '@/lib/match-dates';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { paymentIntentIdFrom } from '~/payments';
 import { EnterTournamentSheet } from '~/components/enter-tournament-sheet';
 import { ChallengeSheet } from '~/components/challenge-sheet';
+import { DateDial, countByDate } from '~/components/date-dial';
 import { supabase } from '@/lib/supabase';
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
@@ -79,6 +80,9 @@ export function GameFeed({
 
   const [tab, setTab] = useState<Tab>('all');
   const [menuOpen, setMenuOpen] = useState(false);
+  // Shared across every category so narrowing the type keeps the day you're
+  // looking at, as on the web.
+  const [dateKey, setDateKey] = useState<string | null>(null);
 
   const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
   const [challenging, setChallenging] = useState<MatchPost | null>(null);
@@ -174,6 +178,23 @@ export function GameFeed({
   const showRingers = tab === 'all' || tab === 'ringer';
   const current = GAME_TYPES.find((t) => t.key === tab) ?? GAME_TYPES[0];
 
+  const onDay = <T,>(items: T[], getDate: (item: T) => string) =>
+    dateKey ? items.filter((i) => toDateKey(getDate(i)) === dateKey) : items;
+  const visiblePosts = onDay(posts, (p) => p.match_date);
+  const visibleTournaments = onDay(tournaments, (t) => t.matchDate);
+  const visibleRingers = onDay(ringers, (r) => r.date);
+
+  // One dial for the whole feed. In All it counts every source; narrowed, it
+  // counts only what's on screen, so a day never shows a dot for hidden games.
+  const dialCounts = useMemo(() => {
+    const merged = new Map<string, number>();
+    const add = (m: Map<string, number>) => m.forEach((n, k) => merged.set(k, (merged.get(k) ?? 0) + n));
+    if (showMatches) add(countByDate(posts, (p) => p.match_date));
+    if (showTournaments) add(countByDate(tournaments, (t) => t.matchDate));
+    if (showRingers) add(countByDate(ringers, (r) => r.date));
+    return merged;
+  }, [showMatches, showTournaments, showRingers, posts, tournaments, ringers]);
+
   // The ringer-only tab gets its own "not set up" message instead of this one
   // when the migration is missing, so this excludes that case rather than
   // showing both.
@@ -181,10 +202,10 @@ export function GameFeed({
     () =>
       !loading &&
       !(tab === 'ringer' && ringerUnavailable) &&
-      (!showMatches || posts.length === 0) &&
-      (!showTournaments || tournaments.length === 0) &&
-      (!showRingers || ringers.length === 0),
-    [loading, tab, ringerUnavailable, showMatches, showTournaments, showRingers, posts.length, tournaments.length, ringers.length],
+      (!showMatches || visiblePosts.length === 0) &&
+      (!showTournaments || visibleTournaments.length === 0) &&
+      (!showRingers || visibleRingers.length === 0),
+    [loading, tab, ringerUnavailable, showMatches, showTournaments, showRingers, visiblePosts.length, visibleTournaments.length, visibleRingers.length],
   );
 
   return (
@@ -216,6 +237,8 @@ export function GameFeed({
         </Pressable>
       </Modal>
 
+      <DateDial value={dateKey} onChange={setDateKey} counts={dialCounts} />
+
       {loading && (
         <View style={styles.card}>
           <ActivityIndicator color={theme.accent} />
@@ -224,16 +247,19 @@ export function GameFeed({
 
       {empty && (
         <View style={styles.card}>
-          <Text style={styles.emptyTitle}>Nothing open right now</Text>
+          <Text style={styles.emptyTitle}>
+            {dateKey ? 'Nothing on this day' : 'Nothing open right now'}
+          </Text>
           <Text style={styles.muted}>
-            Games other teams post will show up here. Check back, or post one of your own on
-            the web app.
+            {dateKey
+              ? 'Try another date, or pick All to see everything.'
+              : 'Games other teams post will show up here. Check back, or post one of your own.'}
           </Text>
         </View>
       )}
 
       {showMatches &&
-        posts.map((p) => (
+        visiblePosts.map((p) => (
           <MatchCard
             key={p.id}
             post={p}
@@ -259,7 +285,7 @@ export function GameFeed({
       )}
 
       {showTournaments &&
-        tournaments.map((t) => (
+        visibleTournaments.map((t) => (
           <TournamentCard
             key={t.id}
             t={t}
@@ -292,7 +318,7 @@ export function GameFeed({
       )}
 
       {showRingers &&
-        ringers.map((r) => (
+        visibleRingers.map((r) => (
           <RingerCard
             key={r.id}
             post={r}

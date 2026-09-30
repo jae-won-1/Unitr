@@ -8,6 +8,9 @@
 //
 // A tournament's CTA opens the phone's read-only tournament page, and a
 // friendly's (Manage match / View match details) opens app/match/[matchId].
+// A pitch booking carries "Turn into Match Post" — the same /api/book/post the
+// web sheet calls, which checks the booking is this team's and paid and takes
+// the price from it.
 // The rest route to screens that are not ported yet (Edit post) and are shown
 // GREYED with where to find them, rather than hidden: the
 // house convention, and it also tells a captain the mobile app knows the
@@ -17,7 +20,8 @@
 // clear the nav. React Native's Modal renders above everything by construction,
 // so there is nothing to coordinate.
 
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 
@@ -27,6 +31,7 @@ import {
   type CalendarEntry,
 } from '@/lib/calendar-entries';
 import { fmtKickoff } from '@/lib/match-dates';
+import { authedPost } from '@/lib/authed-fetch';
 import { TournamentFixtureList } from '~/components/tournament-fixture-list';
 import { fonts, radius } from '~/theme';
 import { kindTints } from '~/kind-style';
@@ -41,16 +46,22 @@ export function FixtureDetailSheet({
   viewerId,
   viewerTeamId,
   onClose,
+  onChanged,
 }: {
   entry: CalendarEntry | null;
   isCaptain: boolean;
   viewerId: string;
   viewerTeamId: string | null;
   onClose: () => void;
+  /** Something was written — the calendar reloads rather than patching state. */
+  onChanged: () => void;
 }) {
   const theme = useTheme();
   const dark = useIsDark();
   const styles = makeStyles(theme);
+  const [postingBooking, setPostingBooking] = useState(false);
+  // A fresh sheet always opens on the button, not a half-filled form.
+  useEffect(() => setPostingBooking(false), [entry?.id]);
 
   if (!entry) return null;
 
@@ -176,6 +187,34 @@ export function FixtureDetailSheet({
               </Pressable>
             )}
 
+            {entry.kind === 'booking' && (
+              entry.postId ? (
+                <Text style={[styles.ctaNote, styles.ctaSpaced]}>
+                  Already posted as a match — it’s under Your posts.
+                </Text>
+              ) : entry.badge === 'Cancelled' || !entry.isUpcoming ? null
+              : !isCaptain || !viewerTeamId ? (
+                <Text style={[styles.ctaNote, styles.ctaSpaced]}>
+                  Captain a team to turn a booking into a match post.
+                </Text>
+              ) : postingBooking ? (
+                <PostBookingForm
+                  bookingId={entry.id}
+                  teamId={viewerTeamId}
+                  styles={styles}
+                  theme={theme}
+                  onPosted={() => {
+                    onChanged();
+                    onClose();
+                  }}
+                />
+              ) : (
+                <Pressable onPress={() => setPostingBooking(true)} style={styles.ctaLive}>
+                  <Text style={styles.ctaLiveText}>Turn into Match Post</Text>
+                </Pressable>
+              )
+            )}
+
             {action && !action.href.startsWith('/play/tournament/') && !action.href.startsWith('/my-team/match/') && (
               // Greyed rather than hidden — the screen it opens is not ported.
               <View style={styles.ctaBox}>
@@ -191,6 +230,64 @@ export function FixtureDetailSheet({
         </View>
       </View>
     </Modal>
+  );
+}
+
+// The pitch is already paid for, so the post is "secured": any team can join
+// with no credit hold, and it sorts to the top of the feed.
+function PostBookingForm({
+  bookingId,
+  teamId,
+  onPosted,
+  styles,
+  theme,
+}: {
+  bookingId: string;
+  teamId: string;
+  onPosted: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  theme: ReturnType<typeof useTheme>;
+}) {
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const post = async () => {
+    setSaving(true);
+    setError(null);
+    const res = await authedPost('/api/book/post', { bookingId, teamId, description }).catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
+    setSaving(false);
+    if (!d?.ok) {
+      setError(d?.error ?? 'Couldn’t post the match.');
+      return;
+    }
+    onPosted();
+  };
+
+  return (
+    <View style={styles.ctaBox}>
+      <Text style={styles.formNote}>
+        Your pitch is already secured — any team can join straight away, no credit hold needed.
+        This post jumps to the top of the match feed.
+      </Text>
+      <Text style={styles.formLabel}>Description (optional)</Text>
+      <TextInput
+        value={description}
+        onChangeText={setDescription}
+        placeholder="Anything the opponent should know…"
+        placeholderTextColor={theme.textSecondary}
+        style={styles.input}
+      />
+      {error && <Text style={styles.error}>{error}</Text>}
+      <Pressable onPress={post} disabled={saving} style={[styles.ctaLive, saving && { opacity: 0.5 }]}>
+        {saving ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.ctaLiveText}>Post Match (Pitch Secured)</Text>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -266,6 +363,21 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       borderTopColor: theme.border,
       gap: 6,
     },
+    ctaSpaced: { marginTop: 18 },
+    formNote: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
+    formLabel: { color: theme.textPrimary, fontFamily: fonts.medium, fontSize: 12, marginTop: 6 },
+    input: {
+      backgroundColor: theme.surface,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: theme.textPrimary,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+    },
+    error: { color: '#DC2626', fontFamily: fonts.regular, fontSize: 12 },
     ctaLive: {
       marginTop: 18,
       backgroundColor: theme.accent,

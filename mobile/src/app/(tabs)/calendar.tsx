@@ -11,9 +11,6 @@
 //   * Upcoming ALWAYS renders above Past, and both sections stay on screen when
 //     empty, so the page keeps a fixed shape and nothing jumps around.
 //   * The "Your posts" chip only exists for captains — a player has none.
-//
-// Not yet ported: the 📅 month-grid sheet and FixtureDetailSheet (tapping an
-// entry). Those land next; entries are inert for now rather than half-wired.
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -331,6 +328,7 @@ export default function Calendar() {
           viewerId={user.id}
           viewerTeamId={teamId}
           onClose={() => setOpen(null)}
+          onChanged={() => void load()}
         />
       )}
     </View>
