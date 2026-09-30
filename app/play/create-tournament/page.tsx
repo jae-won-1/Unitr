@@ -84,6 +84,7 @@ export default function CreateTournamentPage() {
   useEffect(() => {
     supabase.from("pitches").select("id, name, address, price_per_hour, formats, venue_owner_id")
       .not("venue_owner_id", "is", null)
+      .eq("is_verified", true)
       .order("rating", { ascending: false })
       .then(({ data }) => { setPitches((data ?? []) as Pitch[]); setLoadingPitches(false); });
   }, []);

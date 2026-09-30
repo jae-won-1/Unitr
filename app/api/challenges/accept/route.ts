@@ -88,9 +88,9 @@ export async function POST(req: NextRequest) {
     //     (lib/secured-booking.ts).
     let feePence: number;
     const { data: pitchRow } = pitch.id
-      ? await adminSupabase.from("pitches").select("price_per_hour").eq("id", pitch.id).maybeSingle()
+      ? await adminSupabase.from("pitches").select("price_per_hour, is_verified").eq("id", pitch.id).maybeSingle()
       : { data: null };
-    if (!pitchRow) return fail(400, "BAD_PITCH", "That pitch isn't bookable any more.");
+    if (!pitchRow || !pitchRow.is_verified) return fail(400, "BAD_PITCH", "That pitch isn't bookable any more.");
     const listPence = Math.round(Number(pitchRow.price_per_hour) * 100);
     if (isSecured) {
       const secured = await securedBookingPence(post.secured_booking_id, post.team_id as string, {
