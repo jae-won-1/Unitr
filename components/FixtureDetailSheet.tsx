@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { KIND_LABEL, KIND_STYLE, fixtureAction, type CalendarEntry } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
-import { pitchFormatFor } from "@/lib/formations";
+import { authedPost } from "@/lib/authed-fetch";
 import { loadResultScorers, OUTCOME_TEXT, type FixtureResult, type ResultScorer } from "@/lib/match-results";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import TournamentFixtureList from "@/components/TournamentFixtureList";
@@ -24,13 +24,8 @@ import { takeDownPost } from "@/lib/take-down-post";
 // pitch option — that's what the lineup board reads once the game is confirmed.
 export type ViewerTeam = { id: string; name: string; location: string; format: string | null } | null;
 
-function getDayName(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()];
-}
-
 // ── Turn a booking into a match post ──────────────────────────────────
-// Moved here verbatim from the retired MyBookingsPanel. The pitch is already
+// Moved here from the retired MyBookingsPanel; /api/book/post writes it. The pitch is already
 // paid for, so the post is "secured": any team can join with no credit hold,
 // and it sorts to the top of the home feed.
 function PostBookingForm({ entry, team, onPosted }: {
@@ -46,42 +41,14 @@ function PostBookingForm({ entry, team, onPosted }: {
     setSaving(true);
     setError(null);
 
-    const { data: booking } = await supabase.from("pitch_bookings")
-      .select("id, pitch_id, booked_by, total_price_pence, start_time, match_date")
-      .eq("id", entry.id).maybeSingle();
-    if (!booking) { setSaving(false); setError("Couldn't find that booking."); return; }
-
-    const { data: pitch } = await supabase.from("pitches")
-      .select("name, address, formats").eq("id", booking.pitch_id).maybeSingle();
-
-    const { data: post, error: postErr } = await supabase.from("match_posts").insert({
-      team_id: team.id,
-      captain_id: booking.booked_by,
-      team_name: team.name,
-      team_location: team.location ?? "",
-      match_date: booking.match_date,
-      match_time: booking.start_time,
-      day_name: getDayName(booking.match_date),
-      pitch_options: [{
-        id: booking.pitch_id,
-        name: pitch?.name ?? "Pitch",
-        address: pitch?.address ?? "",
-        price: booking.total_price_pence / 100,
-        format: pitchFormatFor(pitch?.formats, team.format),
-        distance: "",
-        time: booking.start_time,
-      }],
-      description: description.trim() || null,
-      status: "open",
-      payment_mode: "secured",
-      hold_pence: 0,
-      pitch_secured: true,
-      secured_booking_id: booking.id,
-    }).select("id").single();
-
-    if (postErr) { setSaving(false); setError(postErr.message); return; }
-
-    await supabase.from("pitch_bookings").update({ post_id: post.id }).eq("id", booking.id);
+    // Written on the server, which checks the booking is this team's and
+    // paid and takes the price from it — a secured post makes the opponent
+    // reimburse half of that price.
+    const res = await authedPost("/api/book/post", { bookingId: entry.id, teamId: team.id, description })
+      .catch(() => null);
+    const d = res ? await res.json().catch(() => null) : null;
+    if (!d?.ok) { setSaving(false); setError(d?.error ?? "Couldn't post the match."); return; }
+    const post = { id: d.postId as string };
     setSaving(false);
     onPosted(post.id);
   };

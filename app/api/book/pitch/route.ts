@@ -6,7 +6,7 @@ import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { feeOn } from "@/lib/uniter-fee";
 import { isKickoffPast } from "@/lib/match-dates";
 import { pitchFormatFor } from "@/lib/formations";
-import { bookingEndTime, dayNameOf, loadPitchDay } from "@/lib/pitch-day";
+import { dayNameOf, loadPitchDay } from "@/lib/pitch-day";
 import { payVenue } from "@/lib/venue-payout";
 
 // Book a pitch outright — one hour, no opponent. Book a Pitch on the web
@@ -29,7 +29,8 @@ import { payVenue } from "@/lib/venue-payout";
 //   card       — that intent has been confirmed; verify it and book.
 //
 // `autoPost` (with a teamId) turns the new booking straight into a secured
-// match post, as "Lock in a pitch first" on Post a Match expects.
+// match post, as "Lock in a pitch first" on Post a Match expects. `hours` +
+// `tournamentTitle` (credit only) book a tournament's multi-hour block.
 //
 // Errors carry a `code`: SLOT_TAKEN, SHORTFALL (with shortfallPence),
 // REQUIRES_ACTION (the saved card needs the payer — use the card form).
@@ -45,9 +46,15 @@ const fail = (status: number, code: string, error: string, extra: Record<string,
 type Team = { id: string; name: string; location: string | null; format: string | null; captain_id: string };
 type Pitch = { id: string; name: string; address: string | null; price_per_hour: number; formats: string[] | null };
 
-async function slotIsFree(pitchId: string, date: string, time: string): Promise<boolean> {
+// Every hour of the block has to be free (a tournament books several).
+async function slotIsFree(pitchId: string, date: string, time: string, hours = 1): Promise<boolean> {
   const day = await loadPitchDay(adminSupabase, [pitchId], date);
-  return (day[pitchId] ?? []).some((s) => s.time === time && s.status === "available");
+  const start = Number(time.slice(0, 2));
+  for (let h = start; h < start + hours; h++) {
+    const t = `${String(h).padStart(2, "0")}:00`;
+    if (!(day[pitchId] ?? []).some((s) => s.time === t && s.status === "available")) return false;
+  }
+  return true;
 }
 
 export async function POST(req: NextRequest) {
@@ -63,6 +70,10 @@ export async function POST(req: NextRequest) {
     const time = String(body.time ?? "");
     const teamId = body.teamId ? String(body.teamId) : null;
     const autoPost = Boolean(body.autoPost);
+    // A tournament's block: several hours, from the team's account, under the
+    // tournament's name (/play/create-tournament). Everything else is one hour.
+    const hours = body.hours === undefined ? 1 : Number(body.hours);
+    const tournamentTitle = typeof body.tournamentTitle === "string" ? body.tournamentTitle.trim().slice(0, 120) : "";
 
     if (!["credit", "saved_card", "intent", "card"].includes(method)) {
       return NextResponse.json({ error: "Unknown payment method" }, { status: 400 });
@@ -77,6 +88,12 @@ export async function POST(req: NextRequest) {
     if (teamId && !(await isTeamLeader(callerId, teamId))) {
       return forbidden("Only the captain or a co-captain can book for the team.");
     }
+    if (!Number.isInteger(hours) || hours < 1 || hours > 12 || Number(time.slice(0, 2)) + hours > 23) {
+      return NextResponse.json({ error: "That block doesn't fit in the day." }, { status: 400 });
+    }
+    if (hours > 1 && (method !== "credit" || autoPost)) {
+      return NextResponse.json({ error: "A multi-hour block is paid from the team's account." }, { status: 400 });
+    }
     if ((method === "credit" || autoPost) && !teamId) {
       return NextResponse.json({ error: "Only a team's captain can pay from its account or post a match." }, { status: 400 });
     }
@@ -90,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "That pitch isn't bookable." }, { status: 404 });
     }
     const pitch = pitchRow as Pitch;
-    const pitchFeePence = Math.round(Number(pitch.price_per_hour) * 100);
+    const pitchFeePence = Math.round(Number(pitch.price_per_hour) * 100) * hours;
     const uniterFeePence = feeOn(pitchFeePence);
     const totalPence = pitchFeePence + uniterFeePence;
     if (!(pitchFeePence > 0)) {
@@ -126,7 +143,7 @@ export async function POST(req: NextRequest) {
           console.error(`book/pitch: refund failed for ${intentId}:`, e));
         return fail(409, "SLOT_TAKEN", "Someone booked that hour while you were paying. Your payment has been refunded.", { refunded: true });
       }
-    } else if (!(await slotIsFree(pitchId, date, time))) {
+    } else if (!(await slotIsFree(pitchId, date, time, hours))) {
       return fail(409, "SLOT_TAKEN", "That hour has just been booked. Pick another.");
     }
 
@@ -213,9 +230,9 @@ export async function POST(req: NextRequest) {
       booked_by: callerId,
       match_date: date,
       start_time: time,
-      end_time: bookingEndTime(time),
-      booker_name: bookerName,
-      booking_type: "platform",
+      end_time: `${String(Number(time.slice(0, 2)) + hours).padStart(2, "0")}:00`,
+      booker_name: tournamentTitle ? `Tournament: ${tournamentTitle}` : bookerName,
+      booking_type: tournamentTitle ? "open_match" : "platform",
       total_price_pence: pitchFeePence,
       player_count: 0,
       per_player_pence: 0,

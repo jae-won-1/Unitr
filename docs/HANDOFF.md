@@ -89,11 +89,38 @@ booking on a `[TEST]` pitch each way (team account, new card, saved card on a
 live key only), plus "Lock in a pitch first" from Post a Match. Each writes a
 real `pitch_bookings` row to the live database; cancel it afterwards.
 
-**Still open from this:** `/play/create-tournament` books its multi-hour
-block the old way (client insert + `/api/book/pay-credit`), and
-`pitch_bookings` still takes client inserts. So the hole is narrowed, not
-closed. A lock-down needs the venue portal and tournament creation on server
-routes first. `ResumePaymentBanner`'s `booking` kind could now finish an
+User tested a booking on 1 Oct (landed in Stripe) and it was pushed.
+
+**Booking lock-down, 1 Oct (Claude Code).** Every browser write of a booking's
+price or payment moved to the server, then the database was closed behind it:
+
+- `/play/create-tournament` books its block through `/api/book/pitch`
+  (`hours`, `tournamentTitle`); `/api/book/pay-credit` deleted.
+- "Turn into Match Post" → `/api/book/post`.
+- **Challenge priced from the post** — `pitch_options` is poster-written, so
+  a post could list a pitch at 1p, or a secured post at £500 with the
+  challenger reimbursing half. `/api/challenges/accept` now reads
+  `pitches.price_per_hour`, or for a secured post a booking that
+  `lib/secured-booking.ts` proves was paid through Uniter. It pays the venue
+  itself; the web and phone no longer call `/api/connect/venue-transfer`,
+  which is now staff-only.
+- **`supabase_pitch_bookings_lockdown.sql` — the user must run it after the
+  deploy.** `pitches` and `pitch_bookings` were both `update using (true)`:
+  anyone could re-price any pitch or edit any booking. Now bookings are the
+  server's or the owning venue's, pitches their owner's (Connect /
+  verification / rating columns server-only), and secured posts server-only.
+  No open secured posts existed when checked, so nothing to migrate.
+
+Checked: web `tsc`, lint on every touched file, `next build`; mobile `tsc`.
+**Not run end to end:** Challenge (ordinary and secured), hosting a
+tournament, Turn into Match Post, and the venue calendar's manual booking —
+the last is the one the SQL could break if a venue's pitches aren't owned by
+its account. The SQL file ends with console checks that should fail.
+
+**Still open:** anyone can register a pitch (`/pitches/register`) and it is
+bookable at once. Its bookings pay Uniter, and a payout needs Connect
+onboarding, but whether an unverified pitch should be bookable at all is a
+product call. `ResumePaymentBanner`'s `booking` kind could now finish an
 orphaned booking from the intent's metadata; it still only reports it.
 
 **Next on the port:** store submission (Phase 7) — raise the `TEST_TOP_UP`

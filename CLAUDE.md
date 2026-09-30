@@ -352,11 +352,24 @@ metadata) and `card` (that intent confirmed — verified and booked, idempotent 
 refunded if the hour was taken meanwhile). `autoPost` makes the booking a secured match post in
 the same request, for Post a Match's "Lock in a pitch first". It used to be the browser that
 inserted the booking, price included, and `/api/book/pay-credit` capped the debit at that
-client-written price — so a booking could be made at any price. Book a Pitch no longer calls
-`/api/book/pay-credit`, but `/play/create-tournament` still does for its multi-hour block, with
-the same weakness. `pitch_bookings` still accepts client inserts
-(`supabase_pitch_bookings_rls.sql`), because the venue portal and `/play/create-tournament`
-write their own — closing that is a separate lock-down.
+client-written price — so a booking could be made at any price. `/play/create-tournament`
+books its block through the same route (`hours` + `tournamentTitle`, team account only), and
+`/api/book/pay-credit` is gone. "Turn into Match Post" on a Calendar booking is
+`/api/book/post`.
+
+**Who may write a booking** (`supabase_pitch_bookings_lockdown.sql`): the server, or the venue
+that owns the pitch — its calendar, manual bookings and payment marks. Only the server sets
+`stripe_payment_intent_id` or `post_id`. `pitches` are writable only by their own
+`venue_owner_id`, who can't change the owner, Connect account, `payouts_enabled`,
+`is_verified` or `rating`. Before this, `pitches` and `pitch_bookings` were both
+`update using (true)` — anyone could re-price any pitch, which the server routes read.
+
+**A secured post has to rest on a booking paid through Uniter** (`lib/secured-booking.ts`):
+made by one of the posting team's leaders, paid, not cancelled, no dearer than the pitch's list
+price for its length, and carrying proof only the server can write — a Stripe intent id or a
+`booking_capture` ledger debit. A venue's own manual booking, or one on a pitch the booker
+registered themselves, has neither. Secured posts are written only by `/api/book/pitch` and
+`/api/book/post`; the lock-down refuses one from a browser.
 
 ### Messages / Profile
 
@@ -666,6 +679,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
 | `supabase_challenge_lockdown.sql` | Ledger functions service-role only; `match_posts` writes limited to that team's leaders; no client writes to `challenges`; `matches` updatable only by the two teams' leaders. **Run only once `/api/challenges/accept` is deployed**; after `supabase_credit_ledger.sql`, `supabase_secured_posts.sql`, `supabase_core_tables_rls.sql`, `supabase_co_captains.sql` |
+| `supabase_pitch_bookings_lockdown.sql` | `pitch_bookings` writable only by the server or the pitch's own venue; `pitches` only by their owner, with Connect / verification / rating columns server-only; secured match posts server-only. **Run only once `/api/book/pitch` and `/api/book/post` are deployed**; after `supabase_pilot_security.sql`, `supabase_co_captains.sql`, `supabase_challenge_lockdown.sql` |
 | `supabase_match_result_deletes.sql` | DELETE policies on `match_results` / `match_result_players` for team leaders — without them re-submitting a result and clearing a score conflict silently did nothing; run after `supabase_match_results.sql` and `supabase_co_captains.sql` |
 | `supabase_match_suggestions.sql` | Squad players suggesting games to the captain |
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
@@ -812,8 +826,8 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 - **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
   the amount all come from the session and the database. `/api/connect/venue-transfer` is the
   sharp end: it moves real money out of the platform balance, so it caps every transfer at
-  `payoutCeilingPence` — what the referenced booking or tournament actually costs — and
-  refuses callers with no stake in the fixture. The transfer itself lives in
+  `payoutCeilingPence` — what the referenced booking or tournament actually costs — and is
+  staff-only; the apps' payouts run inside the routes that took the money. The transfer itself lives in
   `lib/venue-payout.ts` so `/api/tournaments/join` can pay a venue by calling the function
   rather than forging an HTTP request to a route that now demands a session.
 - **Accepting a match post runs on the server** (`/api/challenges/accept`). It claims the
@@ -824,8 +838,14 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   team. The ledger functions (`hold_credit`, `release_hold`, `split_pitch_fee`,
   `reimburse_secured_pitch`, `capture_and_settle`) were callable by anyone with the anon key
   until `supabase_challenge_lockdown.sql` made them service-role only.
+  The fee comes from `pitches.price_per_hour`, or for a secured post from its verified booking
+  (`lib/secured-booking.ts`) — never from the post's `pitch_options`, which the poster writes.
+  The route pays the venue itself.
 - **Booking a pitch runs on the server too** (`/api/book/pitch`) — see Book above. If you
   change how a direct booking is priced, paid or posted, change the route, not the panels.
+- **Venue payouts happen inside the route that took the money** (`payVenue` from
+  `/api/book/pitch`, `/api/challenges/accept`, `/api/tournaments/join`).
+  `/api/connect/venue-transfer` is staff-only, kept for reconciling a failed transfer by hand.
 
 ## Technical areas still requiring real expertise
 

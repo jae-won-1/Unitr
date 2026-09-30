@@ -130,22 +130,7 @@ export default function ChallengePanel({
 
     setMatchId(data.matchId);
 
-    // ── Cash side: pay the venue (Stripe Connect, test mode) ──
-    // The teams settled the fee between them in credit on the server; separately,
-    // Uniter transfers the full pitch fee out to the venue's connected
-    // account. Best-effort — a missing/unconnected venue account or empty
-    // test balance must not block match confirmation. Records a
-    // venue_transfers row either way so credit↔cash can be reconciled.
-    if (data.pitchId) {
-      authedPost("/api/connect/venue-transfer", {
-        pitchId: data.pitchId,
-        bookingId: data.pitchBookingId ?? null,
-        matchId: data.matchId,
-        teamId: post.team_id,
-        amountPence: data.feePence,
-      }).catch(() => {});
-    }
-
+    // The venue is paid by the route itself (Stripe Connect, test mode).
     setConfirmed(true);
     onMatched(post.id);
   };
