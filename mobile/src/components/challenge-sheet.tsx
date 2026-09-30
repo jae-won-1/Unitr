@@ -129,16 +129,7 @@ export function ChallengeSheet({
     const res = await authedPost('/api/challenges/accept', { postId: post.id, pitchOptionId: selected, teamId });
     const data: AcceptResult = await res.json().catch(() => ({}));
     if (data.matchId) {
-      // Paying the venue is its own authed, capped route, fired as the web does.
-      if (data.pitchId) {
-        void authedPost('/api/connect/venue-transfer', {
-          pitchId: data.pitchId,
-          bookingId: data.pitchBookingId ?? null,
-          matchId: data.matchId,
-          teamId: post.team_id,
-          amountPence: data.feePence,
-        }).catch(() => {});
-      }
+      // The route pays the venue itself.
       setStage({ kind: 'done' });
       onMatched();
       return true;
