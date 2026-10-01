@@ -11,7 +11,7 @@
 // and the role status strips above it. Those are the largest remaining pieces
 // of Phase 2 and are marked as absent rather than faked.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -52,9 +52,17 @@ export default function Home() {
   const { teamId, canManage, reload: reloadLead } = useLeadership(user?.id);
   // Keyed on the user id, which doesn't change when the player's team does —
   // see the same note on My Team.
+  // Team Money and the feed re-read on these: refreshKey on every return to
+  // Home (a challenge or top-up elsewhere moves the balance), feedKey only on
+  // pull-to-refresh, since remounting the feed resets its type and date.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [feedKey, setFeedKey] = useState(0);
+  const focusedOnce = useRef(false);
   useFocusEffect(
     useCallback(() => {
       void reloadLead();
+      if (focusedOnce.current) setRefreshKey((k) => k + 1);
+      focusedOnce.current = true;
     }, [reloadLead]),
   );
 
@@ -91,6 +99,8 @@ export default function Home() {
           refreshing={refreshing}
           onRefresh={() => {
             setRefreshing(true);
+            setRefreshKey((k) => k + 1);
+            setFeedKey((k) => k + 1);
             void load();
           }}
           tintColor={theme.textSecondary}
@@ -105,7 +115,7 @@ export default function Home() {
       <QuickNav role={role} />
 
       {user && (
-        <StatusStrips role={role} userId={user.id} teamId={teamId} isCaptain={canManage} />
+        <StatusStrips role={role} userId={user.id} teamId={teamId} isCaptain={canManage} refreshKey={refreshKey} />
       )}
 
       <Text style={styles.sectionTitle}>Next fixture</Text>
@@ -127,6 +137,7 @@ export default function Home() {
       <Text style={styles.sectionTitle}>Find a game</Text>
       {user && (
         <GameFeed
+          key={feedKey}
           teamId={teamId}
           userId={user.id}
           // Captain or co-captain. useLeadership resolves this properly — a

@@ -52,11 +52,16 @@ export function StatusStrips({
   userId,
   teamId,
   isCaptain,
+  refreshKey = 0,
 }: {
   role: string;
   userId: string;
   teamId: string | null;
   isCaptain: boolean;
+  /** Bumped by Home on pull-to-refresh and on returning to the tab. Team
+   *  credit moves from other screens and other devices, and nothing here
+   *  would otherwise notice. */
+  refreshKey?: number;
 }) {
   const theme = useTheme();
   const styles = makeStyles(theme);
@@ -155,6 +160,17 @@ export function StatusStrips({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Everything this strip shows, re-read in place — no spinner, so a refresh
+  // never blanks the strip.
+  useEffect(() => {
+    if (refreshKey === 0) return;
+    void load();
+    void reloadDues();
+    void reloadFee();
+    void reloadPoll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new key should trigger this
+  }, [refreshKey]);
 
   useEffect(() => {
     if (!isCaptain || !poll) {
