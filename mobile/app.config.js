@@ -10,6 +10,9 @@ module.exports = {
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'uniter',
+  // The EAS project lives under the uniter_uk organisation on expo.dev.
+  owner: 'uniter_uk',
+  extra: { eas: { projectId: '74a6aa43-efeb-4d45-8ea5-490662730133' } },
   // LIGHT, not automatic. The web app is light-only — it has no dark theme to
   // mirror — so following the device's dark mode made the mobile app diverge
   // from it on exactly the phones most likely to be used. Locking this also
