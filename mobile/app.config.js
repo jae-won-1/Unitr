@@ -20,6 +20,15 @@ module.exports = {
   // screens. Revisit only if the web app gains a dark theme, at which point
   // src/theme.ts already has the palette.
   userInterfaceStyle: 'light',
+  // Over-the-air updates (EAS Update). The runtime version is the app version:
+  // an update only reaches binaries built from the same `version`, so anything
+  // that changes native code (a new package, a plugin, an SDK bump) needs a
+  // version bump AND a new store build — a JS-only change ships with
+  // `npm run update`. Channels are set per build profile in eas.json.
+  runtimeVersion: { policy: 'appVersion' },
+  updates: {
+    url: 'https://u.expo.dev/74a6aa43-efeb-4d45-8ea5-490662730133',
+  },
   ios: {
     bundleIdentifier: 'com.uniter.app',
     supportsTablet: false,
