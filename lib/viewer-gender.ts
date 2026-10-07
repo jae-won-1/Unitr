@@ -45,19 +45,32 @@ export async function loadViewerGender(userId: string): Promise<ViewerGender> {
   };
 }
 
+// Everything showing a default view hears when the player answers, so the
+// phone's feeds move onto it without a reload (the web reloads anyway).
+const answered = new Set<() => void>();
+
 /** The viewer's gender view, or NO_VIEWER_GENDER while signed out / loading. */
 export function useViewerGender(userId: string | null | undefined) {
   const [state, setState] = useState<{ viewer: ViewerGender; loading: boolean }>({
     viewer: NO_VIEWER_GENDER, loading: Boolean(userId),
   });
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    const listener = () => setVersion((v) => v + 1);
+    answered.add(listener);
+    return () => { answered.delete(listener); };
+  }, []);
 
   useEffect(() => {
     if (!userId) { setState({ viewer: NO_VIEWER_GENDER, loading: false }); return; }
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true }));
+    // Only the first load shows as loading; a refresh after an answer swaps
+    // the view in place rather than blanking the filter chips.
+    if (version === 0) setState((s) => ({ ...s, loading: true }));
     loadViewerGender(userId).then((viewer) => { if (!cancelled) setState({ viewer, loading: false }); });
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, version]);
 
   return state;
 }
@@ -70,5 +83,6 @@ export function defaultGenderFilter(viewer: ViewerGender): GenderFilter {
 /** Save the player's own answer (the one-time prompt, Edit Profile has its own). */
 export async function saveOwnGender(userId: string, gender: string): Promise<string | null> {
   const { error } = await supabase.from("profiles").update({ gender }).eq("id", userId);
+  if (!error) answered.forEach((listener) => listener());
   return error?.message ?? null;
 }

@@ -6,18 +6,19 @@ Codex (or anyone working on `main`): when you add or change a web **screen**,
 or change a shared rule in `lib/` / `app/api/` / SQL without changing its
 shape, add a line here. Claude Code ports it on `mobile` and removes the line.
 
-- **Men's and women's** (7 Oct, see below). Shared code changed shape:
-  `MatchPost`, `Tournament` and `RingerPost` gained a required
-  `genderCategory` (anything building one by hand needs `rowCategory(row)`
-  from `lib/gender.ts`); `saveTeamDetails` takes an optional
-  `genderCategory`; `searchPlayers` / `searchTeams` take an optional gender
-  filter. Screens to port: the Men's/Women's/All chips on the game feed, Fill
-  In and the Transfer Market (opening on `useViewerGender`), the greyed
-  "Women's teams only" actions, the picker on Register Team / Team Settings,
-  and the one-time `GenderPrompt` sheet. The phone's gender option list must
-  drop Non-binary, or a save fails once the SQL is run.
+- *(none — men's and women's was ported 7 Oct, see below)*
 
 ## Latest completed work — 2026-10-07, Claude Code on `main`: men's and women's
+
+**Status (later on 7 Oct):** the user ran `supabase_gender_categories.sql`
+(success), `main` was pushed (`169d615`) and the user checked the live site.
+The phone port is done on `mobile` (see `mobile/PORTED.md`): feed, Fill In,
+Transfer Market, find-a-team, Register Team, Team Settings, the tournament
+page's Enter, and the one-time question. One shared change came with it —
+`saveOwnGender` now notifies every `useViewerGender`, so the phone's feeds
+move onto a fresh answer without the reload the web does. Phone checked with
+`tsc`, `expo lint` and an iOS `expo export`; **not yet tried on a device.**
+
 
 The next event is a women's tournament; until now everything was implicitly
 men's. Decisions (user, 7 Oct): `profiles.gender` is male / female / prefer
