@@ -8,7 +8,7 @@
 // referees, and the table — plus Enter for a captain whose team isn't in yet.
 //
 // Same queries as the web page, including its fallbacks: open_matches without
-// the admin-hosting columns (42703), and tournament_matches without
+// the admin-hosting and gender columns (42703), and tournament_matches without
 // duration_minutes (lib/optional-column). Standings from the shared
 // computeStandings, from played games only.
 
@@ -25,6 +25,7 @@ import { loadLeadership } from '@/lib/team-leadership';
 import { fmtKickoff, isKickoffPast } from '@/lib/match-dates';
 import { fmtFee } from '@/lib/joining-fee';
 import type { Tournament as FeedTournament } from '@/lib/game-feed';
+import { genderCategoryLabel, rowCategory, wrongCategoryReason, type GenderCategory } from '@/lib/gender';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { EnterTournamentSheet } from '~/components/enter-tournament-sheet';
@@ -46,6 +47,8 @@ type Event = {
   organiser_team_name: string | null;
   organiser_admin_id: string | null;
   organiser_admin_name: string | null;
+  /** Men's or women's — absent before supabase_gender_categories.sql. */
+  gender_category?: string | null;
 };
 type JoinedTeam = { team_id: string; team_name: string };
 type Fixture = {
@@ -89,6 +92,7 @@ export default function TournamentPage() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [myTeamName, setMyTeamName] = useState<string | null>(null);
+  const [myTeamCategory, setMyTeamCategory] = useState<GenderCategory | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [discount, setDiscount] = useState(0);
   const [entering, setEntering] = useState(false);
@@ -98,12 +102,12 @@ export default function TournamentPage() {
     if (!id) return;
     let { data: om, error } = await supabase
       .from('open_matches')
-      .select(`${BASE_COLS}, organiser_admin_id, organiser_admin_name`)
+      .select(`${BASE_COLS}, organiser_admin_id, organiser_admin_name, gender_category`)
       .eq('id', id)
       .maybeSingle();
     if (error?.code === '42703') {
       const { data: legacy } = await supabase.from('open_matches').select(BASE_COLS).eq('id', id).maybeSingle();
-      om = legacy ? { ...legacy, organiser_admin_id: null, organiser_admin_name: null } : null;
+      om = legacy ? { ...legacy, organiser_admin_id: null, organiser_admin_name: null, gender_category: null } : null;
     }
     if (!om) {
       setEvent(null);
@@ -135,7 +139,9 @@ export default function TournamentPage() {
       setCanManage(Boolean(led?.canManage));
       if (led?.teamId) {
         const [{ data: t }, { data: inv }] = await Promise.all([
-          supabase.from('teams').select('name').eq('id', led.teamId).maybeSingle(),
+          // select('*') so the category is read once its migration has run,
+          // and nothing fails if it hasn't.
+          supabase.from('teams').select('*').eq('id', led.teamId).maybeSingle(),
           supabase
             .from('tournament_invitations')
             .select('discount_pence')
@@ -145,6 +151,7 @@ export default function TournamentPage() {
             .maybeSingle(),
         ]);
         setMyTeamName((t?.name as string | undefined) ?? null);
+        setMyTeamCategory(t ? rowCategory(t) : null);
         setDiscount((inv?.discount_pence as number | undefined) ?? 0);
       }
     }
@@ -178,7 +185,12 @@ export default function TournamentPage() {
   const entered = !!myTeamId && teams.some((t) => t.team_id === myTeamId);
   const full = teams.length >= event.max_teams;
   const started = isKickoffPast(event.match_date, event.start_time);
-  const canEnter = canManage && !!myTeamId && !entered && !full && event.status !== 'cancelled' && !started;
+  const category = rowCategory(event);
+  // Only a team of the event's own category can enter (lib/gender.ts) — the
+  // database refuses the rest, so the button is greyed with the reason.
+  const wrongCategory = !!myTeamCategory && myTeamCategory !== category;
+  const couldEnter = canManage && !!myTeamId && !entered && !full && event.status !== 'cancelled' && !started;
+  const canEnter = couldEnter && !wrongCategory;
   const standings = fixtures.some((f) => f.status === 'played') ? computeStandings(teams, fixtures) : [];
 
   // The shape the enter sheet (and the feed it came from) expects.
@@ -198,6 +210,7 @@ export default function TournamentPage() {
     organiserAdminName: event.organiser_admin_name,
     joinedTeamIds: teams.map((t) => t.team_id),
     inviteDiscountPence: discount,
+    genderCategory: category,
   };
 
   return (
@@ -219,8 +232,13 @@ export default function TournamentPage() {
         <Text style={styles.backText}>Back</Text>
       </Pressable>
 
-      <View style={styles.kindPill}>
-        <Text style={styles.kindText}>{kindLabel}</Text>
+      <View style={styles.pills}>
+        <View style={styles.kindPill}>
+          <Text style={styles.kindText}>{kindLabel}</Text>
+        </View>
+        <View style={styles.kindPill}>
+          <Text style={styles.kindText}>{genderCategoryLabel(category)}</Text>
+        </View>
       </View>
       <Text style={styles.heading}>{event.title}</Text>
       <Text style={styles.sub}>by {organiser}</Text>
@@ -262,6 +280,11 @@ export default function TournamentPage() {
         <Pressable onPress={() => setEntering(true)} style={styles.primary}>
           <Text style={styles.primaryText}>Enter {myTeamName ?? 'your team'}</Text>
         </Pressable>
+      )}
+      {couldEnter && wrongCategory && (
+        <View style={[styles.primary, styles.primaryOff]}>
+          <Text style={[styles.primaryText, styles.primaryOffText]}>{wrongCategoryReason(category)}</Text>
+        </View>
       )}
 
       <Text style={styles.section}>Teams</Text>
@@ -376,6 +399,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.background },
     back: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start' },
     backText: { color: theme.textPrimary, fontFamily: fonts.medium, fontSize: 15 },
+    pills: { flexDirection: 'row', gap: 6 },
     kindPill: {
       alignSelf: 'flex-start',
       backgroundColor: '#FFF6E3',
@@ -419,6 +443,8 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     enteredText: { color: theme.accentInk, fontFamily: fonts.semibold, fontSize: 12 },
     primary: { backgroundColor: theme.accent, borderRadius: radius.btn, paddingVertical: 14, alignItems: 'center' },
     primaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15 },
+    primaryOff: { backgroundColor: theme.surface2, opacity: 0.7 },
+    primaryOffText: { color: theme.textSecondary },
     section: {
       color: theme.textSecondary,
       fontFamily: fonts.semibold,

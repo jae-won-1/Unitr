@@ -39,6 +39,8 @@ import {
   type CoCaptainRow,
 } from '@/lib/team-leadership';
 import { TEAM_FORMATS, TEAM_LEVELS, loadTeamDetails, saveTeamDetails, teamFormats } from '@/lib/team-options';
+import { rowCategory, type GenderCategory } from '@/lib/gender';
+import { GenderCategoryPicker } from '~/components/gender-controls';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
@@ -55,6 +57,7 @@ type TeamRow = {
   format: string | null;
   formats?: string[] | null;
   joining_fee_pence?: number | null;
+  gender_category?: string | null;
 };
 
 export default function TeamSettings() {
@@ -124,6 +127,7 @@ function Details({ teamId, onName, styles, theme }: { teamId: string; onName: (n
   const [level, setLevel] = useState('');
   const [formats, setFormats] = useState<string[]>([]);
   const [description, setDescription] = useState('');
+  const [genderCategory, setGenderCategory] = useState<GenderCategory>('male');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +142,7 @@ function Details({ teamId, onName, styles, theme }: { teamId: string; onName: (n
         setLevel(team.level ?? '');
         setFormats(teamFormats(team));
         setDescription(team.description ?? '');
+        setGenderCategory(rowCategory(team));
       }
       setLoaded(true);
     });
@@ -159,10 +164,17 @@ function Details({ teamId, onName, styles, theme }: { teamId: string; onName: (n
       level,
       description: description.trim(),
       formats,
+      genderCategory,
     });
     setSaving(false);
     if (res.error) {
-      setError("Couldn't save your team details. Please try again.");
+      // The database refuses a category change while the team is in, or
+      // hosting, an upcoming event (supabase_gender_categories.sql).
+      setError(
+        /upcoming events/.test(res.error)
+          ? "You can't switch between men's and women's while your team is entered in, or hosting, an upcoming event. Nothing was saved."
+          : "Couldn't save your team details. Please try again.",
+      );
       return;
     }
     setSaved(true);
@@ -192,6 +204,10 @@ function Details({ teamId, onName, styles, theme }: { teamId: string; onName: (n
 
       <Text style={styles.label}>Location</Text>
       <TextInput value={location} onChangeText={(v) => { touch(); setLocation(v); }} style={styles.input} placeholder="e.g. Hackney, London" placeholderTextColor={theme.textSecondary} />
+
+      <Text style={styles.label}>Men&apos;s or women&apos;s team</Text>
+      <GenderCategoryPicker value={genderCategory} onChange={(v) => { touch(); setGenderCategory(v); }} />
+      <Text style={styles.hint}>Decides which events your team can enter and which games it posts. Your open posts move with it.</Text>
 
       <Text style={styles.label}>Level</Text>
       <View style={styles.chips}>

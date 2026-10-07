@@ -18,6 +18,9 @@ import { TEAM_LEVELS, teamFormatLabel } from '@/lib/team-options';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { initialsOf } from '~/components/chat';
+import { genderCategoryLabel, matchesGenderFilter, rowCategory, type GenderFilter } from '@/lib/gender';
+import { defaultGenderFilter, useViewerGender } from '@/lib/viewer-gender';
+import { GenderFilterChips } from '~/components/gender-controls';
 
 type Team = {
   id: string;
@@ -28,6 +31,7 @@ type Team = {
   format: string | null;
   formats?: string[] | null;
   joining_fee_pence?: number | null;
+  gender_category?: string | null;
   captain_id: string;
 };
 
@@ -40,6 +44,11 @@ export function BrowseTeams({ userId, onRequested }: { userId: string; onRequest
   const [busyId, setBusyId] = useState<string | null>(null);
   const [level, setLevel] = useState('All');
   const [q, setQ] = useState('');
+  // Opens on the player's own gender; prefer-not-to-say sees every team
+  // (lib/viewer-gender.ts).
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(userId);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const gender = genderPick ?? defaultGenderFilter(viewerGender);
 
   useEffect(() => {
     void (async () => {
@@ -57,9 +66,10 @@ export function BrowseTeams({ userId, onRequested }: { userId: string; onRequest
     const needle = q.trim().toLowerCase();
     return teams
       .filter((t) => t.captain_id !== userId)
+      .filter((t) => matchesGenderFilter(rowCategory(t), gender))
       .filter((t) => level === 'All' || t.level === level)
       .filter((t) => !needle || t.name.toLowerCase().includes(needle) || (t.location ?? '').toLowerCase().includes(needle));
-  }, [teams, level, q, userId]);
+  }, [teams, gender, level, q, userId]);
 
   const request = async (teamId: string) => {
     setBusyId(teamId);
@@ -71,7 +81,7 @@ export function BrowseTeams({ userId, onRequested }: { userId: string; onRequest
     }
   };
 
-  if (loading) return <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} />;
+  if (loading || genderLoading) return <ActivityIndicator color={theme.accent} style={{ marginTop: 20 }} />;
 
   return (
     <View style={{ gap: 12 }}>
@@ -86,6 +96,7 @@ export function BrowseTeams({ userId, onRequested }: { userId: string; onRequest
           autoCorrect={false}
         />
       </View>
+      <GenderFilterChips value={gender} onChange={setGenderPick} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
         {['All', ...TEAM_LEVELS].map((l) => (
           <Pressable key={l} onPress={() => setLevel(l)} style={[styles.chip, level === l && styles.chipOn]}>
@@ -122,6 +133,9 @@ export function BrowseTeams({ userId, onRequested }: { userId: string; onRequest
             </View>
             {!!t.description && <Text style={styles.desc} numberOfLines={3}>{t.description}</Text>}
             <View style={styles.tags}>
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{genderCategoryLabel(rowCategory(t))}</Text>
+              </View>
               {!!teamFormatLabel(t) && (
                 <View style={styles.tag}>
                   <Text style={styles.tagText}>{teamFormatLabel(t)}</Text>

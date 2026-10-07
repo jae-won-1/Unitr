@@ -9,7 +9,7 @@
 // picked up. On a phone that's a session refresh: RoleContext only
 // re-resolves when the user object changes, and a refresh hands it a new one.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,6 +17,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { TEAM_FORMATS, TEAM_LEVELS } from '@/lib/team-options';
+import { categoryForGender, type GenderCategory } from '@/lib/gender';
+import { GenderCategoryPicker } from '~/components/gender-controls';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 
@@ -30,28 +32,48 @@ export default function CreateTeam() {
   const [format, setFormat] = useState('');
   const [description, setDescription] = useState('');
   const [fee, setFee] = useState('');
+  // Men's or women's: which events the team can enter and which games it
+  // posts. Starts on the captain's own answer; prefer-not-to-say picks.
+  const [genderCategory, setGenderCategory] = useState<GenderCategory | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!user) return;
+    void supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => setGenderCategory((prev) => prev ?? categoryForGender(data?.gender)));
+  }, [user]);
+
   const submit = async () => {
     setError(null);
-    if (!name.trim() || !location.trim() || !level || !format) return setError('Please fill in all required fields.');
+    if (!name.trim() || !location.trim() || !level || !format || !genderCategory) return setError('Please fill in all required fields.');
     if (!user) return setError('You must be signed in to create a team.');
     const feePence = fee ? Math.round(parseFloat(fee) * 100) : 0;
     if (!Number.isFinite(feePence) || feePence < 0) return setError('Joining fee must be a positive amount, or empty for none.');
 
     setBusy(true);
-    const base = {
+    // A column whose migration hasn't been run is dropped and the team made
+    // without it, as on the web.
+    const row: Record<string, unknown> = {
       name: name.trim(),
       location: location.trim(),
       level,
       format,
       description: description.trim(),
       captain_id: user.id,
+      joining_fee_pence: feePence,
+      gender_category: genderCategory,
     };
-    let { error: insertError } = await supabase.from('teams').insert({ ...base, joining_fee_pence: feePence });
-    if (insertError && /joining_fee_pence/.test(insertError.message)) {
-      ({ error: insertError } = await supabase.from('teams').insert(base));
+    let { error: insertError } = await supabase.from('teams').insert(row);
+    for (const optional of ['gender_category', 'joining_fee_pence']) {
+      if (insertError && insertError.message.includes(optional)) {
+        delete row[optional];
+        ({ error: insertError } = await supabase.from('teams').insert(row));
+      }
     }
     if (insertError) {
       setBusy(false);
@@ -82,6 +104,9 @@ export default function CreateTeam() {
         <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="e.g. Hackney United" placeholderTextColor={theme.textSecondary} />
         <Text style={styles.label}>Location *</Text>
         <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="e.g. Hackney, London" placeholderTextColor={theme.textSecondary} />
+        <Text style={styles.label}>Men&apos;s or women&apos;s team *</Text>
+        <GenderCategoryPicker value={genderCategory} onChange={setGenderCategory} />
+        <Text style={styles.hint}>Your team plays and enters events in this category.</Text>
         <Text style={styles.label}>Level *</Text>
         <View style={styles.chips}>{TEAM_LEVELS.map((l) => chip(l, level === l, () => setLevel(l)))}</View>
         <Text style={styles.label}>Players per side *</Text>

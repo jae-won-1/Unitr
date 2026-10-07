@@ -52,6 +52,15 @@ import { EnterTournamentSheet } from '~/components/enter-tournament-sheet';
 import { ChallengeSheet } from '~/components/challenge-sheet';
 import { DateDial, countByDate } from '~/components/date-dial';
 import { supabase } from '@/lib/supabase';
+import {
+  categoryForGender,
+  matchesGenderFilter,
+  wrongCategoryReason,
+  type GenderCategory,
+  type GenderFilter,
+} from '@/lib/gender';
+import { defaultGenderFilter, useViewerGender } from '@/lib/viewer-gender';
+import { GenderBadge, GenderFilterChips } from '~/components/gender-controls';
 
 type Tab = 'all' | 'matches' | 'tournaments' | 'ringer';
 
@@ -84,9 +93,9 @@ export function GameFeed({
   // looking at, as on the web.
   const [dateKey, setDateKey] = useState<string | null>(null);
 
-  const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
+  const { posts: allPosts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
   const [challenging, setChallenging] = useState<MatchPost | null>(null);
-  const { tournaments, loading: tourLoading, markJoined } = useOpenTournaments(teamId);
+  const { tournaments: allTournaments, loading: tourLoading, markJoined } = useOpenTournaments(teamId);
   const [entering, setEntering] = useState<Tournament | null>(null);
   // The join route records the team's name on the entry, as the web passes it.
   const [teamName, setTeamName] = useState<string | null>(null);
@@ -101,11 +110,31 @@ export function GameFeed({
   }, [canAct, teamId]);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
   const {
-    posts: ringers,
+    posts: allRingers,
     loading: ringerLoading,
     unavailable: ringerUnavailable,
     reload: reloadRingers,
   } = useRingerPosts(userId);
+
+  // Men's / Women's / All, as on the web (lib/viewer-gender.ts): opens on the
+  // team's category, else the viewer's own gender, else All. A game the team
+  // can't take stays browsable under All with its action greyed — the
+  // database refuses a team entering outside its own category.
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(userId);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const genderFilter = genderPick ?? defaultGenderFilter(viewerGender);
+  const posts = useMemo(() => allPosts.filter((p) => matchesGenderFilter(p.genderCategory, genderFilter)), [allPosts, genderFilter]);
+  const tournaments = useMemo(
+    () => allTournaments.filter((t) => matchesGenderFilter(t.genderCategory, genderFilter)),
+    [allTournaments, genderFilter],
+  );
+  const ringers = useMemo(() => allRingers.filter((r) => matchesGenderFilter(r.genderCategory, genderFilter)), [allRingers, genderFilter]);
+  const teamCategory = viewerGender.teamCategory;
+  const ownCategory = categoryForGender(viewerGender.gender);
+  const teamBlocked = (c: GenderCategory) => (teamCategory && teamCategory !== c ? wrongCategoryReason(c) : null);
+  const ringerBlocked = (c: GenderCategory) => (ownCategory && ownCategory !== c ? wrongCategoryReason(c, 'players') : null);
+  const hiddenByGender =
+    allPosts.length + allTournaments.length + allRingers.length > posts.length + tournaments.length + ringers.length;
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [joiningId, setJoiningId] = useState<string | null>(null);
 
@@ -237,6 +266,8 @@ export function GameFeed({
         </Pressable>
       </Modal>
 
+      {!genderLoading && <GenderFilterChips value={genderFilter} onChange={setGenderPick} />}
+
       <DateDial value={dateKey} onChange={setDateKey} counts={dialCounts} />
 
       {loading && (
@@ -248,10 +279,14 @@ export function GameFeed({
       {empty && (
         <View style={styles.card}>
           <Text style={styles.emptyTitle}>
-            {dateKey ? 'Nothing on this day' : 'Nothing open right now'}
+            {dateKey
+              ? 'Nothing on this day'
+              : hiddenByGender
+                ? `No ${genderFilter === 'female' ? "women's" : "men's"} games open right now`
+                : 'Nothing open right now'}
           </Text>
           <Text style={styles.muted}>
-            {dateKey
+            {dateKey || hiddenByGender
               ? 'Try another date, or pick All to see everything.'
               : 'Games other teams post will show up here. Check back, or post one of your own.'}
           </Text>
@@ -271,6 +306,7 @@ export function GameFeed({
             suggestUnavailable={unavailable}
             onSuggest={() => suggest(p.id, 'match')}
             onChallenge={() => setChallenging(p)}
+            blockedReason={teamBlocked(p.genderCategory)}
           />
         ))}
 
@@ -297,6 +333,7 @@ export function GameFeed({
             suggestUnavailable={unavailable}
             onSuggest={() => suggest(t.id, 'tournament')}
             onEnter={() => setEntering(t)}
+            blockedReason={teamBlocked(t.genderCategory)}
           />
         ))}
 
@@ -326,6 +363,7 @@ export function GameFeed({
             styles={styles}
             joining={joiningId === r.id}
             onJoin={() => joinRingerSpot(r)}
+            blockedReason={ringerBlocked(r.genderCategory)}
           />
         ))}
     </View>
@@ -342,6 +380,7 @@ function Actions({
   onSuggest,
   commitLabel,
   onCommit,
+  blockedReason,
   styles,
 }: {
   teamId: string | null;
@@ -353,9 +392,19 @@ function Actions({
   commitLabel: string;
   /** Present when the commit flow is ported; absent keeps it greyed. */
   onCommit?: () => void;
+  /** "Women's teams only" — the other category; greyed for every role. */
+  blockedReason: string | null;
   styles: ReturnType<typeof makeStyles>;
 }) {
   if (!teamId) return null;
+
+  if (blockedReason) {
+    return (
+      <View style={[styles.commitBtn, styles.commitBtnOff]}>
+        <Text style={styles.commitBtnOffText}>{blockedReason}</Text>
+      </View>
+    );
+  }
 
   if (canAct && onCommit) {
     return (
@@ -413,6 +462,7 @@ function MatchCard({
   suggestUnavailable,
   onSuggest,
   onChallenge,
+  blockedReason,
 }: {
   post: MatchPost;
   theme: ReturnType<typeof useTheme>;
@@ -423,6 +473,7 @@ function MatchCard({
   suggestUnavailable: boolean;
   onSuggest: () => void;
   onChallenge: () => void;
+  blockedReason: string | null;
 }) {
   // Posts carry several pitch options; the cheapest is what the card quotes,
   // since the challenging captain picks which one at challenge time.
@@ -436,6 +487,7 @@ function MatchCard({
         <View style={[styles.kindBadge, { backgroundColor: '#E7F8EC', borderColor: '#B7E8C6' }]}>
           <Text style={[styles.kindBadgeText, { color: '#0E7A3C' }]}>Match</Text>
         </View>
+        <GenderBadge category={post.genderCategory} />
         {post.pitchSecured && (
           <View style={styles.securedBadge}>
             <Ionicons name="lock-closed" size={10} color={theme.accent2} />
@@ -478,6 +530,7 @@ function MatchCard({
           onSuggest={onSuggest}
           commitLabel="Challenge"
           onCommit={onChallenge}
+          blockedReason={blockedReason}
           styles={styles}
         />
       </View>
@@ -495,6 +548,7 @@ function TournamentCard({
   suggestUnavailable,
   onSuggest,
   onEnter,
+  blockedReason,
 }: {
   t: Tournament;
   theme: ReturnType<typeof useTheme>;
@@ -505,6 +559,7 @@ function TournamentCard({
   suggestUnavailable: boolean;
   onSuggest: () => void;
   onEnter: () => void;
+  blockedReason: string | null;
 }) {
   const entered = !!teamId && t.joinedTeamIds.includes(teamId);
   const full = t.joinedCount >= t.maxTeams;
@@ -519,6 +574,7 @@ function TournamentCard({
             {t.matchType === 'league' ? 'League' : t.matchType === 'match' ? 'Event' : 'Tournament'}
           </Text>
         </View>
+        <GenderBadge category={t.genderCategory} />
         {entered && (
           <View style={styles.enteredBadge}>
             <Ionicons name="checkmark-circle" size={11} color={theme.accentInk} />
@@ -568,6 +624,7 @@ function TournamentCard({
             onSuggest={onSuggest}
             commitLabel="Enter"
             onCommit={onEnter}
+            blockedReason={blockedReason}
             styles={styles}
           />
         )}
@@ -586,12 +643,16 @@ function RingerCard({
   styles,
   joining,
   onJoin,
+  blockedReason,
 }: {
   post: RingerPost;
   theme: ReturnType<typeof useTheme>;
   styles: ReturnType<typeof makeStyles>;
   joining: boolean;
   onJoin: () => void;
+  /** "Women only" for a player whose own answer is the other gender; the
+   *  create-intent route refuses it too, before any card is asked for. */
+  blockedReason: string | null;
 }) {
   return (
     <View style={styles.card}>
@@ -599,6 +660,7 @@ function RingerCard({
         <View style={[styles.kindBadge, { backgroundColor: '#EAF0FF', borderColor: '#C6D4FF' }]}>
           <Text style={[styles.kindBadgeText, { color: theme.accent2 }]}>Fill In</Text>
         </View>
+        <GenderBadge category={post.genderCategory} />
         {post.joined && (
           <View style={styles.enteredBadge}>
             <Ionicons name="checkmark-circle" size={11} color={theme.accentInk} />
@@ -638,6 +700,10 @@ function RingerCard({
         <Text style={styles.price}>{money(post.pricePence)}</Text>
         {post.joined ? (
           <Text style={styles.actionNote}>You&apos;re in the squad</Text>
+        ) : blockedReason ? (
+          <View style={[styles.commitBtn, styles.commitBtnOff]}>
+            <Text style={styles.commitBtnOffText}>{blockedReason}</Text>
+          </View>
         ) : (
           <Pressable
             onPress={joining ? undefined : onJoin}

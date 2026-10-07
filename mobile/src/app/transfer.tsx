@@ -40,6 +40,9 @@ import {
 } from '@/lib/transfer-market';
 import { playsPosition, positionLabel } from '@/lib/profile-options';
 import { teamFormatLabel } from '@/lib/team-options';
+import { genderCategoryLabel, rowCategory, type GenderFilter } from '@/lib/gender';
+import { defaultGenderFilter, useViewerGender } from '@/lib/viewer-gender';
+import { GenderFilterChips } from '~/components/gender-controls';
 import { fonts, radius, cardShadow } from '~/theme';
 import { useTheme } from '~/use-theme';
 import { initialsOf } from '~/components/chat';
@@ -66,6 +69,12 @@ export default function TransferMarket() {
   const [inboxOpen, setInboxOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewing, setViewing] = useState<string | null>(null);
+  // Men's / Women's / All for both tabs, opening on the viewer's team's
+  // category, else their own gender (lib/viewer-gender.ts). Filtered in the
+  // query, because the search stops at 30 rows.
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(user?.id);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const genderFilter = genderPick ?? defaultGenderFilter(viewerGender);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 250);
@@ -91,17 +100,19 @@ export default function TransferMarket() {
   }, [refresh]);
 
   useEffect(() => {
+    // Wait for the default filter, or the first search runs unfiltered.
+    if (genderLoading) return;
     let cancelled = false;
     setLoading(true);
     const run =
       tab === 'players'
-        ? searchPlayers(debounced, user?.id).then((r) => !cancelled && setPlayers(r))
-        : searchTeams(debounced).then((r) => !cancelled && setTeams(r));
+        ? searchPlayers(debounced, user?.id, genderFilter).then((r) => !cancelled && setPlayers(r))
+        : searchTeams(debounced, genderFilter).then((r) => !cancelled && setTeams(r));
     void run.finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [tab, debounced, user?.id]);
+  }, [tab, debounced, user?.id, genderFilter, genderLoading]);
 
   const visiblePlayers = players.filter(
     (p) => (pos === 'All' || playsPosition(p, pos)) && (exp === 'All' || p.experience === exp),
@@ -157,6 +168,8 @@ export default function TransferMarket() {
           ))}
         </View>
 
+        <GenderFilterChips value={genderFilter} onChange={setGenderPick} />
+
         {tab === 'players' && (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
@@ -179,7 +192,11 @@ export default function TransferMarket() {
         {!loading && count === 0 && (
           <View style={styles.card}>
             <Text style={[styles.small, { textAlign: 'center' }]}>
-              {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.` : `No ${tab} on Uniter yet.`}
+              {debounced.trim()
+                ? `No ${tab} match “${debounced.trim()}”.`
+                : genderFilter !== 'all'
+                  ? `No ${genderFilter === 'female' ? "women's" : "men's"} ${tab} yet — pick All to see everyone.`
+                  : `No ${tab} on Uniter yet.`}
             </Text>
           </View>
         )}
@@ -315,7 +332,7 @@ function TeamCard({
   const join = edges.joins.get(team.id) ?? 'none';
   // One team at a time: being in any squad blocks asking to join another.
   const elsewhere = !!viewer?.myTeamId && viewer.myTeamId !== team.id;
-  const meta = [team.location, teamFormatLabel(team), team.level, `${team.members} member${team.members === 1 ? '' : 's'}`]
+  const meta = [genderCategoryLabel(rowCategory(team)), team.location, teamFormatLabel(team), team.level, `${team.members} member${team.members === 1 ? '' : 's'}`]
     .filter(Boolean)
     .join(' · ');
 

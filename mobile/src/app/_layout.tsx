@@ -24,6 +24,7 @@ import {
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { RoleProvider, useRole } from '@/contexts/RoleContext';
 import { colors } from '~/theme';
+import { GenderPrompt } from '~/components/gender-prompt';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -98,7 +99,13 @@ function Gate({ children }: { children: React.ReactNode }) {
       </View>
     );
   }
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* Asks a player with no gender on file, once — renders nothing otherwise. */}
+      <GenderPrompt />
+    </>
+  );
 }
 
 export default function RootLayout() {
