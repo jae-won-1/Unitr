@@ -26,7 +26,6 @@ export const AGE_GROUPS: Option[] = [
 export const GENDERS: Option[] = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
-  { value: "non_binary", label: "Non-binary" },
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
