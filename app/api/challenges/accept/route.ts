@@ -5,6 +5,7 @@ import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-au
 import { feeOn } from "@/lib/uniter-fee";
 import { payVenue } from "@/lib/venue-payout";
 import { securedBookingPence } from "@/lib/secured-booking";
+import { teamCategoryRefusal } from "@/lib/gender-entry";
 
 // Accept a match post: the challenger's captain (or a co-captain) takes one of
 // the poster's pitch options, and both teams pay their half of the pitch out of
@@ -72,6 +73,11 @@ export async function POST(req: NextRequest) {
     const { data: team } = await adminSupabase
       .from("teams").select("id, name, captain_id").eq("id", teamId).maybeSingle();
     if (!team) return fail(404, "NOT_FOUND", "Team not found.");
+
+    // Men's teams play men's games, women's teams women's — refused before the
+    // post is claimed; the database refuses the challenge row as well.
+    const wrongCategory = await teamCategoryRefusal(teamId, { table: "match_posts", id: postId });
+    if (wrongCategory) return fail(409, "WRONG_CATEGORY", wrongCategory);
 
     const pitch = ((post.pitch_options ?? []) as PitchOption[]).find((p) => p.id === pitchOptionId);
     if (!pitch) return fail(400, "BAD_PITCH", "That pitch isn't one of this post's options.");

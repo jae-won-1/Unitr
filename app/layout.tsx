@@ -5,6 +5,7 @@ import BottomNav from "@/components/BottomNav";
 import TopBar from "@/components/TopBar";
 import ResumePaymentBanner from "@/components/ResumePaymentBanner";
 import ProfileGate from "@/components/ProfileGate";
+import GenderPrompt from "@/components/GenderPrompt";
 import { RoleProvider } from "@/contexts/RoleContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -65,6 +66,9 @@ export default function RootLayout({
                 lib/pending-payment.ts. Renders nothing when there isn't one. */}
             <ResumePaymentBanner />
             <BottomNav />
+            {/* Asks a player with no gender on file, once — see
+                components/GenderPrompt. Renders nothing otherwise. */}
+            <GenderPrompt />
           </RoleProvider>
         </AuthProvider>
       </body>

@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { actingCaptainId, loadLeadership } from "@/lib/team-leadership";
 import { withOptionalColumn } from "@/lib/optional-column";
+import type { GenderFilter } from "@/lib/gender";
 
 // Data layer for the Transfer Market. Kept out of the page because every card
 // needs the viewer's *relationship* to the row it renders, not just the row —
@@ -16,6 +17,8 @@ export type MarketPlayer = {
   positions?: string[] | null;
   location: string | null;
   experience: string | null;
+  /** profiles.gender — the Men's/Women's filter reads it through lib/gender.ts. */
+  gender?: string | null;
   teamName: string | null; // null = free agent, the ones captains are hunting
 };
 
@@ -27,6 +30,8 @@ export type MarketTeam = {
   /** Primary format; every format the team plays is `formats`. */
   format: string | null;
   formats?: string[] | null;
+  /** Men's or women's (lib/gender.ts); absent before its migration. */
+  gender_category?: string | null;
   captain_id: string;
   members: number;
 };
@@ -91,16 +96,23 @@ async function teamNamesForPlayers(playerIds: string[]): Promise<Map<string, str
   return out;
 }
 
-export async function searchPlayers(query: string, viewerId: string | undefined): Promise<MarketPlayer[]> {
-  // `positions` is dropped from the select when the multi-select migration
-  // hasn't been run; the position filter then matches the primary one.
-  const { data } = await withOptionalColumn<MarketPlayer[]>("positions", (include) => {
+// `gender` narrows in the query rather than after it, because the search stops
+// at 30 rows — filtering afterwards could leave a women's search empty while
+// thirty men filled the page. A player who preferred not to say only appears
+// under "all" (lib/gender.ts).
+export async function searchPlayers(
+  query: string, viewerId: string | undefined, gender: GenderFilter = "all",
+): Promise<MarketPlayer[]> {
+  // `positions` and `gender` are dropped from the select when their migrations
+  // haven't been run; the position filter then matches the primary one.
+  const { data } = await withOptionalColumn<MarketPlayer[]>(["positions", "gender"], (include) => {
     let q = supabase.from("profiles")
       .select(include
-        ? "id, full_name, position, positions, location, experience"
+        ? "id, full_name, position, positions, location, experience, gender"
         : "id, full_name, position, location, experience")
       .eq("account_type", "player")
       .limit(30);
+    if (include && gender !== "all") q = q.eq("gender", gender);
     if (query.trim()) q = q.ilike("full_name", `%${query.trim()}%`);
     return q as unknown as PromiseLike<{ data: MarketPlayer[] | null; error: { message: string } | null }>;
   });
@@ -111,13 +123,14 @@ export async function searchPlayers(query: string, viewerId: string | undefined)
   return rows.map((p) => ({ ...p, teamName: teamNames.get(p.id) ?? null })) as MarketPlayer[];
 }
 
-export async function searchTeams(query: string): Promise<MarketTeam[]> {
-  const { data: rows } = await withOptionalColumn<MarketTeam[]>("formats", (include) => {
+export async function searchTeams(query: string, gender: GenderFilter = "all"): Promise<MarketTeam[]> {
+  const { data: rows } = await withOptionalColumn<MarketTeam[]>(["formats", "gender_category"], (include) => {
     let q = supabase.from("teams")
       .select(include
-        ? "id, name, location, level, format, formats, captain_id"
+        ? "id, name, location, level, format, formats, gender_category, captain_id"
         : "id, name, location, level, format, captain_id")
       .limit(30);
+    if (include && gender !== "all") q = q.eq("gender_category", gender);
     if (query.trim()) q = q.ilike("name", `%${query.trim()}%`);
     return q as unknown as PromiseLike<{ data: MarketTeam[] | null; error: { message: string } | null }>;
   });

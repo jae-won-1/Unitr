@@ -11,6 +11,9 @@ import {
 } from "@/lib/transfer-market";
 import { playsPosition, positionLabel } from "@/lib/profile-options";
 import { teamFormatLabel } from "@/lib/team-options";
+import { genderCategoryLabel, rowCategory, type GenderFilter } from "@/lib/gender";
+import { defaultGenderFilter, useViewerGender } from "@/lib/viewer-gender";
+import { GenderFilterChips } from "@/components/GenderControls";
 
 // Two-sided discovery. Players browse teams to find somewhere to play; captains
 // browse players to fill gaps in the squad. Same page, same search, one toggle —
@@ -163,7 +166,7 @@ function TeamCard({ team, edges, viewer, signedIn, onAction, onNeedAuth }: {
   // specifically — one team at a time either way.
   const alreadyPlacedElsewhere = !!viewer?.myTeamId && viewer.myTeamId !== team.id;
 
-  const meta = [team.location, teamFormatLabel(team), team.level, `${team.members} member${team.members === 1 ? "" : "s"}`]
+  const meta = [genderCategoryLabel(rowCategory(team)), team.location, teamFormatLabel(team), team.level, `${team.members} member${team.members === 1 ? "" : "s"}`]
     .filter(Boolean).join(" · ");
 
   const run = async () => {
@@ -313,6 +316,12 @@ export default function TransferMarketPage() {
   const [debounced, setDebounced] = useState("");
   const [posFilter, setPosFilter] = useState("All");
   const [expFilter, setExpFilter] = useState("All");
+  // Men's / Women's / All, for both tabs. Opens on the viewer's team's
+  // category, else their own gender (lib/gender.ts) — a women's captain is
+  // scouting women, and a woman looking for a squad is looking at women's teams.
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(user?.id);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const genderFilter = genderPick ?? defaultGenderFilter(viewerGender);
 
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [players, setPlayers] = useState<MarketPlayer[]>([]);
@@ -344,14 +353,17 @@ export default function TransferMarketPage() {
   useEffect(() => { refreshEdges(); }, [refreshEdges]);
 
   useEffect(() => {
+    // Wait for the default filter, or the first search runs unfiltered and
+    // flashes the wrong list.
+    if (genderLoading) return;
     let cancelled = false;
     setLoading(true);
     const run = tab === "players"
-      ? searchPlayers(debounced, user?.id).then((r) => { if (!cancelled) setPlayers(r); })
-      : searchTeams(debounced).then((r) => { if (!cancelled) setTeams(r); });
+      ? searchPlayers(debounced, user?.id, genderFilter).then((r) => { if (!cancelled) setPlayers(r); })
+      : searchTeams(debounced, genderFilter).then((r) => { if (!cancelled) setTeams(r); });
     run.finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, debounced, user?.id]);
+  }, [tab, debounced, user?.id, genderFilter, genderLoading]);
 
   const visiblePlayers = players.filter((p) =>
     // Any position the player covers, not only their primary one.
@@ -422,6 +434,10 @@ export default function TransferMarketPage() {
         ))}
       </div>
 
+      <div className="mb-3">
+        <GenderFilterChips value={genderFilter} onChange={setGenderPick} />
+      </div>
+
       {tab === "players" && (
         <div className="flex flex-col gap-2 mb-4">
           <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -450,7 +466,9 @@ export default function TransferMarketPage() {
         {!loading && count === 0 && (
           <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
             <p className="text-sm text-text-secondary">
-              {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.` : `No ${tab} on Uniter yet.`}
+              {debounced.trim() ? `No ${tab} match “${debounced.trim()}”.`
+                : genderFilter !== "all" ? `No ${genderFilter === "female" ? "women's" : "men's"} ${tab} yet — pick All to see everyone.`
+                : `No ${tab} on Uniter yet.`}
             </p>
           </div>
         )}

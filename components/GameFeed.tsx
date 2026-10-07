@@ -19,6 +19,10 @@ import {
   type Tournament,
 } from "@/lib/game-feed";
 
+import { matchesGenderFilter, wrongCategoryReason, type GenderCategory, type GenderFilter } from "@/lib/gender";
+import { defaultGenderFilter, useViewerGender } from "@/lib/viewer-gender";
+import { GenderBadge, GenderFilterChips } from "@/components/GenderControls";
+
 export type { MatchPost, PitchOption, Tournament };
 
 // The home feed for someone who has a team. Same three categories a teamless
@@ -160,6 +164,18 @@ function SuggestButton({ postId, kind, suggested, unavailable, onSuggest, compac
   );
 }
 
+// The action slot for a game the viewer's team can't take — the other gender
+// category. Greyed rather than hidden, per the house convention.
+function WrongCategory({ reason, compact = false }: { reason: string; compact?: boolean }) {
+  return (
+    <span className={compact
+      ? "px-4 py-2 rounded-full bg-surface-2 text-text-secondary text-[13px] font-bold whitespace-nowrap flex-none opacity-70 cursor-not-allowed"
+      : "block w-full py-2.5 rounded-btn bg-surface-2 text-text-secondary text-center text-sm font-bold opacity-70 cursor-not-allowed"}>
+      {reason}
+    </span>
+  );
+}
+
 // ── Cards ─────────────────────────────────────────────────────
 // The rebrand turns the feed row on its side: a pitch thumbnail on the left,
 // and everything else in one column that ends with the price and the action on
@@ -186,6 +202,7 @@ function MatchPostCard({ post, children }: { post: MatchPost; children: React.Re
           ) : post.availabilityMatch ? (
             <span className="text-[10px] font-extrabold bg-accent-2 text-white px-2 py-0.5 rounded-full">MATCHES AVAILABILITY</span>
           ) : null}
+          <GenderBadge category={post.genderCategory} />
         </div>
         <p className="text-base font-bold tracking-[-0.01em] uppercase truncate">{post.team}</p>
         <p className="text-xs font-medium text-text-secondary truncate">{meta}</p>
@@ -251,6 +268,7 @@ function TournamentPostCard({ t, entered, children }: { t: Tournament; entered: 
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-surface text-text-secondary border-border">
             {EVENT_TYPE_LABEL[t.matchType] ?? "Tournament"}
           </span>
+          <GenderBadge category={t.genderCategory} />
           {/* Once you hold a place, how many are left stops being the news. */}
           {entered ? (
             <span className="text-[10px] font-extrabold uppercase tracking-[0.06em] px-2 py-0.5 rounded-full bg-accent text-white border border-accent flex items-center gap-1 whitespace-nowrap">
@@ -413,9 +431,21 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   // which reports them up here so one dial can count all three.
   const [dateKey, setDateKey] = useState<string | null>(null);
   const [ringerCounts, setRingerCounts] = useState<Map<string, number>>(new Map());
-  const { posts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
-  const { tournaments, loading: tLoading, markJoined } = useOpenTournaments(teamId);
+  const { posts: allPosts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
+  const { tournaments: allTournaments, loading: tLoading, markJoined } = useOpenTournaments(teamId);
   const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
+  // Men's / Women's / All. Opens on the viewer's team's category (their own
+  // gender if teamless) — lib/gender.ts. A game of the other category can still
+  // be browsed under All, but its action is greyed: the database refuses a team
+  // entering or accepting outside its own category.
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(userId);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const genderFilter = genderPick ?? defaultGenderFilter(viewerGender);
+  const teamCategory = viewerGender.teamCategory;
+  const wrongFor = (category: GenderCategory) =>
+    teamCategory && teamCategory !== category ? wrongCategoryReason(category) : null;
+  const posts = allPosts.filter((p) => matchesGenderFilter(p.genderCategory, genderFilter));
+  const tournaments = allTournaments.filter((t) => matchesGenderFilter(t.genderCategory, genderFilter));
   // Only needed for the tournament buy-in, which stamps the entry with the name.
   const [teamName, setTeamName] = useState<string | null>(null);
   useEffect(() => {
@@ -456,6 +486,8 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
 
       <GameTypeSelect value={tab} onChange={setTab} />
 
+      {!genderLoading && <GenderFilterChips value={genderFilter} onChange={setGenderPick} />}
+
       <DateDial value={dateKey} onChange={setDateKey} counts={dialCounts} />
 
       {/* The captain's own live post stays pinned to the top of the feed
@@ -468,8 +500,10 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
         ) : matchesEmpty ? (
           showAll ? null : (
             <FeedEmpty
-              title={posts.length > 0 ? "No matches posted for this day." : "No open matches right now."}
-              hint={posts.length > 0
+              title={posts.length > 0 ? "No matches posted for this day."
+                : allPosts.length > 0 ? `No ${genderFilter === "female" ? "women's" : "men's"} matches right now.`
+                : "No open matches right now."}
+              hint={posts.length > 0 || allPosts.length > 0
                 ? "Try another date, or pick All to see everything."
                 : "Posts from other teams looking for an opponent show up here."}
             />
@@ -477,13 +511,18 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
         ) : (
           <div className="space-y-4">
             {showAll && <SectionLabel>Matches</SectionLabel>}
-            {visiblePosts.map((p) => (
-              <MatchPostCard key={p.id} post={p}>
-                {canAct
-                  ? <ChallengeButton post={p} onMatched={removePost} />
-                  : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} compact />}
-              </MatchPostCard>
-            ))}
+            {visiblePosts.map((p) => {
+              const wrong = wrongFor(p.genderCategory);
+              return (
+                <MatchPostCard key={p.id} post={p}>
+                  {wrong
+                    ? <WrongCategory reason={wrong} compact />
+                    : canAct
+                      ? <ChallengeButton post={p} onMatched={removePost} />
+                      : <SuggestButton postId={p.id} kind="match" suggested={suggested.has(p.id)} unavailable={unavailable} onSuggest={suggest} compact />}
+                </MatchPostCard>
+              );
+            })}
           </div>
         )
       )}
@@ -494,8 +533,10 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
         ) : tournamentsEmpty ? (
           showAll ? null : (
             <FeedEmpty
-              title={tournaments.length > 0 ? "No events on this day." : "No events right now."}
-              hint={tournaments.length > 0
+              title={tournaments.length > 0 ? "No events on this day."
+                : allTournaments.length > 0 ? `No ${genderFilter === "female" ? "women's" : "men's"} events right now.`
+                : "No events right now."}
+              hint={tournaments.length > 0 || allTournaments.length > 0
                 ? "Try another date, or pick All to see everything."
                 : "Tournaments, leagues and hosted friendlies show up here."}
             />
@@ -508,10 +549,18 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
               // button, so a squad player was still offered "Suggest to team"
               // on an event their own team had already bought into.
               const entered = Boolean(teamId && t.joinedTeamIds.includes(teamId));
+              const wrong = wrongFor(t.genderCategory);
               return (
                 <TournamentPostCard key={t.id} t={t} entered={entered}>
                   {entered
                     ? <EnteredTournamentActions t={t} />
+                    : wrong
+                    ? (
+                      <div className="space-y-2">
+                        <WrongCategory reason={wrong} />
+                        <ViewScheduleLink id={t.id} />
+                      </div>
+                    )
                     : canAct
                       ? (
                         <EnterTournamentButton
@@ -544,7 +593,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
               takes it as a prop and shows no dial of its own. Passing dateKey is
               what suppresses it — the teamless home mounts RingerFeed without it
               and keeps the built-in dial. */}
-          <RingerFeed dateKey={dateKey} onDateCounts={setRingerCounts} showIntro={false} />
+          <RingerFeed dateKey={dateKey} onDateCounts={setRingerCounts} showIntro={false} genderFilter={genderFilter} />
         </div>
       )}
     </section>

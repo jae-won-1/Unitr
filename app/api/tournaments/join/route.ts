@@ -4,6 +4,7 @@ import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availabili
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue } from "@/lib/venue-payout";
 import { feeOn } from "@/lib/uniter-fee";
+import { teamCategoryRefusal } from "@/lib/gender-entry";
 
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
@@ -49,6 +50,10 @@ export async function POST(req: NextRequest) {
     if (om.status === "cancelled") {
       return NextResponse.json({ error: "This tournament has been cancelled." }, { status: 409 });
     }
+    // Men's teams enter men's events, women's teams women's — checked before
+    // the debit below; the database refuses the entry row as well.
+    const wrongCategory = await teamCategoryRefusal(teamId, { table: "open_matches", id: openMatchId });
+    if (wrongCategory) return NextResponse.json({ error: wrongCategory }, { status: 409 });
 
     // 2) Capacity + duplicate checks.
     const { data: joined } = await adminSupabase

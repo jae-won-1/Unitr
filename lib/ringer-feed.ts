@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import { loadLeadership } from "@/lib/team-leadership";
+import { withOptionalColumn } from "@/lib/optional-column";
+import { rowCategory, type GenderCategory } from "@/lib/gender";
 
 export type RingerPost = {
   id: string;
@@ -28,6 +30,8 @@ export type RingerPost = {
   pricePence: number;
   notes: string | null;
   joined: boolean;
+  /** The requesting team's category — a women's team asks for women. */
+  genderCategory: GenderCategory;
 };
 
 // Display-only, and small enough that both apps can share it directly rather
@@ -48,10 +52,17 @@ export function useRingerPosts(userId: string | undefined) {
   const [unavailable, setUnavailable] = useState(false);
 
   const load = useCallback(async () => {
-    const { data: requests, error } = await supabase
-      .from("ringer_requests")
-      .select("id, match_id, team_id, positions, spots, notes, price_pence, status")
-      .eq("status", "open");
+    type RequestRow = {
+      id: string; match_id: string; team_id: string; positions: string[] | null; spots: number | null;
+      notes: string | null; price_pence: number | null; status: string; gender_category?: string | null;
+    };
+    const cols = "id, match_id, team_id, positions, spots, notes, price_pence, status";
+    // gender_category is dropped when supabase_gender_categories.sql hasn't been run.
+    const { data: requests, error } = await withOptionalColumn<RequestRow[]>("gender_category", (include) =>
+      supabase.from("ringer_requests")
+        .select(include ? `${cols}, gender_category` : cols)
+        .eq("status", "open") as unknown as PromiseLike<{ data: RequestRow[] | null; error: { message: string } | null }>
+    );
 
     // Migration not run yet — show the empty state rather than a broken tab.
     if (error) { setUnavailable(true); setPosts([]); setLoading(false); return; }
@@ -106,6 +117,7 @@ export function useRingerPosts(userId: string | undefined) {
         pricePence: r.price_pence ?? 500,
         notes: r.notes,
         joined,
+        genderCategory: rowCategory(r),
       });
     }
 

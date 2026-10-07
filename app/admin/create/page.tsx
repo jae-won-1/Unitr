@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
+import { GenderCategoryPicker } from "@/components/GenderControls";
+import type { GenderCategory } from "@/lib/gender";
 
 const FORMATS = ["5-a-side", "7-a-side", "8-a-side", "11-a-side"];
 const LEVELS = ["Mixed", "Casual", "Competitive"];
@@ -40,6 +42,9 @@ export default function AdminCreateEventPage() {
   const [buyIn, setBuyIn] = useState("0");
   const [maxTeams, setMaxTeams] = useState("4");
   const [description, setDescription] = useState("");
+  // Men's or women's — only teams of this category can enter. No default:
+  // picking the wrong one by omission would lock out the teams it's for.
+  const [genderCategory, setGenderCategory] = useState<GenderCategory | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +55,7 @@ export default function AdminCreateEventPage() {
   const handleCreate = async () => {
     if (!user) return;
     if (!title.trim()) { setError("Give the event a title."); return; }
+    if (!genderCategory) { setError("Choose whether this is a men's or women's event."); return; }
     if (!venueName.trim()) { setError("Enter the venue name — where you booked the pitch."); return; }
     if (!date || !startTime || !endTime) { setError("Set the date, start and end time."); return; }
     if (startTime >= endTime) { setError("End time must be after start time."); return; }
@@ -83,12 +89,15 @@ export default function AdminCreateEventPage() {
       description: description.trim() || null,
       status: "open",
       booking_id: null,
+      gender_category: genderCategory,
     });
 
     setSaving(false);
     if (omErr) {
       setError(
-        omErr.code === "42703" || omErr.code === "23502"
+        omErr.message.includes("gender_category")
+          ? "Run supabase_gender_categories.sql in the Supabase SQL editor first."
+          : omErr.code === "42703" || omErr.code === "23502"
           ? "Run supabase_admin_hosting.sql in the Supabase SQL editor first."
           : `Couldn't create the event: ${omErr.message}`
       );
@@ -119,6 +128,12 @@ export default function AdminCreateEventPage() {
         <label className={labelCls}>Title</label>
         <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={isFriendly ? "e.g. Wednesday 5s friendly" : "e.g. Uniter Summer Cup"} />
+      </div>
+
+      <div>
+        <label className={labelCls}>Men&rsquo;s or women&rsquo;s</label>
+        <GenderCategoryPicker value={genderCategory} onChange={setGenderCategory} />
+        <p className="text-[11px] text-text-secondary mt-1.5">Only teams of this category can enter.</p>
       </div>
 
       {/* Venue — free text, booked outside the app */}
