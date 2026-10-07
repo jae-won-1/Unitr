@@ -46,6 +46,9 @@ better matchmaking and player-team matching, and eventually leagues.
 - **Video ingestion** — upload/processing/playback of match footage.
 - **Availability-based matchmaking** — availability is collected and shown, but no algorithm
   ranks opponents by it. Only a per-post "matches availability" badge exists.
+- **Mixed social games** — open matches where individuals buy a spot in a one-off game, open
+  to men and women. Teams and team games are men's or women's only until then (see Men's and
+  women's below).
 
 ---
 
@@ -462,6 +465,40 @@ to be asked for (pending `replenish` `player_payments`, unreceived `payment_coll
 rows). Anything already paid stays where it is. The captain gets a bell notification carrying
 the reason and the refund. The organiser regenerates the schedule afterwards.
 
+## Men's and women's
+
+Two separate facts (`supabase_gender_categories.sql`):
+
+- **`profiles.gender`** — who the player is: `male | female | prefer_not_to_say`, or null
+  for a player who registered before the question existed. `components/GenderPrompt`
+  (mounted app-wide) asks that player once; "prefer not to say" is a real answer and ends it.
+- **`gender_category`** on `teams`, `match_posts`, `ringer_requests` and `open_matches` —
+  which competition a team or game is in: `male | female`. There is no mixed category;
+  mixed will be the individual-spot social games, which aren't built.
+
+The **database enforces who may take part**, with triggers, so every route and RPC obeys it:
+a match post or ringer request is always its team's category (a male team can only post male
+games); a team-hosted tournament is its host team's; only a team of an event's category can
+enter it (`open_match_teams`) or accept its post (`challenges`); and a team can't change
+category while it is entered in, or hosting, an upcoming event — its open posts and ringer
+requests move with it otherwise. Uniter and venues choose the category when they create an
+event; `/admin/create` and the venue calendar make it a required choice. The routes that take
+money check first (`lib/gender-entry.ts`) so the refusal comes before a charge and in plain
+words: `/api/tournaments/join`, `/api/challenges/accept`, and `/api/ringer/create-intent` (a
+player whose own answer is the other gender can't fill in; prefer-not-to-say can). The
+category is self-declared and a leader can change it, so this rests on honesty — staff's
+Remove button on an event is the fallback.
+
+**What you see is a default, never a wall.** Feeds open on the viewer's team's category, or
+their own gender if they have no team, and anyone who preferred not to say sees everything
+(`lib/viewer-gender.ts`). Men's · Women's · All chips widen it: the game feed (all three
+sections share one), Fill In, the Teams list and both sides of the Transfer Market (filtered
+in the query, since it stops at 30 rows). A game the viewer's team can't take is still
+browsable under All with its action greyed — "Women's teams only". `lib/gender.ts` holds the
+labels and tests and is pure, so server routes share it; a row from before the migration
+reads as male, which every team and game then was. Joining a squad is not gated: the rules
+gate teams, not people.
+
 ## Availability
 
 Two records, one question — "am I playing?". `lib/event-availability.ts` is the only place
@@ -683,6 +720,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_joining_fee_current.sql` | The fee stops being a per-person snapshot: a trigger on `teams` carries `joining_fee_pence` onto every approved member and the captain whenever it changes, DMs whoever now owes more, and teaches `guard_team_member_money` to let that one write through; run after `supabase_joining_fees.sql`, `supabase_captain_joining_fee.sql` and `supabase_pilot_security.sql` |
 | `supabase_co_captains.sql` | `team_members.is_co_captain`, `is_team_leader()`, `set_co_captain()`, the write guard on the flag, and leader checks in `record_cash_credit` / the invite RPCs / `enter_own_tournament`; run after `supabase_joining_fees.sql`, `supabase_team_invites.sql` and `supabase_tournament_entry_lockdown.sql` |
 | `supabase_event_availability.sql` | `match_confirmations.open_match_id` — a confirmation targets a match **or** a tournament entry; run after `supabase_open_matches.sql` |
+| `supabase_gender_categories.sql` | `profiles.gender` narrowed to male / female / prefer_not_to_say; `gender_category` (male / female) on `teams`, `match_posts`, `ringer_requests`, `open_matches`, backfilled; triggers that inherit it from the team and refuse cross-category entries, challenges, posts and mid-event changes; run after `supabase_player_demographics.sql`, `supabase_ringers.sql`, `supabase_team_tournaments.sql`, `supabase_tournament_entry_lockdown.sql` |
 | `supabase_match_results.sql`, `supabase_match_result_verification.sql` | Results, cross-team score verification |
 | `supabase_challenge_lockdown.sql` | Ledger functions service-role only; `match_posts` writes limited to that team's leaders; no client writes to `challenges`; `matches` updatable only by the two teams' leaders. **Run only once `/api/challenges/accept` is deployed**; after `supabase_credit_ledger.sql`, `supabase_secured_posts.sql`, `supabase_core_tables_rls.sql`, `supabase_co_captains.sql` |
 | `supabase_pitch_bookings_lockdown.sql` | `pitch_bookings` writable only by the server or the pitch's own venue; `pitches` only by their owner, with Connect / verification / rating columns server-only; secured match posts server-only. **Run only once `/api/book/pitch` and `/api/book/post` are deployed**; after `supabase_pilot_security.sql`, `supabase_co_captains.sql`, `supabase_challenge_lockdown.sql` |

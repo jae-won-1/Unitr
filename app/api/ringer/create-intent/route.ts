@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { getCaller, unauthorized } from "@/lib/api-auth";
+import { playerCategoryRefusal } from "@/lib/gender-entry";
 
 // Card payment for a ringer spot. The price is a flat fee paid to Uniter and
 // is read from the request row server-side — never from the client — so the
@@ -32,6 +33,10 @@ export async function POST(req: NextRequest) {
     if (request.status !== "open") {
       return NextResponse.json({ error: "This ringer spot is no longer available." }, { status: 409 });
     }
+    // A women's team short of players is asking for women, and the reverse.
+    // Checked here, before a card is asked for — never after the charge.
+    const wrongCategory = await playerCategoryRefusal(playerId, requestId);
+    if (wrongCategory) return NextResponse.json({ error: wrongCategory }, { status: 409 });
 
     const { data: signups } = await adminSupabase
       .from("ringer_signups")

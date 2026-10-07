@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtKickoff, isKickoffPast } from "@/lib/match-dates";
+import { rowCategory, type GenderCategory } from "@/lib/gender";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export type MatchPost = {
   payment_mode: string;
   pitchSecured: boolean;
   securedBookingId: string | null;
+  /** Men's or women's — always the posting team's (lib/gender.ts). */
+  genderCategory: GenderCategory;
 };
 
 export type Tournament = {
@@ -69,6 +72,8 @@ export type Tournament = {
   joinedTeamIds: string[];
   // Pending-invitation discount off the buy-in for the viewer's team (0 if none).
   inviteDiscountPence: number;
+  // Only teams of this category can enter (lib/gender.ts).
+  genderCategory: GenderCategory;
 };
 
 // ── Suggestions ───────────────────────────────────────────────
@@ -136,6 +141,7 @@ export function useOpenMatchPosts(teamId: string | null) {
               payment_mode: r.payment_mode ?? "credit",
               pitchSecured: Boolean(r.pitch_secured),
               securedBookingId: r.secured_booking_id ?? null,
+              genderCategory: rowCategory(r),
             }))
         );
         setLoading(false);
@@ -155,18 +161,19 @@ export function useOpenTournaments(teamId: string | null) {
     async function load() {
       const baseCols = "id, title, match_type, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id, organiser_team_name";
       let { data: oms, error: omErr } = await supabase.from("open_matches")
-        .select(`${baseCols}, organiser_admin_name`)
+        .select(`${baseCols}, organiser_admin_name, gender_category`)
         .in("match_type", ["tournament", "league", "match"])
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });
-      // 42703: supabase_admin_hosting.sql not run yet — retry without the admin column.
+      // 42703: supabase_admin_hosting.sql or supabase_gender_categories.sql not
+      // run yet — retry without the later columns.
       if (omErr?.code === "42703") {
         const { data: legacy } = await supabase.from("open_matches")
           .select(baseCols)
           .in("match_type", ["tournament", "league", "match"])
           .neq("status", "cancelled")
           .order("match_date", { ascending: true });
-        oms = (legacy ?? []).map((m) => ({ ...m, organiser_admin_name: null }));
+        oms = (legacy ?? []).map((m) => ({ ...m, organiser_admin_name: null, gender_category: null }));
       }
 
       // Hide the viewer's own hosted events; the !teamId branch keeps venue- and
@@ -203,6 +210,7 @@ export function useOpenTournaments(teamId: string | null) {
           organiserAdminName: ("organiser_admin_name" in m ? m.organiser_admin_name : null) ?? null,
           joinedTeamIds,
           inviteDiscountPence: discountByTournament.get(m.id) ?? 0,
+          genderCategory: rowCategory(m),
         } as Tournament;
       }));
 

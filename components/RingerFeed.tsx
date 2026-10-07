@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { authedPost } from "@/lib/authed-fetch";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,9 @@ import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import TestModeNote from "@/components/TestModeNote";
 import { confirmCardPayment } from "@/lib/confirm-payment";
 import { useRingerPosts, fmtRingerDate as fmtDate, type RingerPost } from "@/lib/ringer-feed";
+import { categoryForGender, matchesGenderFilter, wrongCategoryReason, type GenderFilter } from "@/lib/gender";
+import { defaultGenderFilter, useViewerGender } from "@/lib/viewer-gender";
+import { GenderBadge, GenderFilterChips } from "@/components/GenderControls";
 
 // Browse-and-join feed for one-off guest spots ("ringers"). Deliberately the
 // shortest path in the app: see the price, see the match, pay, you're in the
@@ -79,7 +82,15 @@ function RingerCheckoutForm({ post, clientSecret, saveCardSlot, onPaid, onCancel
 }
 
 // ── Card ──────────────────────────────────────────────────────
-function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerPost) => void }) {
+// `blockedReason` greys the Join button for a player whose own answer is the
+// other gender — a women's team short of players is asking for women. Greyed
+// rather than hidden, per the house convention; /api/ringer/create-intent
+// refuses it too, before anybody is charged.
+function RingerCard({ post, onJoin, blockedReason }: {
+  post: RingerPost;
+  onJoin: (post: RingerPost) => void;
+  blockedReason: string | null;
+}) {
   return (
     <div className="bg-surface border border-border shadow-card rounded-card p-4">
       <div className="flex items-start gap-3 mb-3">
@@ -92,9 +103,12 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
           <p className="text-sm font-semibold truncate">{post.teamName}</p>
           <p className="text-xs text-text-secondary truncate">vs {post.opponentName}</p>
         </div>
-        <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full flex-shrink-0">
-          {post.spotsLeft} spot{post.spotsLeft === 1 ? "" : "s"} left
-        </span>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-[10px] font-semibold bg-accent/10 text-accent-ink border border-accent/30 px-2 py-0.5 rounded-full">
+            {post.spotsLeft} spot{post.spotsLeft === 1 ? "" : "s"} left
+          </span>
+          <GenderBadge category={post.genderCategory} />
+        </div>
       </div>
 
       <div className="space-y-1 mb-3">
@@ -126,6 +140,10 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
         </div>
         {post.joined ? (
           <span className="px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-600 text-sm font-bold">You&apos;re in ✓</span>
+        ) : blockedReason ? (
+          <span className="px-4 py-2 rounded-btn bg-surface-2 text-text-secondary text-sm font-bold opacity-70 cursor-not-allowed">
+            {blockedReason}
+          </span>
         ) : (
           <button type="button" onClick={() => onJoin(post)}
             className="px-5 py-2 rounded-btn bg-accent text-white text-sm font-bold">
@@ -138,7 +156,7 @@ function RingerCard({ post, onJoin }: { post: RingerPost; onJoin: (post: RingerP
 }
 
 // ── Feed ──────────────────────────────────────────────────────
-export default function RingerFeed({ showIntro = true, showDateDial = false, dateKey: dateKeyProp, onDateCounts }: {
+export default function RingerFeed({ showIntro = true, showDateDial = false, dateKey: dateKeyProp, onDateCounts, genderFilter: genderFilterProp }: {
   showIntro?: boolean;
   showDateDial?: boolean;
   // When a parent shows this feed alongside others (GameFeed's "All"), one dial
@@ -149,9 +167,27 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
   // Lets that shared dial count fill-in games too, instead of understating the
   // days that only have one. Pass a stable function — a raw useState setter is.
   onDateCounts?: (counts: Map<string, number>) => void;
+  // Same idea as dateKey: GameFeed's Men's/Women's/All control drives every
+  // list. Absent, the feed shows its own, opening on the viewer's gender.
+  genderFilter?: GenderFilter;
 } = {}) {
   const { user } = useAuth();
-  const { posts, loading, unavailable, reload } = useRingerPosts(user?.id);
+  const { posts: allPosts, loading, unavailable, reload } = useRingerPosts(user?.id);
+  const { viewer: viewerGender, loading: genderLoading } = useViewerGender(user?.id);
+  const [ownGenderFilter, setOwnGenderFilter] = useState<GenderFilter | null>(null);
+  const genderControlled = genderFilterProp !== undefined;
+  const genderFilter: GenderFilter = genderControlled
+    ? genderFilterProp
+    : ownGenderFilter ?? defaultGenderFilter(viewerGender);
+  // Memoised: the date-count effect below keys off this array, and a fresh one
+  // every render would loop it through the parent's state.
+  const posts = useMemo(
+    () => allPosts.filter((p) => matchesGenderFilter(p.genderCategory, genderFilter)),
+    [allPosts, genderFilter],
+  );
+  const ownCategory = categoryForGender(viewerGender.gender);
+  const blockedReasonFor = (p: RingerPost) =>
+    ownCategory && ownCategory !== p.genderCategory ? wrongCategoryReason(p.genderCategory, "players") : null;
   const [ownDateKey, setOwnDateKey] = useState<string | null>(null);
   const controlled = dateKeyProp !== undefined;
   const dateKey = controlled ? dateKeyProp : ownDateKey;
@@ -235,6 +271,10 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
         </div>
       )}
 
+      {!genderControlled && !genderLoading && (
+        <GenderFilterChips value={genderFilter} onChange={setOwnGenderFilter} />
+      )}
+
       {showDateDial && !controlled && !loading && <DateDial value={ownDateKey} onChange={setOwnDateKey} counts={counts} />}
 
       {loading ? (
@@ -244,10 +284,12 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
           <p className="text-sm text-text-secondary">
             {posts.length > 0
               ? "No spots open on this day."
+              : allPosts.length > 0
+              ? `No ${genderFilter === "female" ? "women's" : "men's"} teams are looking for players right now.`
               : "No teams are looking for players right now."}
           </p>
           <p className="text-xs text-text-secondary mt-1">
-            {posts.length > 0
+            {posts.length > 0 || allPosts.length > 0
               ? "Try another date, or pick All to see everything."
               : unavailable
               ? "Ringer requests aren't set up yet — run supabase_ringers.sql."
@@ -255,7 +297,7 @@ export default function RingerFeed({ showIntro = true, showDateDial = false, dat
           </p>
         </div>
       ) : (
-        visible.map((p) => <RingerCard key={p.id} post={p} onJoin={startJoin} />)
+        visible.map((p) => <RingerCard key={p.id} post={p} onJoin={startJoin} blockedReason={blockedReasonFor(p)} />)
       )}
 
       <SignUpGate target={gate} onClose={() => setGate(null)} />

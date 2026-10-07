@@ -6,6 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import SignUpGate, { GateTarget } from "@/components/SignUpGate";
 import { fmtFee } from "@/lib/joining-fee";
 import { TEAM_FORMATS, teamFormatLabel, teamPlaysFormat } from "@/lib/team-options";
+import {
+  GENDER_FILTERS, genderCategoryLabel, matchesGenderFilter, rowCategory, type GenderFilter,
+} from "@/lib/gender";
+import { defaultGenderFilter, useViewerGender } from "@/lib/viewer-gender";
 
 // Team discovery list, laid out the way Plab lists recruiting teams: one row
 // per team, crest on the left, a single grey meta line underneath the name.
@@ -27,6 +31,8 @@ type Team = {
   formats?: string[] | null;
   photo_url: string | null;
   joining_fee_pence?: number | null;
+  /** Men's or women's — absent until supabase_gender_categories.sql is run. */
+  gender_category?: string | null;
   members: number;
 };
 
@@ -39,7 +45,6 @@ const COLLAPSED = 5;
 const UNWIRED = [
   { label: "Day", options: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] },
   { label: "Time", options: ["Morning", "Afternoon", "Evening", "Late"] },
-  { label: "Gender", options: ["Mixed", "Men", "Women"] },
   { label: "Age", options: ["Under 20", "20s", "30s", "40s", "50+"] },
   { label: "Team traits", options: ["Friendlies", "Cup prep", "Team matching", "Coached", "Social"] },
 ];
@@ -99,6 +104,7 @@ function Crest({ team }: { team: Team }) {
 // intercepting here beats letting them land on a half-empty page.
 function TeamRow({ team, onGuestTap }: { team: Team; onGuestTap?: (team: Team) => void }) {
   const meta = [
+    genderCategoryLabel(rowCategory(team)),
     team.location,
     teamFormatLabel(team),
     `${team.members} member${team.members === 1 ? "" : "s"}`,
@@ -160,6 +166,12 @@ export default function TeamsPanel() {
   const [format, setFormat] = useState<string | null>(null);
   const [level, setLevel] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("members");
+  // Opens on the viewer's own gender (lib/gender.ts); someone who preferred not
+  // to say, or is signed out, sees every team.
+  const { viewer: viewerGender } = useViewerGender(user?.id);
+  const [genderPick, setGenderPick] = useState<GenderFilter | null>(null);
+  const gender = genderPick ?? defaultGenderFilter(viewerGender);
+  const genderLabel = GENDER_FILTERS.find((g) => g.value === gender)?.label ?? "All";
 
   const areas = useMemo(
     () => [...new Set(teams.map((t) => t.location).filter(Boolean) as string[])].sort(),
@@ -179,13 +191,14 @@ export default function TeamsPanel() {
   const filtered = useMemo(() => {
     const out = teams.filter(
       (t) =>
+        matchesGenderFilter(rowCategory(t), gender) &&
         (!area || t.location === area) &&
         (!format || teamPlaysFormat(t, format)) &&
         (!level || t.level === level)
     );
     out.sort((a, b) => (sort === "members" ? b.members - a.members : a.name.localeCompare(b.name)));
     return out;
-  }, [teams, area, format, level, sort]);
+  }, [teams, gender, area, format, level, sort]);
 
   const shown = expanded ? filtered : filtered.slice(0, COLLAPSED);
   const activeCount = [area, format, level].filter(Boolean).length;
@@ -208,6 +221,12 @@ export default function TeamsPanel() {
 
       {/* ── Filter bar ── */}
       <div className="flex items-center gap-2 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <Chip
+          label={gender === "all" ? "Men's & women's" : genderLabel}
+          active={gender !== "all"}
+          caret
+          onClick={() => setGenderPick(gender === "male" ? "female" : gender === "female" ? "all" : "male")}
+        />
         <Chip label={area ?? "Area"} active={!!area} caret onClick={() => cycle(area, areas, setArea)} />
         <Chip label={format ?? "Format"} active={!!format} caret onClick={() => cycle(format, formats, setFormat)} />
         <Chip
@@ -235,7 +254,7 @@ export default function TeamsPanel() {
           {teams.length > 0 && (
             <button
               type="button"
-              onClick={() => { setArea(null); setFormat(null); setLevel(null); }}
+              onClick={() => { setGenderPick("all"); setArea(null); setFormat(null); setLevel(null); }}
               className="mt-2 text-xs text-accent-ink font-medium"
             >
               Clear filters
@@ -294,6 +313,15 @@ export default function TeamsPanel() {
 
             <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-5">
               <div>
+                <p className="text-sm font-bold mb-2">Men&rsquo;s or women&rsquo;s</p>
+                <div className="flex flex-wrap gap-2">
+                  {GENDER_FILTERS.map((g) => (
+                    <Chip key={g.value} label={g.label} active={gender === g.value} onClick={() => setGenderPick(g.value)} />
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <p className="text-sm font-bold mb-2">Area</p>
                 <div className="flex flex-wrap gap-2">
                   {areas.map((a) => (
@@ -335,7 +363,7 @@ export default function TeamsPanel() {
             <div className="flex items-center gap-3 px-5 py-4 border-t border-border">
               <button
                 type="button"
-                onClick={() => { setArea(null); setFormat(null); setLevel(null); }}
+                onClick={() => { setGenderPick("all"); setArea(null); setFormat(null); setLevel(null); }}
                 className="text-sm font-semibold text-text-secondary underline"
               >
                 Reset

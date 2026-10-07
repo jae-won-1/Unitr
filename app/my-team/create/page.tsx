@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { TEAM_FORMATS, TEAM_LEVELS } from "@/lib/team-options";
+import { categoryForGender, type GenderCategory } from "@/lib/gender";
+import { GenderCategoryPicker } from "@/components/GenderControls";
 
 // Shared with Team Settings (lib/team-options.ts), which edits these same
 // answers afterwards — a team that later plays 5s as well as 11s says so
@@ -22,14 +24,24 @@ export default function CreateTeamPage() {
   const [format, setFormat] = useState("");
   const [description, setDescription] = useState("");
   const [joiningFee, setJoiningFee] = useState("");
+  // Men's or women's: which events the team can enter and which games it can
+  // post. Starts on the captain's own answer; someone who preferred not to say
+  // picks.
+  const [genderCategory, setGenderCategory] = useState<GenderCategory | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
+      .then(({ data }) => setGenderCategory((prev) => prev ?? categoryForGender(data?.gender)));
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!name || !location || !level || !format) {
+    if (!name || !location || !level || !format || !genderCategory) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -46,7 +58,11 @@ export default function CreateTeamPage() {
 
     setLoading(true);
 
-    let { error: insertError } = await supabase.from("teams").insert({
+    // Missing-migration guard (house convention): a column whose migration
+    // hasn't been run is dropped and the team registered without it, rather
+    // than failing. Without gender_category the database simply has no men's
+    // and women's yet.
+    const row: Record<string, unknown> = {
       name,
       location,
       level,
@@ -54,14 +70,14 @@ export default function CreateTeamPage() {
       description,
       captain_id: user.id,
       joining_fee_pence: joiningFeePence,
-    });
-
-    // Missing-migration guard (house convention): if joining_fee_pence isn't
-    // in the schema yet, register the team without it rather than failing.
-    if (insertError && /joining_fee_pence/.test(insertError.message)) {
-      ({ error: insertError } = await supabase.from("teams").insert({
-        name, location, level, format, description, captain_id: user.id,
-      }));
+      gender_category: genderCategory,
+    };
+    let { error: insertError } = await supabase.from("teams").insert(row);
+    for (const optional of ["gender_category", "joining_fee_pence"]) {
+      if (insertError && insertError.message.includes(optional)) {
+        delete row[optional];
+        ({ error: insertError } = await supabase.from("teams").insert(row));
+      }
     }
 
     if (insertError) {
@@ -116,6 +132,14 @@ export default function CreateTeamPage() {
             placeholder="e.g. Hackney, London"
             className="bg-surface border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-text-secondary">Men&rsquo;s or women&rsquo;s team <span className="text-red-600">*</span></label>
+          <GenderCategoryPicker value={genderCategory} onChange={setGenderCategory} />
+          <p className="text-xs text-text-secondary">
+            Your team plays and enters events in this category.
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">

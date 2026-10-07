@@ -6,9 +6,52 @@ Codex (or anyone working on `main`): when you add or change a web **screen**,
 or change a shared rule in `lib/` / `app/api/` / SQL without changing its
 shape, add a line here. Claude Code ports it on `mobile` and removes the line.
 
-- *(none yet)*
+- **Men's and women's** (7 Oct, see below). Shared code changed shape:
+  `MatchPost`, `Tournament` and `RingerPost` gained a required
+  `genderCategory` (anything building one by hand needs `rowCategory(row)`
+  from `lib/gender.ts`); `saveTeamDetails` takes an optional
+  `genderCategory`; `searchPlayers` / `searchTeams` take an optional gender
+  filter. Screens to port: the Men's/Women's/All chips on the game feed, Fill
+  In and the Transfer Market (opening on `useViewerGender`), the greyed
+  "Women's teams only" actions, the picker on Register Team / Team Settings,
+  and the one-time `GenderPrompt` sheet. The phone's gender option list must
+  drop Non-binary, or a save fails once the SQL is run.
 
-## Latest completed work — 2026-09-30 (day), Claude Code: port continued, shared fixes
+## Latest completed work — 2026-10-07, Claude Code on `main`: men's and women's
+
+The next event is a women's tournament; until now everything was implicitly
+men's. Decisions (user, 7 Oct): `profiles.gender` is male / female / prefer
+not to say; teams and games are **male or female only** — mixed will be the
+individual-spot social games, not built yet; only a team of an event's
+category can enter it, accept its post or host it; a team can only post its
+own category; male users and male teams' members see male games by default
+(women likewise); players with no answer are asked.
+
+- **`supabase_gender_categories.sql`** (`0dad724`) — **not yet run.** Adds
+  `gender_category` to `teams`, `match_posts`, `ringer_requests`,
+  `open_matches`, backfills (all 10 live teams → male; the past Uniter
+  Tournament → male), and enforces the rules with triggers. Safe to run
+  before the app deploys: rows written by old code get their category filled
+  in. Tested only in an in-memory Postgres (PGlite) against stub tables —
+  every rule and a re-run behaved; the real check is the SQL editor.
+- **App:** `lib/gender.ts` (pure rules + labels), `lib/viewer-gender.ts`
+  (default view, the hook, saving the prompt's answer), `lib/gender-entry.ts`
+  (route checks), `components/GenderControls.tsx`,
+  `components/GenderPrompt.tsx`. Wired into GameFeed, RingerFeed, TeamsPanel,
+  the Transfer Market, Register Team, Team Settings, `/admin/create`
+  (required choice), the venue calendar, and `/api/tournaments/join`,
+  `/api/challenges/accept`, `/api/ringer/create-intent` (refuse before any
+  money moves).
+- **Checked:** `tsc`, lint (pre-existing warnings only), `npm run build`.
+  **Not checked in a browser** — until the migration is applied the live
+  database can't show the new behaviour. After running it: create a women's
+  event at `/admin/create`, confirm a male team sees it only under All with
+  "Women's teams only", and that the prompt appears for an account with no
+  gender.
+- Not done: `/search` doesn't filter by gender; nothing stops a player
+  joining a squad of the other category (the rules gate teams, not people).
+
+## Earlier — 2026-09-30 (day), Claude Code: port continued, shared fixes
 
 Two folders now — see AGENTS.md "Two folders, two branches". Codex works in
 `unitr-main` on `main`; Claude Code in `unitr` on `mobile`.

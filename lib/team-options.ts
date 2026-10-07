@@ -51,9 +51,17 @@ export function teamPlaysFormat(row: TeamFormatRow | null | undefined, format: s
  * still gets a straight answer. `formatsSaved` is false when the migration
  * hasn't been run — the team keeps its primary format and the caller says so.
  */
+// Columns a migration added later: supabase_multi_select_preferences.sql and
+// supabase_gender_categories.sql. Dropped together on a retry.
+const OPTIONAL_COLUMNS = ["formats", "gender_category"];
+
 export async function saveTeamDetails(
   teamId: string,
-  fields: { name: string; location: string; level: string; description: string; formats: string[] },
+  fields: {
+    name: string; location: string; level: string; description: string; formats: string[];
+    /** Men's or women's (lib/gender.ts). Left out, the category is untouched. */
+    genderCategory?: "male" | "female";
+  },
 ): Promise<{ error: string | null; formatsSaved: boolean }> {
   const formats = normaliseFormats(fields.formats);
   const base = {
@@ -63,19 +71,20 @@ export async function saveTeamDetails(
     description: fields.description,
     format: formats[0] ?? null,
   };
+  const extras = fields.genderCategory ? { formats, gender_category: fields.genderCategory } : { formats };
 
-  const { error, included } = await withOptionalColumn("formats", (include) =>
-    supabase.from("teams").update(include ? { ...base, formats } : base).eq("id", teamId)
+  const { error, included } = await withOptionalColumn(OPTIONAL_COLUMNS, (include) =>
+    supabase.from("teams").update(include ? { ...base, ...extras } : base).eq("id", teamId)
   );
 
   return { error: error?.message ?? null, formatsSaved: included };
 }
 
-/** One team, with `formats` when the column is there. */
+/** One team, with `formats` and `gender_category` when the columns are there. */
 export async function loadTeamDetails<T>(teamId: string, columns: string): Promise<T | null> {
-  const { data } = await withOptionalColumn<T>("formats", (include) =>
+  const { data } = await withOptionalColumn<T>(OPTIONAL_COLUMNS, (include) =>
     supabase.from("teams")
-      .select(include ? `${columns}, formats` : columns)
+      .select(include ? `${columns}, ${OPTIONAL_COLUMNS.join(", ")}` : columns)
       .eq("id", teamId)
       .maybeSingle() as PromiseLike<{ data: T | null; error: { message: string } | null }>
   );

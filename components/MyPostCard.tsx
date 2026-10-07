@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { fmtKickoff, isKickoffPast } from "@/lib/match-dates";
 import { type MatchPost, type PitchOption } from "@/components/ChallengePanel";
 import { loadLeadership } from "@/lib/team-leadership";
+import { rowCategory } from "@/lib/gender";
 import { takeDownPost } from "@/lib/take-down-post";
 
 // A captain's own open match post. It is status rather than feed content —
@@ -49,6 +50,7 @@ export function useMyPosts(userId?: string) {
         payment_mode: row.payment_mode ?? "credit",
         pitchSecured: Boolean(row.pitch_secured),
         securedBookingId: row.secured_booking_id ?? null,
+        genderCategory: rowCategory(row),
       })).filter((p) => !isKickoffPast(p.match_date, p.match_time)));
       setLoading(false);
     })();

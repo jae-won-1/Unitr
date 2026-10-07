@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { TimePicker } from "@/components/DateTimePickers";
+import { GenderCategoryPicker } from "@/components/GenderControls";
 import { loadBookingPayments, persistPaidCorrections, type BookingPayment } from "@/lib/venue-payments";
 
 // ── Constants ─────────────────────────────────────────────────
@@ -366,6 +367,8 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
     price_per_team: "",
     max_teams: "2",
     description: "",
+    // Men's or women's (lib/gender.ts) — only teams of it can enter. No default.
+    gender_category: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -413,6 +416,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
   const handleSaveListing = async () => {
     if (!user || !typeMeta) return;
     if (!omForm.title.trim()) { setError(`Give the ${typeMeta.label.toLowerCase()} a title.`); return; }
+    if (!omForm.gender_category) { setError(`Choose whether this is a men's or women's ${typeMeta.label.toLowerCase()}.`); return; }
     if (form.start_time >= form.end_time) { setError("End time must be after start time."); return; }
     const maxTeams = Number(omForm.max_teams);
     if (!maxTeams || maxTeams < 2) { setError("Allow at least 2 teams."); return; }
@@ -460,6 +464,7 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       description: omForm.description.trim() || null,
       status: "open",
       booking_id: booking.id,
+      gender_category: omForm.gender_category,
     });
 
     if (omErr) {
@@ -468,6 +473,8 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
       setError(
         omErr.code === "42P01"
           ? "The open_matches table doesn't exist yet — run supabase_open_matches.sql in Supabase first."
+          : omErr.message.includes("gender_category")
+          ? "Run supabase_gender_categories.sql in Supabase first."
           : `Couldn't create the listing: ${omErr.message}`
       );
       return;
@@ -568,6 +575,12 @@ function AddBookingModal({ pitches, defaults, onSave, onClose }: {
                         {["Mixed", "Casual", "Competitive"].map((f) => <option key={f} value={f}>{f}</option>)}
                       </select>
                     </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium">Men&rsquo;s or women&rsquo;s</label>
+                    <GenderCategoryPicker
+                      value={omForm.gender_category === "male" || omForm.gender_category === "female" ? omForm.gender_category : null}
+                      onChange={(v) => setOm("gender_category", v)} />
                   </div>
                 </>
               )}

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import {
   TEAM_FORMATS, TEAM_LEVELS, loadTeamDetails, saveTeamDetails, teamFormats,
 } from "@/lib/team-options";
+import { rowCategory, type GenderCategory } from "@/lib/gender";
+import { GenderCategoryPicker } from "@/components/GenderControls";
 
 // ── Team details ────────────────────────────────────────────────────────
 // Everything /my-team/create asked when the team was registered, editable
@@ -25,6 +27,7 @@ type TeamRow = {
   description: string | null;
   format: string | null;
   formats?: string[] | null;
+  gender_category?: string | null;
 };
 
 export default function TeamDetailsPanel({ teamId, onRenamed }: {
@@ -37,6 +40,7 @@ export default function TeamDetailsPanel({ teamId, onRenamed }: {
   const [level, setLevel] = useState("");
   const [formats, setFormats] = useState<string[]>([]);
   const [description, setDescription] = useState("");
+  const [genderCategory, setGenderCategory] = useState<GenderCategory>("male");
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -53,6 +57,7 @@ export default function TeamDetailsPanel({ teamId, onRenamed }: {
       setLevel(team.level ?? "");
       setFormats(teamFormats(team));
       setDescription(team.description ?? "");
+      setGenderCategory(rowCategory(team));
       setLoaded(true);
     })();
     return () => { cancelled = true; };
@@ -77,10 +82,18 @@ export default function TeamDetailsPanel({ teamId, onRenamed }: {
 
     const res = await saveTeamDetails(teamId, {
       name: name.trim(), location: location.trim(), level, description: description.trim(), formats,
+      genderCategory,
     });
     setSaving(false);
 
-    if (res.error) { setError("Couldn't save your team details. Please try again."); return; }
+    if (res.error) {
+      // The database refuses a category change while the team is in, or
+      // hosting, an upcoming event (supabase_gender_categories.sql) — say so.
+      setError(/upcoming events/.test(res.error)
+        ? "You can't switch between men's and women's while your team is entered in, or hosting, an upcoming event. Nothing was saved."
+        : "Couldn't save your team details. Please try again.");
+      return;
+    }
     setSaved(true);
     onRenamed?.(name.trim());
     // The primary format saved either way; only the extra ones need the
@@ -127,6 +140,15 @@ export default function TeamDetailsPanel({ teamId, onRenamed }: {
             placeholder="e.g. Hackney, London"
             className="bg-background border border-border rounded-btn px-4 py-3 text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-accent/60"
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-text-secondary">Men&rsquo;s or women&rsquo;s team</label>
+          <GenderCategoryPicker value={genderCategory} onChange={edit(setGenderCategory)} />
+          <p className="text-xs text-text-secondary">
+            Decides which events your team can enter and which games it posts. Your open posts move
+            with it.
+          </p>
         </div>
 
         <div className="flex flex-col gap-1.5">

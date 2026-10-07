@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import ChallengePanel, { type MatchPost, type PitchOption } from "@/components/ChallengePanel";
 import { fmtKickoff, isKickoffPast } from "@/lib/match-dates";
+import { rowCategory } from "@/lib/gender";
 
 // Captain's side of "Suggest to team": the games squad players have put
 // forward, with the actions a captain actually has — challenge the post, enter
@@ -85,6 +86,7 @@ export function useTeamSuggestions(teamId: string | null) {
             payment_mode: p.payment_mode ?? "credit",
             pitchSecured: Boolean(p.pitch_secured),
             securedBookingId: p.secured_booking_id ?? null,
+            genderCategory: rowCategory(p),
           },
         });
       } else {
