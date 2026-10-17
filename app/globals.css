@@ -139,6 +139,21 @@ body {
   }
 }
 
+/* ── Venue panes ───────────────────────────────────────────────
+   The venue calendar has the same need as a chat: the grid must be the only
+   thing that scrolls. There is no TopBar in the venue portal, but the root
+   <main> still carries .pb-nav, so a 100vh page left the document scrolling
+   by that padding — the wheel moved the page or the grid depending on where
+   the cursor was. Viewport less .pb-nav comes to exactly 100dvh. */
+.h-venue-pane {
+  height: calc(100vh - 4rem - max(1rem, env(safe-area-inset-bottom)));
+}
+@supports (height: 100dvh) {
+  .h-venue-pane {
+    height: calc(100dvh - 4rem - max(1rem, env(safe-area-inset-bottom)));
+  }
+}
+
 /* ── Touch input ───────────────────────────────────────────────
    Everything here is scoped to coarse pointers, so desktop is untouched. */
 @media (pointer: coarse) {

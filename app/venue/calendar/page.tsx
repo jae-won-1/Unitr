@@ -209,9 +209,9 @@ function DayView({ pitches, bookings, onCellClick, onBookingClick }: {
   const gridH = TOTAL_SLOTS * SLOT_H;
 
   return (
-    <div className="flex">
+    <div className="flex w-max min-w-full">
       {/* Time column */}
-      <div className="w-14 flex-shrink-0 border-r border-border">
+      <div className="w-14 flex-shrink-0 border-r border-border bg-background sticky left-0 z-30">
         <div style={{ height: 40 }} className="border-b border-border bg-[#0e0e0e] sticky top-0 z-30" />
         {TIME_LABELS.map((label, i) => (
           <div key={i} style={{ height: SLOT_H }}
@@ -221,8 +221,10 @@ function DayView({ pitches, bookings, onCellClick, onBookingClick }: {
         ))}
       </div>
 
-      {/* Pitch columns */}
-      <div className="flex-1 overflow-x-auto">
+      {/* Pitch columns — no overflow of their own: the grid wrapper is the one
+          scroller for both axes, so the wheel always reaches it and the sticky
+          headers stick to it. */}
+      <div className="flex-1">
         <div className="flex" style={{ minWidth: Math.max(pitches.length * 150, 300) }}>
           {pitches.map((pitch, pi) => {
             const color = COLORS[pi % COLORS.length];
@@ -269,9 +271,9 @@ function WeekView({ pitches, bookings, weekDates, onCellClick, onBookingClick }:
   const gridH = TOTAL_SLOTS * SLOT_H;
 
   return (
-    <div className="flex">
+    <div className="flex w-max min-w-full">
       {/* Time column */}
-      <div className="w-12 flex-shrink-0 border-r border-border">
+      <div className="w-12 flex-shrink-0 border-r border-border bg-background sticky left-0 z-30">
         <div style={{ height: 48 }} className="border-b border-border bg-[#0e0e0e] sticky top-0 z-30" />
         {TIME_LABELS.map((label, i) => (
           <div key={i} style={{ height: SLOT_H }}
@@ -281,8 +283,8 @@ function WeekView({ pitches, bookings, weekDates, onCellClick, onBookingClick }:
         ))}
       </div>
 
-      {/* Day columns */}
-      <div className="flex-1 overflow-x-auto">
+      {/* Day columns — scroll with the grid wrapper, as in DayView */}
+      <div className="flex-1">
         <div className="flex" style={{ minWidth: 7 * 110 }}>
           {weekDates.map((date, di) => {
             const dateStr = toInputISO(date);
@@ -966,7 +968,7 @@ export default function VenueCalendarPage() {
   );
 
   return (
-    <div className="flex flex-col" style={{ height: "100vh" }}>
+    <div className="flex flex-col h-venue-pane">
       {/* Toolbar */}
       <div className="px-4 pt-3 pb-3 border-b border-border flex-shrink-0 space-y-2.5">
         {/* Date navigation */}
@@ -1030,7 +1032,7 @@ export default function VenueCalendarPage() {
       </div>
 
       {/* Calendar grid */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain">
         {view === "day" ? (
           <DayView
             pitches={pitches}
