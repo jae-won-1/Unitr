@@ -139,7 +139,7 @@ export default function VenueReportsPage() {
   if (!hasPitches) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-4">
       <p className="font-bold text-lg">No pitches registered</p>
-      <a href="/pitches/register" className="px-6 py-3 bg-accent text-black rounded-xl font-bold text-sm">Register a Pitch</a>
+      <a href="/pitches/register" className="px-6 py-3 bg-accent text-white rounded-xl font-bold text-sm">Register a Pitch</a>
     </div>
   );
 

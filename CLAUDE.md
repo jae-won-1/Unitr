@@ -406,9 +406,29 @@ registered themselves, has neither. Secured posts are written only by `/api/book
 
 ### Venue portal (`app/venue/*`)
 
-A separate app for pitch owners with its own layout and nav — calendar, bookings, customers,
-open matches, academy, store, reports, settings. Venue managers are hard-redirected here from
-any player route.
+A separate app for pitch owners with its own layout and nav. Venue managers are
+hard-redirected here from any player route. The sidebar has three sections:
+
+| Section | Items |
+|---|---|
+| Calendar | one entry **per pitch** → `/venue/calendar/[pitchId]` |
+| Manage matches | Bookings (`/venue/bookings`), Progress (`/venue/open-matches`) |
+| Manage venue | Customers, Reports, Settings |
+
+Academy and Store sit below the sections, not yet filed under one.
+
+**Each pitch has its own calendar.** Its columns are days — a week of them, or one in the Day
+view — never pitches side by side. `/venue/calendar` is still where login, invites and the
+player app send a venue manager, so it opens the first pitch's calendar; "first" is the order
+`lib/venue-pitches.ts` returns (by name), which the sidebar uses too. The Day/Week choice and
+the date carry over when switching pitch. A booking's colour is its **kind** (Uniter booking,
+manual, tournament, league, open match), drawn as a solid block inset from its neighbours so
+back-to-back bookings read as separate.
+
+The portal uses the player app's light theme and green (`accent` fills with white text,
+`accent-ink` for green text). Hard-coded dark surfaces and the old `#00E676` are gone — use the
+tokens. The venue layout cancels the root `<main>`'s `.pb-nav` (`.venue-shell`), since there is
+no bottom nav here, so `.h-venue-pane` is exactly the viewport.
 
 ### Admin
 

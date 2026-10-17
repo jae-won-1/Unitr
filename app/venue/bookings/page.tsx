@@ -223,7 +223,7 @@ export default function VenueBookingsPage() {
           const count = c.k === "all" ? bookings.length : bookings.filter((b) => b.category === c.k).length;
           return (
             <button key={c.k} onClick={() => setCategory(c.k)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${category === c.k ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${category === c.k ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
               {c.label}{count > 0 ? ` · ${count}` : ""}
             </button>
           );
@@ -326,7 +326,7 @@ export default function VenueBookingsPage() {
                     {b.status !== "cancelled" && b.payment_status !== "paid" && !b.payment.entries && (
                       <div className="flex gap-2">
                         <button onClick={() => updatePaymentStatus(b.id, "paid")}
-                          className="flex-1 py-2 rounded-xl bg-accent text-black text-xs font-bold">
+                          className="flex-1 py-2 rounded-xl bg-accent text-white text-xs font-bold">
                           Mark as Paid
                         </button>
                         {b.payment_status !== "after_match" && (

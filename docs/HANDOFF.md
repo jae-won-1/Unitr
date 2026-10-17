@@ -6,9 +6,42 @@ Codex (or anyone working on `main`): when you add or change a web **screen**,
 or change a shared rule in `lib/` / `app/api/` / SQL without changing its
 shape, add a line here. Claude Code ports it on `mobile` and removes the line.
 
-- *(none — men's and women's was ported 7 Oct, see below)*
+- **Venue portal sidebar + per-pitch calendar (18 Oct)** — a web-only portal;
+  nothing to port unless the phone grows venue screens. Adds `lib/venue-pitches.ts`
+  (shape-stable, new).
 
-## Latest completed work — 2026-10-07, Claude Code on `main`: men's and women's
+## Latest completed work — 2026-10-18, Claude Code on `main`: venue portal
+
+**Not committed yet.** User asked (18 Oct) for a sidebar with three sections, a
+calendar per pitch modelled on a reference screenshot (solid coloured blocks with
+gaps), the Day/Week toggle kept, and the player app's green as the venue accent.
+
+- **Sidebar** (`app/venue/layout.tsx`): Calendar (one item per pitch) · Manage
+  matches (Bookings, Progress) · Manage venue (Customers, Reports, Settings);
+  Academy and Store left below, ungrouped. On the mobile icon rail, pitches are
+  numbered and sections separated by rules.
+- **Calendar** moved to `app/venue/calendar/[pitchId]/page.tsx`; columns are
+  days, not pitches. `/venue/calendar` now redirects to the first pitch (login,
+  invite page, BottomNav and `register-profile` still link there). Light theme,
+  solid category colours, "now" line, weekend-coloured day headers, the colour
+  key always shows all five kinds. Modals restyled light (the "New booking"
+  title was unreadable on the old dark sheet); ViewBookingModal moved to
+  `z-[60]` per the z-index floor. Booker names are now one batched query.
+- **Venue-wide colour sweep:** `bg-accent text-black` → `text-white`,
+  `#00E676` → `#008000`, `bg-[#141414]` sheets → `bg-surface` across
+  `app/venue/*`.
+- **`.venue-shell`** (globals.css) cancels the root `.pb-nav` inside the venue
+  portal, removing the empty band under every venue page; `.h-venue-pane` is
+  now `100dvh`.
+- **Checked:** `tsc`, lint (pre-existing warnings only, none in venue files),
+  `npm run build`. Rendered in headless Chromium against a **mocked** session
+  and mocked Supabase responses (week, day, both modals, 390 px phone width);
+  document height equals the viewport. **Not checked with a real venue
+  account** or by creating a real booking.
+- Not done: other venue pages (Bookings, Settings…) only got the colour sweep,
+  not a layout redesign; the Add Booking date is still a native date input.
+
+## Earlier — 2026-10-07, Claude Code on `main`: men's and women's
 
 **Status (later on 7 Oct):** the user ran `supabase_gender_categories.sql`
 (success), `main` was pushed (`169d615`) and the user checked the live site.

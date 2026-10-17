@@ -35,7 +35,7 @@ function InviteModal({ recipient, listings, invitedKeys, onInvite, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl md:rounded-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg bg-surface rounded-t-2xl md:rounded-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0 md:hidden"><div className="w-10 h-1 rounded-full bg-border" /></div>
         <div className="px-5 pt-2 md:pt-5 pb-6 space-y-4 overflow-y-auto">
           <div className="flex items-center justify-between">
@@ -70,7 +70,7 @@ function InviteModal({ recipient, listings, invitedKeys, onInvite, onClose }: {
                     </div>
                     <button onClick={() => onInvite(key)} disabled={invited}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                        invited ? "bg-accent/10 text-accent border border-accent/30" : "bg-accent text-black"
+                        invited ? "bg-accent/10 text-accent border border-accent/30" : "bg-accent text-white"
                       }`}>
                       {invited ? "Invited ✓" : "Send invite"}
                     </button>
@@ -176,7 +176,7 @@ export default function VenueCustomersPage() {
       <div className="flex gap-2">
         {(["all", "teams", "players"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors capitalize ${tab === t ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
             {t}
           </button>
         ))}

@@ -35,7 +35,7 @@ function PitchSelector({ pitches, selectedId, onChange }: {
     <div className="flex gap-2 overflow-x-auto pb-1">
       {pitches.map((p) => (
         <button key={p.id} onClick={() => onChange(p.id)}
-          className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${selectedId === p.id ? "bg-accent text-black border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
+          className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${selectedId === p.id ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
           {p.name}
         </button>
       ))}
@@ -85,7 +85,7 @@ function InfoTab({ form, setForm, saving, onSave, error, saved }: {
           {AMENITY_OPTIONS.map((o) => (
             <button key={o}
               onClick={() => setForm((f) => ({ ...f, amenities: toggle(f.amenities, o) }))}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.amenities.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.amenities.includes(o) ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
               {o}
             </button>
           ))}
@@ -99,7 +99,7 @@ function InfoTab({ form, setForm, saving, onSave, error, saved }: {
       )}
 
       <button onClick={onSave} disabled={saving}
-        className="w-full py-3.5 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+        className="w-full py-3.5 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50">
         {saved ? "✓ Changes Saved!" : saving ? "Saving…" : "Save Changes"}
       </button>
     </div>
@@ -139,7 +139,7 @@ function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
         <div className="flex flex-wrap gap-2">
           {FORMAT_OPTIONS.map((o) => (
             <button key={o} onClick={() => setForm((f) => ({ ...f, formats: toggle(f.formats, o) }))}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.formats.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.formats.includes(o) ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
               {o}
             </button>
           ))}
@@ -150,7 +150,7 @@ function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
         <div className="flex flex-wrap gap-2">
           {SURFACE_OPTIONS.map((o) => (
             <button key={o} onClick={() => setForm((f) => ({ ...f, surfaces: toggle(f.surfaces, o) }))}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.surfaces.includes(o) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition-colors ${form.surfaces.includes(o) ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
               {o}
             </button>
           ))}
@@ -160,7 +160,7 @@ function PitchEditForm({ form, setForm, label, saving, onSave, onCancel }: {
         <button onClick={onCancel}
           className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
         <button onClick={onSave} disabled={saving || !form.name.trim()}
-          className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+          className="flex-1 py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-40">
           {saving ? "Saving…" : label}
         </button>
       </div>
@@ -289,7 +289,7 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
       {/* Add pitch modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <p className="font-bold mb-4">Add Pitch</p>
             {addError && <p className="text-xs text-red-400 mb-3">{addError}</p>}
             <PitchEditForm
@@ -369,14 +369,14 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
       ))}
 
       <button onClick={handleSave} disabled={saving}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50 mt-2">
+        className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50 mt-2">
         {saved ? "✓ Saved!" : saving ? "Saving…" : "Save Schedule"}
       </button>
 
       {editingDay !== null && editing && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4"
           onClick={() => setEditingDay(null)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto"
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl px-5 pb-6 pt-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}>
             <p className="font-bold mb-4">{DAY_NAMES[editingDay]} Hours</p>
             <div className="grid grid-cols-2 gap-3 mb-5">
@@ -390,7 +390,7 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
               ))}
             </div>
             <button onClick={() => setEditingDay(null)}
-              className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm">Done</button>
+              className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm">Done</button>
           </div>
         </div>
       )}
@@ -496,13 +496,13 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
       </div>
 
       <button onClick={handleSave} disabled={saving}
-        className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+        className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50">
         {saved ? "✓ Saved!" : saving ? "Saving…" : "Save Pricing"}
       </button>
 
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl px-5 pb-6 pt-4 space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl px-5 pb-6 pt-4 space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <p className="font-bold">New Pricing Rule</p>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium">Rule Name</label>
@@ -515,7 +515,7 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
               <div className="flex gap-2">
                 {DAY_SHORT.map((d, i) => (
                   <button key={i} onClick={() => setNewRule((r) => ({ ...r, days: toggleNum(r.days, i) }))}
-                    className={`flex-1 h-9 rounded-full text-xs font-bold border transition-colors ${newRule.days.includes(i) ? "bg-accent text-black border-accent" : "bg-background text-text-secondary border-border"}`}>
+                    className={`flex-1 h-9 rounded-full text-xs font-bold border transition-colors ${newRule.days.includes(i) ? "bg-accent text-white border-accent" : "bg-background text-text-secondary border-border"}`}>
                     {d}
                   </button>
                 ))}
@@ -542,7 +542,7 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
               <button onClick={() => setShowAdd(false)}
                 className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
               <button onClick={addRule} disabled={!newRule.name || newRule.days.length === 0 || newRule.price <= 0}
-                className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                className="flex-1 py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-40">
                 Add Rule
               </button>
             </div>
@@ -651,7 +651,7 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
 
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 pb-4" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg bg-[#141414] rounded-t-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-surface rounded-t-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 rounded-full bg-border" /></div>
             <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-4">
               <p className="font-bold">Block a Date</p>
@@ -659,7 +659,7 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
                 <label className="text-xs font-medium">Date</label>
                 <input type="date" value={newBlock.block_date}
                   onChange={(e) => setNewBlock((b) => ({ ...b, block_date: e.target.value }))}
-                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none [color-scheme:dark]" />
+                  className="bg-background border border-border rounded-xl px-3 py-2.5 text-sm outline-none" />
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => setNewBlock((b) => ({ ...b, whole_day: !b.whole_day }))}
@@ -691,7 +691,7 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
                 <button onClick={() => setShowAdd(false)}
                   className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-text-secondary">Cancel</button>
                 <button onClick={handleAdd} disabled={!newBlock.block_date || saving}
-                  className="flex-1 py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-40">
+                  className="flex-1 py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-40">
                   {saving ? "Saving…" : "Block Date"}
                 </button>
               </div>
@@ -791,12 +791,12 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
 
         {payoutsEnabled ? (
           <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#008000" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             Ready to receive payouts. See payout history in Reports.
           </div>
         ) : (
           <button onClick={handleConnect} disabled={connecting}
-            className="w-full py-3 rounded-xl bg-accent text-black font-bold text-sm disabled:opacity-50">
+            className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50">
             {connecting ? "Starting…" : connected ? "Resume Onboarding" : "Connect Payout Account"}
           </button>
         )}
@@ -899,7 +899,7 @@ export default function VenueSettingsPage() {
   if (allPitches.length === 0) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-4">
       <p className="font-bold text-lg">No pitch registered</p>
-      <a href="/pitches/register" className="px-6 py-3 bg-accent text-black rounded-xl font-bold text-sm">Register Your Pitch</a>
+      <a href="/pitches/register" className="px-6 py-3 bg-accent text-white rounded-xl font-bold text-sm">Register Your Pitch</a>
     </div>
   );
 
@@ -924,7 +924,7 @@ export default function VenueSettingsPage() {
       <div className="flex overflow-x-auto bg-surface-2 border border-border rounded-xl p-1 gap-0.5 flex-shrink-0">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${activeTab === t.key ? "bg-accent text-black" : "text-text-secondary"}`}>
+            className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${activeTab === t.key ? "bg-accent text-white" : "text-text-secondary"}`}>
             {t.label}
           </button>
         ))}
