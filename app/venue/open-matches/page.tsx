@@ -123,7 +123,7 @@ function CompetitionPanel({ ev }: { ev: EventRow }) {
         </div>
         {canInvite && user && (
           <button onClick={() => setShowInvite(true)}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-bold">
+            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-bold">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
             Invite teams (discounted)
           </button>
@@ -141,7 +141,7 @@ function CompetitionPanel({ ev }: { ev: EventRow }) {
         )}
         {champion && (
           <div className="mt-3 flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-xl px-3 py-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008000" strokeWidth="2" strokeLinecap="round">
               <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/><path d="M8 22h8"/><path d="M12 15v7"/>
             </svg>
             <span className="text-xs font-semibold">Champion: <span className="text-accent">{champion}</span></span>
@@ -281,7 +281,7 @@ export default function VenueProgressPage() {
   if (hasPitches === false) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-4">
       <p className="font-bold text-lg">No pitches registered</p>
-      <a href="/pitches/register" className="px-6 py-3 bg-accent text-black rounded-xl font-bold text-sm">Register a Pitch</a>
+      <a href="/pitches/register" className="px-6 py-3 bg-accent text-white rounded-xl font-bold text-sm">Register a Pitch</a>
     </div>
   );
 
@@ -300,7 +300,7 @@ export default function VenueProgressPage() {
         {TABS.map((t) => (
           <button key={t.k} onClick={() => setActive(t.k)}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-              active === t.k ? "bg-accent text-black" : "text-text-secondary"
+              active === t.k ? "bg-accent text-white" : "text-text-secondary"
             }`}>
             {t.label}
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active === t.k ? "bg-black/15" : "bg-background"}`}>
@@ -316,7 +316,7 @@ export default function VenueProgressPage() {
           <p className="text-xs text-text-secondary mb-4">
             Set one up from the Calendar and progress will show up here.
           </p>
-          <a href="/venue/calendar" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-black font-bold text-sm">
+          <a href="/venue/calendar" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-white font-bold text-sm">
             Go to Calendar
           </a>
         </div>

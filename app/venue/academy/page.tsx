@@ -15,7 +15,7 @@ export default function VenueAcademyPage() {
           <h1 className="text-xl font-bold">Academy</h1>
           <p className="text-xs text-text-secondary mt-0.5">Run coaching programmes and camps at your venue.</p>
         </div>
-        <button className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-black text-xs font-bold opacity-60 cursor-not-allowed">
+        <button className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-white text-xs font-bold opacity-60 cursor-not-allowed">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Add programme
         </button>

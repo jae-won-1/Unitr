@@ -140,17 +140,22 @@ body {
 }
 
 /* ── Venue panes ───────────────────────────────────────────────
-   The venue calendar has the same need as a chat: the grid must be the only
-   thing that scrolls. There is no TopBar in the venue portal, but the root
-   <main> still carries .pb-nav, so a 100vh page left the document scrolling
-   by that padding — the wheel moved the page or the grid depending on where
-   the cursor was. Viewport less .pb-nav comes to exactly 100dvh. */
+   The venue portal has no bottom nav, but the root <main> still carries
+   .pb-nav, which left an empty band under every venue page. .venue-shell (the
+   venue layout's root) takes that padding back, so a pane can be exactly the
+   viewport. The calendar needs that: like a chat, its grid must be the only
+   thing that scrolls, and a page taller than the viewport scrolled the
+   document too — the wheel moved the page or the grid depending on where the
+   cursor was. */
+.venue-shell {
+  margin-bottom: calc(-4rem - max(1rem, env(safe-area-inset-bottom)));
+}
 .h-venue-pane {
-  height: calc(100vh - 4rem - max(1rem, env(safe-area-inset-bottom)));
+  height: 100vh;
 }
 @supports (height: 100dvh) {
   .h-venue-pane {
-    height: calc(100dvh - 4rem - max(1rem, env(safe-area-inset-bottom)));
+    height: 100dvh;
   }
 }
 

@@ -90,7 +90,7 @@ export default function VenueDashboard() {
         </div>
         <p className="font-bold text-lg">No pitch registered</p>
         <p className="text-sm text-text-secondary">Register your venue to start managing bookings.</p>
-        <Link href="/pitches/register" className="px-6 py-3 bg-accent text-black rounded-xl font-bold text-sm">Register Your Pitch</Link>
+        <Link href="/pitches/register" className="px-6 py-3 bg-accent text-white rounded-xl font-bold text-sm">Register Your Pitch</Link>
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default function VenueDashboard() {
             )}
             {primaryPitch.is_verified && (
               <span className="flex-shrink-0 text-[10px] font-bold bg-accent/10 text-accent border border-accent/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <svg width="8" height="8" viewBox="0 0 24 24" fill="#00E676"><polyline points="20 6 9 17 4 12"/></svg>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="#008000"><polyline points="20 6 9 17 4 12"/></svg>
                 Verified
               </span>
             )}
@@ -168,7 +168,7 @@ export default function VenueDashboard() {
       <div className="grid grid-cols-2 gap-3">
         <Link href="/venue/open-matches" className="bg-surface-2 border border-accent/30 rounded-2xl p-4 flex flex-col gap-2 col-span-2">
           <div className="flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008000" strokeWidth="2" strokeLinecap="round">
               <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>
             </svg>
             <p className="text-sm font-semibold">Host an Open Match</p>
@@ -177,14 +177,14 @@ export default function VenueDashboard() {
           <p className="text-xs text-text-secondary">Fill empty slots — post a match teams can buy into.</p>
         </Link>
         <Link href="/venue/availability" className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008000" strokeWidth="2" strokeLinecap="round">
             <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
           <p className="text-sm font-semibold">Set Availability</p>
           <p className="text-xs text-text-secondary">Manage weekly hours</p>
         </Link>
         <Link href="/venue/settings" className="bg-surface-2 border border-border rounded-2xl p-4 flex flex-col gap-2">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E676" strokeWidth="2" strokeLinecap="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008000" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>

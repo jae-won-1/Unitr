@@ -615,7 +615,10 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
             </div>
           ) : filteredPitches.map((pitch) => {
             const slots = slotMap[pitch.id];
-            const freeCount = (slots ?? []).filter((s) => s.status === "available").length;
+            // Only what can still be booked: taken and already-started hours aren't shown at all.
+            const open = (slots ?? []).filter((s) =>
+              s.status === "available" && !(filterDate === todayStr && parseInt(s.time.split(":")[0], 10) <= currentHour));
+            const freeCount = open.length;
             return (
               <div key={pitch.id} className="bg-surface border border-border shadow-card rounded-card overflow-hidden">
                 {/* Pitch image placeholder */}
@@ -661,36 +664,20 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
                     ) : (
                       <>
                         <div className="grid grid-cols-4 gap-1.5 mb-2">
-                          {slots.map(({ time, status }) => {
-                            const slotHour = parseInt(time.split(":")[0], 10);
-                            const isPast = filterDate === todayStr && slotHour <= currentHour;
-                            const isTaken = status !== "available";
-                            const isDisabled = isTaken || isPast;
-                            const isFilterMatch = filterHour === time;
-                            return (
-                              <button key={time}
-                                disabled={isDisabled}
-                                onClick={() => onSelectSlot ? onSelectSlot(pitch.id, filterDate, time) : setPendingSlot({ pitch, date: filterDate, time })}
-                                className={`py-2 rounded-lg text-[12px] font-medium transition-colors ${
-                                  isPast
-                                    ? "text-text-secondary/25 cursor-not-allowed"
-                                    : isTaken
-                                      ? "line-through text-text-secondary/30 cursor-not-allowed"
-                                      : isFilterMatch
-                                        ? "bg-accent text-white"
-                                        : "border border-white/20 text-text-primary hover:border-accent hover:text-accent-ink"
-                                }`}>
-                                {time}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="flex items-center gap-3 text-[10px] text-text-secondary">
-                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded border border-white/20 inline-block" />Available</span>
-                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-surface-2 inline-block opacity-40" />Taken / Closed</span>
+                          {open.map(({ time }) => (
+                            <button key={time}
+                              onClick={() => onSelectSlot ? onSelectSlot(pitch.id, filterDate, time) : setPendingSlot({ pitch, date: filterDate, time })}
+                              className={`py-2 rounded-lg text-[12px] font-medium transition-colors ${
+                                filterHour === time
+                                  ? "bg-accent text-white"
+                                  : "border border-border text-text-primary hover:border-accent hover:text-accent-ink"
+                              }`}>
+                              {time}
+                            </button>
+                          ))}
                         </div>
                         {freeCount === 0 && (
-                          <p className="text-[11px] text-red-600 mt-2">Fully booked on this date — try another day.</p>
+                          <p className="text-[11px] text-red-600">Fully booked on this date — try another day.</p>
                         )}
                       </>
                     )}
