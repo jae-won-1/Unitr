@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toDateKey } from "@/lib/match-dates";
@@ -89,6 +89,62 @@ function PaymentBadge({ status }: { status: string }) {
   );
   return (
     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">Unpaid</span>
+  );
+}
+
+// A button that names the filter and its current choice; the choices open in
+// a menu under it. Green once narrowed, so a filtered list never passes for
+// the whole one.
+function FilterDropdown<K extends string>({ label, value, options, onChange }: {
+  label: string;
+  value: K;
+  options: { k: K; label: string; count?: number }[];
+  onChange: (k: K) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.k === value) ?? options[0];
+  const narrowed = value !== options[0].k;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}
+        className={`flex items-center gap-2 h-9 pl-3.5 pr-3 rounded-btn border text-sm transition-colors ${
+          narrowed ? "bg-accent/10 border-accent/40 text-accent-ink" : "bg-surface border-border text-text-primary hover:border-text-secondary/40"
+        }`}>
+        <span className={narrowed ? "" : "text-text-secondary"}>{label}:</span>
+        <span className="font-semibold">{current.label}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div role="listbox" className="absolute left-0 top-full mt-1.5 z-50 min-w-[12rem] bg-surface border border-border rounded-btn shadow-lg py-1">
+          {options.map((o) => {
+            const active = o.k === value;
+            return (
+              <button key={o.k} role="option" aria-selected={active}
+                onClick={() => { onChange(o.k); setOpen(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-surface-2 ${active ? "text-accent-ink font-semibold" : "text-text-primary"}`}>
+                <span className="w-4 flex-shrink-0">
+                  {active && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </span>
+                <span className="flex-1">{o.label}</span>
+                {o.count !== undefined && <span className="text-xs text-text-secondary tabular-nums">{o.count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -217,27 +273,30 @@ export default function VenueBookingsPage() {
         <p className="text-xs text-text-secondary mt-0.5">{bookings.length} total booking{bookings.length !== 1 ? "s" : ""}</p>
       </div>
 
-      {/* Category tabs — highlight matches / tournaments / leagues separately */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {CATEGORY_TABS.map((c) => {
-          const count = c.k === "all" ? bookings.length : bookings.filter((b) => b.category === c.k).length;
-          return (
-            <button key={c.k} onClick={() => setCategory(c.k)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${category === c.k ? "bg-accent text-white border-accent" : "bg-surface-2 text-text-secondary border-border"}`}>
-              {c.label}{count > 0 ? ` · ${count}` : ""}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Status filter */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {STATUS_FILTERS.map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${filter === f ? "bg-text-primary/10 text-text-primary border-text-primary/30" : "bg-surface-2 text-text-secondary border-border"}`}>
-            {f}
+      {/* Filters — booking type and status, one dropdown each */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <FilterDropdown
+          label="Type"
+          value={category}
+          options={CATEGORY_TABS.map((c) => ({
+            k: c.k,
+            label: c.label,
+            count: c.k === "all" ? bookings.length : bookings.filter((b) => b.category === c.k).length,
+          }))}
+          onChange={setCategory}
+        />
+        <FilterDropdown
+          label="Status"
+          value={filter}
+          options={STATUS_FILTERS.map((f) => ({ k: f, label: f }))}
+          onChange={setFilter}
+        />
+        {(category !== "all" || filter !== "All") && (
+          <button onClick={() => { setCategory("all"); setFilter("All"); }}
+            className="px-2 py-2 text-xs font-medium text-text-secondary hover:text-text-primary">
+            Clear
           </button>
-        ))}
+        )}
       </div>
 
       {filtered.length === 0 ? (
