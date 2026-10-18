@@ -28,6 +28,7 @@ import TacticsTab from "@/components/my-team/TacticsTab";
 import StatsTab from "@/components/my-team/StatsTab";
 import MembersTab from "@/components/my-team/MembersTab";
 import LeaveTeamPanel from "@/components/my-team/LeaveTeamPanel";
+import CaptainActionMenu from "@/components/my-team/CaptainActionMenu";
 
 // Highlights "@Full Name" mentions in announcement text for display.
 // Validity (matching a real squad member) is enforced at creation time via
@@ -258,54 +259,6 @@ function JoinRequests({ teamId }: { teamId: string }) {
   );
 }
 
-// ── Team header card ──────────────────────────────────────────
-function TeamHeaderCard({ team, isCaptain }: { team: Team; isCaptain: boolean }) {
-  const initials = team.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2);
-  return (
-    <div className="bg-surface border border-border shadow-card rounded-card p-4 mb-5">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-[#E7F8EC] border border-[#B7E8C6] flex items-center justify-center flex-shrink-0">
-          <span className="text-[15px] font-extrabold text-accent-ink">{initials}</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-base font-extrabold truncate">{team.name}</p>
-          <p className="text-xs font-medium text-text-secondary truncate mt-0.5">
-            {[team.location, team.level, teamFormatLabel(team)].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-      </div>
-      {isCaptain && (
-        <div className="flex gap-2 mt-3">
-          {/* Inviting players is the thing a new captain came here to do, so it
-              gets the filled button and its own row. The link itself lives in
-              Team Settings alongside the joining fee — the two questions a
-              captain answers about letting someone in. */}
-          <a href="/my-team/settings#invite" className="w-full py-2.5 rounded-btn bg-accent text-white text-xs font-bold text-center">
-            Invite Players
-          </a>
-        </div>
-      )}
-      {isCaptain && (
-        <div className="flex gap-2 mt-2">
-          <a href="/my-team/settings" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
-            Team Settings
-          </a>
-          <a href="/my-team/announcement/create" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
-            Post Announcement
-          </a>
-        </div>
-      )}
-      {/* Not captain-gated: the chat is the whole squad's, and this is where
-          the squad already is. It also lives at the top of /messages. */}
-      <div className="flex gap-2 mt-2">
-        <a href="/messages/team" className="flex-1 py-2.5 rounded-btn border border-border text-xs font-semibold text-text-secondary text-center">
-          Team Chat
-        </a>
-      </div>
-    </div>
-  );
-}
-
 // ── Team-scoped tab surface ───────────────────────────────────
 function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptain: boolean; isCoCaptain: boolean }) {
   const [team, setTeam] = useState<Team | null | undefined>(undefined);
@@ -363,14 +316,16 @@ function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptai
 
   return (
     <>
-      <TeamHeaderCard team={team} isCaptain={isCaptain} />
       {isCaptain && <JoinRequests teamId={team.id} />}
 
-      <div className="flex justify-between gap-2 overflow-x-auto pb-2 mb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Six slots don't fit a phone, so the row scrolls sideways — bled to the
+          screen edges so it reads as scrollable rather than clipped. */}
+      <div className="flex justify-between gap-2 overflow-x-auto -mx-4 px-4 pb-2 mb-4 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <CaptainActionMenu teamId={team.id} isCaptain={isCaptain} />
         {TEAM_TABS.map((t) => (
           <button key={t} type="button" onClick={() => selectTab(t)}
             aria-current={tab === t ? "page" : undefined}
-            className="flex flex-col items-center gap-2 flex-1 min-w-[64px]">
+            className="flex flex-col items-center gap-2 flex-1 min-w-[72px] snap-start">
             <span className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
               tab === t ? "bg-accent text-white" : "bg-surface border border-border text-text-secondary"}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -382,6 +337,19 @@ function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptai
             </p>
           </button>
         ))}
+        {/* Settings is a page, not a tab, so it closes the row rather than
+            sitting among the tabs. Captain-only; greyed for the squad. */}
+        <a href={isCaptain ? "/my-team/settings" : undefined}
+          aria-disabled={!isCaptain}
+          className={`flex flex-col items-center gap-2 flex-1 min-w-[72px] snap-start ${isCaptain ? "" : "opacity-40 pointer-events-none"}`}>
+          <span className="w-14 h-14 rounded-full flex items-center justify-center bg-surface border border-border text-text-secondary">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </span>
+          <p className="text-[11px] text-center leading-tight font-semibold text-text-secondary">Settings</p>
+        </a>
       </div>
 
       {tab === "match" && <ManageMatchTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
@@ -466,16 +434,14 @@ export default function MyTeamPage() {
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
-      <header className="mb-4">
-        <h1 className="text-2xl font-extrabold mb-0.5">
-          {role === "new_user" ? "Browse Teams" : "My Team"}
-        </h1>
-        <p className="text-text-secondary text-sm">
-          {role === "new_user" ? "Find teams to become your next family"
-          : role === "player" ? "Your squad, your next game"
-          : "Run your squad and organise the next game"}
-        </p>
-      </header>
+      {/* Only the teamless get a page title: inside a team the icon row is the
+          top of the page. */}
+      {role === "new_user" && (
+        <header className="mb-4">
+          <h1 className="text-2xl font-extrabold mb-0.5">Browse Teams</h1>
+          <p className="text-text-secondary text-sm">Find teams to become your next family</p>
+        </header>
+      )}
 
       {inTeam && <TeamAnnouncementBanner userId={user.id} role={role as "captain" | "player"} />}
 

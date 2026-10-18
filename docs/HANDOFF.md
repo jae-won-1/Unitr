@@ -10,9 +10,24 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   nothing to port unless the phone grows venue screens. Adds `lib/venue-pitches.ts`
   (shape-stable, new).
 
-## Latest completed work — 2026-10-18, Claude Code on `main`: venue portal
+## Latest completed work — 2026-10-18, Claude Code: My Team top of page
 
-**Not committed yet.** User asked (18 Oct) for a sidebar with three sections, a
+Web and phone together (`main` + `mobile`), so nothing is awaiting a port.
+
+The "My Team" title and the team card
+(Invite Players / Team Settings / Post Announcement / Team Chat) are gone for
+team members; the icon row now leads with a + "Create" radial menu
+(`components/my-team/CaptainActionMenu.tsx`): Training · Announcement · Task
+· Invite link over a blurred backdrop. Announcement and Invite link (copies
+`/join/<code>`, falls back to Team Settings) are live; Training and Task show
+"soon" (no standalone feature yet). A Settings icon ends the row, which now
+scrolls sideways. Greyed for players; player view TBD.
+
+On the phone (`captain-action-menu.tsx`) the backdrop dims rather than blurs and the copy uses core `Clipboard`: no new native modules, because the app ships OTA updates to installed builds. Add `expo-blur` at the next EAS build if wanted.
+
+## Earlier — 2026-10-18, Claude Code on `main`: venue portal
+
+User asked (18 Oct) for a sidebar with three sections, a
 calendar per pitch modelled on a reference screenshot (solid coloured blocks with
 gaps), the Day/Week toggle kept, and the player app's green as the venue accent.
 
