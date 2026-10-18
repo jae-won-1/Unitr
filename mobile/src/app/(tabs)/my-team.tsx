@@ -12,9 +12,10 @@
 // supabase_co_captains.sql hasn't been run) so this screen degrades the same
 // way the web one does instead of erroring.
 //
-// Laid out like the web's My Team: a team card (Invite Players, Team Settings,
-// Post Announcement for leaders; Team Chat for everyone), then four tabs —
-// Manage Match · Tactics · Stats · Members. Money and the availability poll
+// Laid out like the web's My Team: no title or team card — a sideways row of
+// Create (the captain's + menu) · Manage Match · Tactics · Stats · Members ·
+// Settings, then the tab's content. Team Chat lives under the Messages icon in
+// TopActions. Money and the availability poll
 // live on Home, as on the web. Tactics opens its own screen rather than an
 // inline tab, because the editor needs the whole screen on a phone.
 
@@ -29,7 +30,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -50,6 +51,7 @@ import { BrowseTeams } from '~/components/browse-teams';
 import { PlayerSheet } from '~/components/player-sheet';
 import { FixtureDetailSheet } from '~/components/fixture-detail-sheet';
 import { TeamStatsPanel } from '~/components/team-stats';
+import { CaptainActionMenu } from '~/components/captain-action-menu';
 
 type Team = {
   id: string;
@@ -69,15 +71,6 @@ const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] 
   { key: 'stats', label: 'Stats', icon: 'stats-chart' },
   { key: 'members', label: 'Members', icon: 'people-outline' },
 ];
-
-const initials = (name: string | null | undefined) =>
-  (name ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || '?';
 
 export default function MyTeam() {
   const theme = useTheme();
@@ -173,7 +166,6 @@ export default function MyTeam() {
     );
   }
 
-  const role = isCaptain ? (isCoCaptain ? 'Co-captain' : 'Captain') : 'Player';
 
   return (
     <ScrollView
@@ -190,54 +182,16 @@ export default function MyTeam() {
         />
       }>
       <TopActions />
-      <Text style={styles.heading}>My Team</Text>
-      <Text style={styles.subheading}>
-        {isCaptain ? 'Run your squad and organise the next game' : 'Your squad and your next game'}
-      </Text>
 
-      <View style={[styles.card, styles.teamCard]}>
-        <View style={styles.teamHead}>
-          <View style={styles.teamBadge}>
-            <Text style={styles.teamBadgeText}>{initials(team?.name)}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.teamName}>{team?.name ?? 'My Team'}</Text>
-            <Text style={styles.teamMeta}>
-              {[team?.location, team?.level, team?.format].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-          {role !== 'Captain' && (
-            <View style={styles.rolePill}>
-              <Text style={styles.rolePillText}>{role}</Text>
-            </View>
-          )}
-        </View>
-        {!!team?.description && <Text style={styles.description}>{team.description}</Text>}
-
-        <View style={styles.actions}>
-          {isCaptain && (
-            <Pressable onPress={() => router.push('/team-settings')} style={[styles.action, styles.actionPrimary]}>
-              <Text style={styles.actionPrimaryText}>Invite Players</Text>
-            </Pressable>
-          )}
-          {isCaptain && (
-            <View style={styles.actionRow}>
-              <Pressable onPress={() => router.push('/team-settings')} style={styles.action}>
-                <Text style={styles.actionText}>Team Settings</Text>
-              </Pressable>
-              <Pressable onPress={() => router.push('/announcement')} style={styles.action}>
-                <Text style={styles.actionText}>Post Announcement</Text>
-              </Pressable>
-            </View>
-          )}
-          {/* Not captain-gated: the chat is the whole squad's. */}
-          <Pressable onPress={() => router.push('/messages/team' as Href)} style={styles.action}>
-            <Text style={styles.actionText}>Team Chat</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.tabs}>
+      {/* No title or team card, as on the web: the icon row is the top of the
+          screen. Six slots don't fit a phone, so it scrolls sideways, bled to
+          the screen edges so it reads as scrollable rather than clipped. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsScroller}
+        contentContainerStyle={styles.tabs}>
+        {team && <CaptainActionMenu teamId={team.id} teamName={team.name ?? ''} isCaptain={isCaptain} />}
         {TABS.map((t) => {
           const on = tab === t.key;
           return (
@@ -252,7 +206,17 @@ export default function MyTeam() {
             </Pressable>
           );
         })}
-      </View>
+        {/* A screen, not a tab, so it closes the row. Captain-only; greyed for the squad. */}
+        <Pressable
+          onPress={() => router.push('/team-settings')}
+          disabled={!isCaptain}
+          style={[styles.tab, !isCaptain && { opacity: 0.4 }]}>
+          <View style={styles.tabCircle}>
+            <Ionicons name="settings-outline" size={22} color={theme.textSecondary} />
+          </View>
+          <Text style={styles.tabLabel}>Settings</Text>
+        </Pressable>
+      </ScrollView>
 
       {tab === 'match' && (
         <View>
@@ -422,37 +386,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
       padding: 16,
       ...cardShadow,
     },
-    teamCard: { marginTop: 16 },
-    teamHead: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-    teamBadge: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: theme.successBg,
-      borderWidth: 1,
-      borderColor: theme.successBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    teamBadgeText: { color: theme.accentInk, fontFamily: fonts.extrabold, fontSize: 18 },
-    teamName: { color: theme.textPrimary, fontFamily: fonts.bold, fontSize: 18 },
-    teamMeta: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 13, marginTop: 2 },
-    rolePill: {
-      backgroundColor: theme.accent,
-      borderRadius: radius.pill,
-      paddingHorizontal: 11,
-      paddingVertical: 4,
-    },
-    rolePillText: { color: '#fff', fontFamily: fonts.semibold, fontSize: 11 },
-    description: {
-      color: theme.textSecondary,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      lineHeight: 20,
-      marginTop: 12,
-    },
     actions: { gap: 8, marginTop: 16 },
-    actionRow: { flexDirection: 'row', gap: 8 },
     action: {
       flex: 1,
       borderWidth: 1,
@@ -465,8 +399,11 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     actionText: { color: theme.textSecondary, fontFamily: fonts.semibold, fontSize: 13 },
     actionPrimary: { backgroundColor: theme.accent, borderColor: theme.accent },
     actionPrimaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 14 },
-    tabs: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 22, marginBottom: 18 },
-    tab: { flex: 1, alignItems: 'center', gap: 8 },
+    // marginTop clears TopActions (absolute, top 56, 36 tall) now that no
+    // heading sits beside it. -20 cancels the page padding so the row bleeds.
+    tabsScroller: { marginHorizontal: -20, marginTop: 44, marginBottom: 18, flexGrow: 0 },
+    tabs: { paddingHorizontal: 20, gap: 4 },
+    tab: { width: 76, alignItems: 'center', gap: 8 },
     tabCircle: {
       width: 56,
       height: 56,
