@@ -109,7 +109,8 @@ export function JoiningFeeAmountPanel({ teamId }: { teamId: string }) {
 // Who has covered their one-off joining fee. The paid amounts are advanced
 // only by the server when a verified payment lands (supabase_joining_fees.sql)
 // — the captain reads them here and can nudge, not tick. Cash handed over in
-// person goes through Record Cash / record_cash_credit like any other credit.
+// person never becomes team credit: credit is money Uniter holds, and cash in
+// the captain's pocket isn't (supabase_card_and_credit_lockdown.sql).
 type FeeRow = {
   playerId: string;
   name: string;

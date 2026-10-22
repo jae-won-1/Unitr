@@ -1,6 +1,6 @@
 "use client";
 
-// The write that finishes saving a card, in one place.
+// The step that finishes saving a card, in one place.
 //
 // A SetupIntent succeeding is not the end of saving a card — the payment
 // method still has to land on the profile, or off-session settlement has
@@ -10,38 +10,34 @@
 // recovered by the banner was saved slightly differently from one saved
 // normally.
 //
-// The Stripe customer is NOT written here — /api/create-setup-intent puts it on
-// the profile when it creates it, so it is already there by the time a card
-// comes back, including on a recovery where the browser has forgotten
-// everything the form knew.
+// The profile write itself happens on the server (/api/payment-method,
+// /api/payment-intent-method), which first checks the card is on the caller's
+// own Stripe customer. The browser used to write the card columns directly,
+// which let anyone copy a stranger's card onto their own profile and spend it;
+// supabase_card_and_credit_lockdown.sql now refuses that write. Clearing a card
+// (Remove card on /profile) is still a client write — the database allows a
+// card column to be set to null, never to a value.
+//
+// The `userId` parameters are kept so callers on both apps stay unchanged; the
+// server takes the player from the session, never from here.
 
-import { authedGet, authedPost } from "@/lib/authed-fetch";
-import { supabase } from "@/lib/supabase";
+import { authedPost } from "@/lib/authed-fetch";
 import { STRIPE_TEST_MODE } from "@/lib/stripe-mode";
 
 export type SavedCard = { brand: string | null; last4: string | null };
 
-export async function persistSavedCard(userId: string, paymentMethodId: string): Promise<SavedCard> {
-  let brand: string | null = null, last4: string | null = null;
+export async function persistSavedCard(_userId: string, paymentMethodId: string): Promise<SavedCard> {
   try {
+    // In test mode the route reads the card back and writes nothing — a test
+    // card would replace this player's live one (lib/stripe-mode.ts).
     const res = await authedPost("/api/payment-method", { paymentMethodId });
     const d = await res.json();
-    brand = d.brand ?? null; last4 = d.last4 ?? null;
-  } catch {
-    // brand/last4 are cosmetic — the card is still saved and still chargeable.
+    if (!res.ok) console.error("persistSavedCard:", d.error ?? res.status);
+    return { brand: d.brand ?? null, last4: d.last4 ?? null };
+  } catch (err) {
+    console.error("persistSavedCard:", err);
+    return { brand: null, last4: null };
   }
-
-  // Test mode shares the live database: a test card written here would replace
-  // this player's live one. Report it as saved to the screen, write nothing.
-  if (STRIPE_TEST_MODE) return { brand, last4 };
-
-  await supabase.from("profiles").update({
-    stripe_payment_method_id: paymentMethodId,
-    card_brand: brand,
-    card_last4: last4,
-  }).eq("id", userId);
-
-  return { brand, last4 };
 }
 
 // The payment method id off a SetupIntent, which Stripe gives back as either
@@ -52,24 +48,17 @@ export function paymentMethodIdOf(pm: unknown): string | null {
   return null;
 }
 
-// Moved here from components/SaveCardPrompt.tsx (unchanged) so the mobile app
-// can save the card off an intent it has just paid, the same way the web does.
+// Moved here from components/SaveCardPrompt.tsx so the mobile app can save the
+// card off an intent it has just paid, the same way the web does.
 // Copy the card Stripe attached during `paymentIntentId` onto the profile.
 // Resolves regardless of outcome; callers continue on either way.
-export async function saveCardFromIntent(userId: string, paymentIntentId: string): Promise<boolean> {
+export async function saveCardFromIntent(_userId: string, paymentIntentId: string): Promise<boolean> {
   // Never in test mode — see persistSavedCard above and lib/stripe-mode.ts.
   if (STRIPE_TEST_MODE) return false;
   try {
-    const res = await authedGet(`/api/payment-intent-method?paymentIntentId=${encodeURIComponent(paymentIntentId)}`);
+    const res = await authedPost("/api/payment-intent-method", { paymentIntentId });
     const data = await res.json();
-    if (!data.paymentMethodId || !data.customerId) return false;
-    await supabase.from("profiles").update({
-      stripe_customer_id: data.customerId,
-      stripe_payment_method_id: data.paymentMethodId,
-      card_brand: data.brand ?? null,
-      card_last4: data.last4 ?? null,
-    }).eq("id", userId);
-    return true;
+    return res.ok && data.saved === true;
   } catch {
     return false;
   }

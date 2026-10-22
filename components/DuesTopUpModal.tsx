@@ -10,6 +10,7 @@ import { waitForCredit } from "@/lib/credit-sync";
 import { authedPost } from "@/lib/authed-fetch";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 import TestModeNote from "@/components/TestModeNote";
+import { TEAM_CREDIT_NON_REFUNDABLE } from "@/lib/team-credit-terms";
 import { confirmCardPayment } from "@/lib/confirm-payment";
 
 // Full "Pay & Top Up" popup: the itemised match fees the captain has requested
@@ -66,6 +67,7 @@ function CreditsCheckoutForm({ amount, teamId, userId, currentCredits, clientSec
         <div className="flex justify-between text-text-secondary"><span>Adding to team credits</span><span className="font-bold text-text-primary">£{amount.toFixed(2)}</span></div>
         <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-bold text-accent-ink">£{(currentCredits + amount).toFixed(2)}</span></div>
       </div>
+      <p className="text-[11px] text-text-secondary leading-snug">{TEAM_CREDIT_NON_REFUNDABLE}</p>
       <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={cardElementOptions} />
