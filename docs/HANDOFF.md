@@ -9,18 +9,6 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
 - **Venue portal sidebar + per-pitch calendar (18 Oct)** — a web-only portal;
   nothing to port unless the phone grows venue screens. Adds `lib/venue-pitches.ts`
   (shape-stable, new).
-- **Card saving moved to the server (20 Oct)** — `lib/save-card.ts` keeps its
-  names and signatures, so the phone needs only the merge, no screen changes.
-  Merge `main` into `mobile` and ship (OTA is enough — JS only) **before** the
-  user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
-  phone fails until it does. `/api/payment-intent-method` is now POST.
-
-- **Team credit is non-refundable (22 Oct)** — show `TEAM_CREDIT_NON_REFUNDABLE`
-  (`lib/team-credit-terms.ts`) before the pay button in every phone sheet that pays
-  into team credit: `top-up-sheet.tsx`, `pay-sheet.tsx`, `challenge-sheet.tsx` and
-  `enter-tournament-sheet.tsx` (the last two only for their shortfall payment). The
-  phone never had a cash-out, so nothing to remove.
-
 ## Latest completed work — 2026-10-22, Claude Code on `main`: credit is non-refundable
 
 User decision: team credit top-ups are not refundable to individual players.

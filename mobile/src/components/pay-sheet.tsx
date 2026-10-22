@@ -39,6 +39,7 @@ import { supabase } from '@/lib/supabase';
 import { authedPost } from '@/lib/authed-fetch';
 import { applyTopUp, useMyDues, type MyDue, type SavedCard } from '@/lib/dues';
 import { fmtFee, useJoiningFee } from '@/lib/joining-fee';
+import { TEAM_CREDIT_NON_REFUNDABLE } from '@/lib/team-credit-terms';
 import { waitForCredit } from '@/lib/credit-sync';
 import { STRIPE_TEST_MODE } from '@/lib/stripe-mode';
 import { toDateKey } from '@/lib/match-dates';
@@ -209,7 +210,7 @@ export function PaySheet({
     if (savedCard) {
       Alert.alert(
         `Pay ${fmtFee(amountOf(t))}?`,
-        `For ${labelOf(t)}, charged to your card ending ${savedCard.last4 ?? '••••'}.`,
+        `For ${labelOf(t)}, charged to your card ending ${savedCard.last4 ?? '••••'}. ${TEAM_CREDIT_NON_REFUNDABLE}`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Pay', onPress: () => void run() },
@@ -298,6 +299,7 @@ export function PaySheet({
                   {feeOwed > 0 || dues.length > 0
                     ? ' Until these are paid you can still say you can’t play, but not that you’re available.'
                     : ''}
+                  {' '}{TEAM_CREDIT_NON_REFUNDABLE}
                 </Text>
               </>
             )}

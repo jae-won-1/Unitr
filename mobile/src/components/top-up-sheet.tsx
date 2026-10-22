@@ -28,6 +28,7 @@ import { supabase } from '@/lib/supabase';
 import { authedPost } from '@/lib/authed-fetch';
 import { waitForCredit } from '@/lib/credit-sync';
 import { fmtFee } from '@/lib/joining-fee';
+import { TEAM_CREDIT_NON_REFUNDABLE } from '@/lib/team-credit-terms';
 import { paymentIntentIdFrom, useSaveCardChoice } from '~/payments';
 import { fonts, radius } from '~/theme';
 import { useTheme } from '~/use-theme';
@@ -200,6 +201,7 @@ export function TopUpSheet({
                 </View>
               )}
 
+              <Text style={styles.creditNote}>{TEAM_CREDIT_NON_REFUNDABLE}</Text>
               {!!error && <Text style={styles.error}>{error}</Text>}
               <Pressable onPress={pay} disabled={!valid || busy} style={[styles.primary, (!valid || busy) && { opacity: 0.5 }]}>
                 {busy ? (
@@ -264,6 +266,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     saveRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     saveText: { color: theme.textPrimary, fontFamily: fonts.medium, fontSize: 13 },
     error: { color: theme.danger, fontFamily: fonts.regular, fontSize: 12 },
+    creditNote: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 11, lineHeight: 15 },
     primary: { backgroundColor: theme.accent, borderRadius: radius.btn, paddingVertical: 14, alignItems: 'center' },
     primaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15 },
     tick: {

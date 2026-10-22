@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { authedPost } from '@/lib/authed-fetch';
 import { waitForCredit } from '@/lib/credit-sync';
 import { fmtFee } from '@/lib/joining-fee';
+import { TEAM_CREDIT_NON_REFUNDABLE } from '@/lib/team-credit-terms';
 import { fmtKickoff } from '@/lib/match-dates';
 import type { MatchPost } from '@/lib/game-feed';
 import { fonts, radius } from '~/theme';
@@ -273,6 +274,7 @@ export function ChallengeSheet({
                   </Text>
                 </View>
               )}
+              <Text style={styles.creditNote}>{TEAM_CREDIT_NON_REFUNDABLE}</Text>
               {!!error && <Text style={styles.error}>{error}</Text>}
               <Pressable onPress={accept} disabled={!pitch || busy} style={[styles.primary, (!pitch || busy) && { opacity: 0.5 }]}>
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{pitch ? `Accept for ${fmtFee(halfPence)}` : 'Pick a pitch'}</Text>}
@@ -411,6 +413,7 @@ const makeStyles = (theme: ReturnType<typeof useTheme>) =>
     saveRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     saveText: { color: theme.textPrimary, fontFamily: fonts.medium, fontSize: 13 },
     error: { color: theme.danger, fontFamily: fonts.regular, fontSize: 12 },
+    creditNote: { color: theme.textSecondary, fontFamily: fonts.regular, fontSize: 11, lineHeight: 15 },
     primary: { backgroundColor: theme.accent, borderRadius: radius.btn, paddingVertical: 14, alignItems: 'center' },
     primaryText: { color: '#fff', fontFamily: fonts.bold, fontSize: 15, textAlign: 'center' },
   });
