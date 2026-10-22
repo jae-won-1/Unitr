@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import SettlePaymentsModal from "@/components/SettlePaymentsModal";
 import BottomSheet from "@/components/BottomSheet";
-import CashOutModal from "@/components/CashOutModal";
+import { TEAM_CREDIT_NON_REFUNDABLE } from "@/lib/team-credit-terms";
 import { loadLeadership } from "@/lib/team-leadership";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
 import { JoiningFeeStatusPanel } from "@/components/JoiningFeePanels";
@@ -17,8 +17,6 @@ import { JoiningFeeStatusPanel } from "@/components/JoiningFeePanels";
 // Rendered under the My Team header and again on the captain's home screen, so
 // both surfaces read from one implementation.
 
-type DuePlayer = { player_id: string; name: string; status: string; sharePence: number };
-type DueGroup = { matchId: string; bookingId: string | null; opponent: string; date: string; teamPoolPence: number; players: DuePlayer[] };
 
 // Captain's Payment Status view — grouped by match. Every fixture a payment
 // request has been issued for lists its charged players + individual pay
@@ -46,7 +44,6 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [showCashOut, setShowCashOut] = useState(false);
   const [logTab, setLogTab] = useState<"deposits" | "bookings" | "reimbursed">("deposits");
   const [depositsExpanded, setDepositsExpanded] = useState(false);
   const [bookingsExpanded, setBookingsExpanded] = useState(false);
@@ -54,8 +51,6 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
   const [owedByPlayer, setOwedByPlayer] = useState<Record<string, number>>({});
   const [bookingTx, setBookingTx] = useState<{ id: string; label: string; detail: string; amount_pence: number; created_at: string }[]>([]);
   const [reimbursedTx, setReimbursedTx] = useState<{ id: string; label: string; amount_pence: number; created_at: string }[]>([]);
-  const [dues, setDues] = useState<DueGroup[]>([]);
-  const [duesBusy, setDuesBusy] = useState<Set<string>>(new Set());
   const [showCollect, setShowCollect] = useState(false);
   const [collectTab, setCollectTab] = useState<"fixtures" | "fee">("fixtures");
   const [showSettle, setShowSettle] = useState(false);
@@ -202,98 +197,6 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
       supabase.removeChannel(txChannel);
     };
   }, [teamId, loadDeposits]);
-
-
-
-  // Per-match dues: for every match this team played, the share each
-  // participant owes toward the team's half of the pitch, plus whether it's
-  // been paid (auto-charged at settlement, or a manual top-up here).
-  const loadDues = async (tid: string) => {
-    const { data: ms } = await supabase.from("matches")
-      .select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, match_date")
-      .or(`posting_team_id.eq.${tid},challenging_team_id.eq.${tid}`)
-      .order("match_date", { ascending: false }).limit(20);
-    if (!ms || ms.length === 0) { setDues([]); return; }
-
-    const matchIds = ms.map((m) => m.id);
-    const postIds = ms.map((m) => m.post_id).filter(Boolean);
-    const oppIds = [...new Set(ms.map((m) => (m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id)))];
-
-    const [{ data: teamsData }, { data: bks }, { data: confs }] = await Promise.all([
-      supabase.from("teams").select("id, name").in("id", oppIds),
-      supabase.from("pitch_bookings").select("id, post_id").in("post_id", postIds),
-      supabase.from("match_confirmations")
-        .select("match_id, player_id, status, profiles(full_name)")
-        .in("match_id", matchIds).eq("team_id", tid),
-    ]);
-    const teamName = new Map((teamsData ?? []).map((t) => [t.id, t.name as string]));
-    const bookingByPost = new Map((bks ?? []).map((b) => [b.post_id, b.id as string]));
-    const bookingIds = (bks ?? []).map((b) => b.id);
-
-    const { data: pays } = bookingIds.length
-      ? await supabase.from("player_payments")
-          .select("booking_id, player_id, status")
-          .in("booking_id", bookingIds).eq("team_id", tid).eq("purpose", "replenish")
-      : { data: [] as { booking_id: string; player_id: string; status: string }[] };
-    const payByKey = new Map((pays ?? []).map((p) => [`${p.booking_id}:${p.player_id}`, p.status]));
-
-    const groups: DueGroup[] = ms.map((m) => {
-      const oppId = m.posting_team_id === tid ? m.challenging_team_id : m.posting_team_id;
-      const bookingId = bookingByPost.get(m.post_id) ?? null;
-      const isPoster = m.posting_team_id === tid;
-      const feePence = Math.round(((m.confirmed_pitch as { price?: number } | null)?.price ?? 0) * 100);
-      const half = Math.floor(feePence / 2);
-      const teamPool = isPoster ? feePence - half : half;
-      const participants = (confs ?? []).filter((c) => c.match_id === m.id && c.status === "confirmed");
-      const sharePence = participants.length ? Math.round(teamPool / participants.length) : 0;
-      const players: DuePlayer[] = participants.map((c) => ({
-        player_id: c.player_id,
-        name: (c.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player",
-        status: (bookingId && payByKey.get(`${bookingId}:${c.player_id}`)) || "unpaid",
-        sharePence,
-      }));
-      return { matchId: m.id, bookingId, opponent: teamName.get(oppId) ?? "Opponent", date: m.match_date, teamPoolPence: teamPool, players };
-    }).filter((g) => g.players.length > 0);
-    setDues(groups);
-  };
-
-  // Issue an individual top-up: credit the player's share back to the team and
-  // mark their due paid (used when a player settles in cash / outside auto-charge).
-  //
-  // There's no Stripe payment behind this one, so it can't go through the
-  // webhook — record_cash_credit is the deliberate manual path, and it checks
-  // server-side that the caller actually captains this team.
-  const markDuePaid = async (group: DueGroup, player: DuePlayer) => {
-    if (!teamId || player.status === "paid") return;
-    const key = `${group.matchId}:${player.player_id}`;
-    setDuesBusy((prev) => new Set(prev).add(key));
-    const { error: creditErr } = await supabase.rpc("record_cash_credit", {
-      p_team_id: teamId, p_amount_pence: player.sharePence, p_player_id: player.player_id,
-    });
-    if (creditErr) {
-      console.error("markDuePaid: could not record cash payment:", creditErr.message);
-      setDuesBusy((prev) => { const n = new Set(prev); n.delete(key); return n; });
-      return;
-    }
-    if (group.bookingId) {
-      await supabase.from("player_payments").upsert({
-        booking_id: group.bookingId,
-        player_id: player.player_id,
-        team_id: teamId,
-        amount_pence: player.sharePence,
-        unitr_fee_pence: 0,
-        total_pence: player.sharePence,
-        purpose: "replenish",
-        status: "paid",
-        applied: true,
-        paid_at: new Date().toISOString(),
-      }, { onConflict: "booking_id,player_id" });
-    }
-    setDues((prev) => prev.map((g) => g.matchId === group.matchId
-      ? { ...g, players: g.players.map((p) => p.player_id === player.player_id ? { ...p, status: "paid" } : p) }
-      : g));
-    setDuesBusy((prev) => { const next = new Set(prev); next.delete(key); return next; });
-  };
 
   // Group the captain's collection requests by MATCH: each recent match with an
   // outstanding fee, its charged players, and each player's pay status. Matches
@@ -466,7 +369,6 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
     if (!teamId) return;
     // Always reload deposits so the popup is fresh on every open
     loadDeposits();
-    loadDues(teamId);
     // Load per-player outstanding balances from payment_collection_status
     const { data: pcs } = await supabase
       .from("payment_collection_status")
@@ -773,27 +675,15 @@ export default function TeamCreditsBar({ userId, role }: { userId: string; role:
               })()}
             </div>
 
-            {/* Money back out. Sits under the log rather than in the action
-                row on Home: refunding is rare and deliberate, and a captain
-                should have to open the ledger and look at it first. */}
-            {role === "captain" && credits > 0 && (
-              <div className="pt-2 border-t border-border flex-shrink-0">
-                <button onClick={() => { setShowLog(false); setShowCashOut(true); }}
-                  className="w-full py-2.5 rounded-xl border border-border text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors">
-                  Refund leftover credit to players&rsquo; cards
-                </button>
-              </div>
-            )}
+            {/* Where "Refund leftover credit to players' cards" used to be.
+                Credit is a prepayment for pitches and events and is never
+                cashed out (lib/team-credit-terms.ts); saying so here answers
+                the captain who comes looking for the button. */}
+            <div className="pt-2 border-t border-border flex-shrink-0">
+              <p className="text-[11px] text-text-secondary leading-snug text-center">{TEAM_CREDIT_NON_REFUNDABLE}</p>
+            </div>
           </>
         </BottomSheet>
-      )}
-
-      {showCashOut && teamId && (
-        <CashOutModal
-          teamId={teamId}
-          onClose={() => setShowCashOut(false)}
-          onDone={(balancePence) => setCredits(balancePence / 100)}
-        />
       )}
 
       {/* Payment Status modal — captain only. Tracks money already asked for:

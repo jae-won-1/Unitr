@@ -134,8 +134,7 @@ Two rules make that work without rewriting every query, both living in
    is that lookup.
 
 The database enforces the split independently (`supabase_co_captains.sql`): `is_team_leader()`
-gates the captain-only RPCs (`record_cash_credit`, the two invite-code functions,
-`enter_own_tournament`), `isTeamLeader` in `lib/api-auth.ts` gates the API routes, and a
+gates the captain-only RPCs (the two invite-code functions, `enter_own_tournament`), `isTeamLeader` in `lib/api-auth.ts` gates the API routes, and a
 trigger refuses any write to `is_co_captain` that doesn't come from the captain's own session
 — necessary because RLS on `team_members` is `using (true)`.
 
@@ -633,12 +632,15 @@ Variants:
   inserts — an open policy there meant a team could enter a paid event for free.
 - **Ringers** — a guest pays Uniter a **flat £5 by card**. It never touches team credit or the
   pitch split, and a ringer is excluded from settlement via `match_confirmations.is_ringer`.
-- **Refunds** — money can go back out, two ways, both through `refund_credit`
-  (`supabase_refunds.sql`), idempotent on the Stripe refund id. **Cash-out**:
-  `/api/credit/refund` + `CashOutModal` hands leftover team credit back to the cards
-  that funded it — an equal amount each, capped at what that player personally paid,
-  with the remainder re-shared (`allocateEqually` in `lib/team-refunds.ts`). Cash the
-  captain recorded by hand has no card behind it and stays in the balance. **Reversal**:
+- **Refunds** — **team credit top-ups are not refundable to players.** Credit is a
+  prepayment for the team's pitches and events, spent and never withdrawn; every top-up
+  sheet says so before the payer pays (`lib/team-credit-terms.ts`, the one copy of the
+  wording), and the credit log says it where the old cash-out button was. Money can still
+  go back out two ways, both through `refund_credit` (`supabase_refunds.sql`), idempotent
+  on the Stripe refund id. **Staff cash-out**: `/api/credit/refund` is admin-only — it
+  refuses captains — and hands leftover credit back to the cards that funded it, an equal
+  amount each, capped at what that player personally paid (`allocateEqually` in
+  `lib/team-refunds.ts`). There is no screen for it; `CashOutModal` was removed. **Reversal**:
   `charge.refunded` at the webhook takes back the credit any refunded payment granted,
   including one made by hand in the Stripe dashboard — this one is allowed to drive the
   balance negative, because the money has already gone and the team owes it. Joining-fee
@@ -647,7 +649,8 @@ Variants:
   member. It is not a separate pot: paying it is a top-up into team credit. The fee owed is
   written onto `team_members.joining_fee_due_pence` at approval (trigger), and
   `joining_fee_paid_pence` is advanced **only inside** `credit_from_payment` /
-  `record_cash_credit` — deposits pay the joining fee down first. A member with an unpaid fee
+  `record_cash_credit` (staff-only since `supabase_card_and_credit_lockdown.sql`) —
+  deposits pay the joining fee down first. A member with an unpaid fee
   can't join, and can't vote **available** for games — see Voting available below. The fee
   splits across the money row like every other charge: the **amount** is set in Settle
   Payments → Joining fee (and still in Team Settings and at registration), **who has paid it**
@@ -751,6 +754,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_tournament_fixture_duration.sql` | `tournament_matches.duration_minutes` — how long one fixture runs, from the organiser's match length; run after `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
+| `supabase_card_and_credit_lockdown.sql` | `profiles` card columns (`stripe_customer_id`, `stripe_payment_method_id`, `card_brand`, `card_last4`) writable only by the server — a client may clear them, never set them; `record_cash_credit` and `reimburse_team` become service-role only. **Run only once the card-save routes are deployed**; after `supabase_pilot_security.sql`, `supabase_card_on_file.sql`, `supabase_co_captains.sql`, `supabase_team_tournaments.sql` |
 
 ## Conventions worth knowing
 
@@ -888,6 +892,19 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   act (`profiles.account_type`, `teams.captain_id`) or how much is owed
   (`price_per_team_pence`, the joining-fee snapshots), a server route reading it is trusting
   something the client can write.
+- **Team credit exists only where money reached Uniter.** Credit is a team's share of the
+  money Uniter holds, and spending it makes Uniter pay a venue or refund a card for real, so
+  nothing may add to a balance without a verified payment behind it: the webhook,
+  `/api/settle-match` (which credits what it charged, less the fee — never a figure from the
+  body), `/api/credit/apply-replenishment`, and the server-side ledger functions. Cash a
+  player hands the captain is not in Uniter's account and never becomes credit; Payment
+  Status' "Mark paid" is bookkeeping only. `record_cash_credit` survives for staff in the
+  SQL editor.
+- **Saved cards are written by the server.** The card columns on `profiles` are readable by
+  everyone, and the routes that charge off-session trust the pair they find there, so
+  `/api/payment-method` (after a SetupIntent) and `/api/payment-intent-method` (after a
+  payment) save a card only once Stripe confirms it is on the caller's own customer, and
+  the database refuses a client write that sets one. Clearing a card stays a client write.
 - **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
   the amount all come from the session and the database. `/api/connect/venue-transfer` is the
   sharp end: it moves real money out of the platform balance, so it caps every transfer at

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, isTeamLeader, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
 import {
   allocateEqually, loadContributors, loadRefundableIntents,
   type Contributor,
@@ -12,7 +12,7 @@ import {
 // it by throwing inside the handler's try/catch.
 export const dynamic = "force-dynamic";
 
-// Cash out leftover team credit to the cards that paid it in.
+// Cash out leftover team credit to the cards that paid it in — staff only (see mayRefund).
 //
 // A team that plays one event and doesn't come back is left holding the
 // difference between what its players put in and what the entry cost. This
@@ -25,8 +25,13 @@ export const dynamic = "force-dynamic";
 //        applies the same debit keyed on the same refund id, so the ledger
 //        catches up on its own rather than drifting.
 
-async function mayRefund(callerId: string, teamId: string): Promise<boolean> {
-  return (await isTeamLeader(callerId, teamId)) || (await isAdmin(callerId));
+// STAFF ONLY. Team credit is a prepayment for pitches and events, not money a
+// team can take back out (lib/team-credit-terms.ts), so captains no longer have
+// a cash-out — the button is gone, and this refuses them too, because a route a
+// browser can't see is still a route anyone can call. Kept for Uniter staff to
+// return leftover credit in an exceptional case.
+async function mayRefund(callerId: string, _teamId: string): Promise<boolean> {
+  return isAdmin(callerId);
 }
 
 // Balance, and what of it is actually spare — reserved credit is earmarked
@@ -70,7 +75,7 @@ export async function GET(req: NextRequest) {
     const teamId = req.nextUrl.searchParams.get("teamId");
     if (!teamId) return NextResponse.json({ error: "Missing teamId" }, { status: 400 });
     if (!(await mayRefund(callerId, teamId))) {
-      return forbidden("Only the captain can refund team credit.");
+      return forbidden("Team credit isn't refundable. Contact Uniter if something has gone wrong.");
     }
 
     const { availablePence: available } = await readCredit(teamId);
@@ -102,7 +107,7 @@ export async function POST(req: NextRequest) {
     const { teamId, amountPence, requestId } = await req.json();
     if (!teamId) return NextResponse.json({ error: "Missing teamId" }, { status: 400 });
     if (!(await mayRefund(callerId, teamId))) {
-      return forbidden("Only the captain can refund team credit.");
+      return forbidden("Team credit isn't refundable. Contact Uniter if something has gone wrong.");
     }
     // The client sends one id per confirmed cash-out and reuses it on retry,
     // so a double-submit or a dropped response can't refund twice.

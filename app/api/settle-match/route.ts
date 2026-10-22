@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       // row rather than the body — and the row has to belong to the caller.
       let amountPence = Math.round(it.amountPence);
       let sharePence = Math.round(it.sharePence);
-      const feePence = Math.round(it.feePence ?? 0);
+      const feePence = Math.max(0, Math.round(it.feePence ?? 0));
 
       if (it.pcsId) {
         const { data: due } = await adminSupabase
@@ -139,6 +139,14 @@ export async function POST(req: NextRequest) {
         results.push({ playerId: callerId, ok: false, error: "Amount must be at least £1.00." });
         continue;
       }
+      // The credit is what reached Uniter, less the fee — never a figure from
+      // the body. sharePence used to be believed as sent, so a £1 charge could
+      // credit the team £10,000 of pitch money nobody had paid.
+      if (feePence >= amountPence) {
+        results.push({ playerId: callerId, ok: false, error: "That charge doesn't add up." });
+        continue;
+      }
+      sharePence = amountPence - feePence;
 
       const purpose = purposeOf(it);
 

@@ -7,6 +7,7 @@ import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { waitForCredit } from "@/lib/credit-sync";
 import TestModeNote from "@/components/TestModeNote";
+import { TEAM_CREDIT_NON_REFUNDABLE } from "@/lib/team-credit-terms";
 import { confirmCardPayment } from "@/lib/confirm-payment";
 
 const PRESETS_POUNDS = [10, 20, 50, 100];
@@ -56,6 +57,7 @@ function TopUpCheckoutForm({ amount, teamId, currentPence, clientSecret, saveCar
         <div className="flex justify-between text-text-secondary"><span>Adding to team credits</span><span className="font-bold text-text-primary">£{amount.toFixed(2)}</span></div>
         <div className="flex justify-between text-text-secondary"><span>New balance</span><span className="font-bold text-accent-ink">£{(currentPence / 100 + amount).toFixed(2)}</span></div>
       </div>
+      <p className="text-[11px] text-text-secondary leading-snug">{TEAM_CREDIT_NON_REFUNDABLE}</p>
       <div className="bg-surface border border-border rounded-btn p-4">
         <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Card Details</p>
         <PaymentElement options={cardElementOptions} />
