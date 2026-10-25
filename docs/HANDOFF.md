@@ -15,13 +15,38 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
   phone fails until it does. `/api/payment-intent-method` is now POST.
 
-- **Team credit is non-refundable (22 Oct)** — show `TEAM_CREDIT_NON_REFUNDABLE`
-  (`lib/team-credit-terms.ts`) before the pay button in every phone sheet that pays
-  into team credit: `top-up-sheet.tsx`, `pay-sheet.tsx`, `challenge-sheet.tsx` and
-  `enter-tournament-sheet.tsx` (the last two only for their shortfall payment). The
-  phone never had a cash-out, so nothing to remove.
+## Latest — 2026-10-25, Claude Code: v1 scope switch + non-binary
 
-## Latest completed work — 2026-10-22, Claude Code on `main`: credit is non-refundable
+Both branches (`main` 0292bb8, merged into `mobile` and ported in 8051318), so
+nothing is awaiting a port. **Committed locally, not pushed** — pushing `main`
+switches the live web site to v1 scope.
+
+- **Scope switch** (`docs/LAUNCH_PLAN.md` item 1): `lib/launch-scope.ts`,
+  `LAUNCH_SCOPE = "v1"`. Routes refuse via `switchedOff()` in `lib/api-auth.ts`;
+  the list of what is refused / deliberately left open is in the launch plan.
+  Web: QuickNav, GameFeed (Uniter events only, teamless viewers see them
+  read-only), Calendar chips, Manage Match, fixture sheet, poll results,
+  sign-up's account-type cards. `/book`, `/pitches`, `/play/create`,
+  `/play/edit`, `/play/create-tournament` and `/venue/*` render `SwitchedOff`.
+  Phone: the same set (see `mobile/PORTED.md`).
+- **Non-binary** is a gender answer again (`lib/profile-options.ts`), so it
+  appears at registration, `/welcome`, Edit Profile and the one-time prompt on
+  both apps. Treated like prefer-not-to-say. **User must run
+  `supabase_gender_non_binary.sql`** before deploying, or picking it fails the
+  profile check constraint. `supabase_gender_categories.sql` no longer folds
+  non-binary answers away on a re-run.
+- Checked: web `tsc`, lint (four pre-existing warnings), `npm run build`;
+  phone `tsc`, `expo lint`. Not exercised in a browser or on a device.
+
+## Earlier — 2026-10-23: launch plan for the first store release
+
+User decided the v1 store scope: Uniter-hosted events only; team credit stays,
+spent only on those events, non-refundable. Written up in `docs/LAUNCH_PLAN.md`
+(pointer added at the top of `CLAUDE.md`). Plan only — none of its "Before
+submitting" items were started this session. Next step is item 1, the server-side
+scope switch (`lib/launch-scope.ts`).
+
+## Earlier — 2026-10-22, Claude Code on `main`: credit is non-refundable
 
 User decision: team credit top-ups are not refundable to individual players.
 - `/api/credit/refund` is admin-only (captains get a plain refusal); the web's

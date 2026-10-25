@@ -8,6 +8,11 @@ remains the shared product and architecture reference for both tools. Update it
 when behaviour changes; record session state in the handoff. See `README.md` for
 local setup. Historical plans may be superseded by the implementation.
 
+**The first App Store / Play Store release has a narrower scope than this file
+describes** — Uniter-hosted events only, team credit spent only on them and not
+refundable, everything else switched off on the server. `docs/LAUNCH_PLAN.md` is
+that plan; read it before changing anything that touches money or the store build.
+
 A football platform providing: player-team matching, matchmaking, pitch booking, and a
 stats/video social space.
 
@@ -108,7 +113,24 @@ page was deleted. Don't "clean these up" without a reason; ~15 call sites point 
 Role decides which Home renders, whether the "Your posts" filter appears on the Calendar,
 and whether an action is a real button or a greyed slot. **Greyed rather than hidden** is the
 house convention — a missing element shifts everything around it and breaks muscle memory
-(see `components/QuickNav.tsx`).
+(see `components/QuickNav.tsx`). The one exception is a feature the build switches off
+(`lib/launch-scope.ts`, below): that is hidden for everyone, because the stores reject
+unfinished features.
+
+## Launch scope
+
+`lib/launch-scope.ts` is the single switch between the first store release and the full
+app (`docs/LAUNCH_PLAN.md`). `LAUNCH_SCOPE = "v1"` turns off `pitchBooking`, `friendlies`,
+`ringers`, `teamAndVenueEvents` and `venues`; `"full"` turns them all back on. A route for
+an off feature refuses first with `switchedOff(feature)` from `lib/api-auth.ts`;
+`/api/tournaments/join` refuses any event without `organiser_admin_id` (`canEnterEvent`).
+Both apps read `isOn(feature)` to leave entry points out, and the feed lists only
+Uniter-hosted events. Pages for an off feature — `/book`, `/pitches`, `/play/create`,
+`/play/edit`, `/play/create-tournament`, `/venue/*` and the phone's `/book` and
+`/post-match` — render `SwitchedOff` if someone reaches them by URL. Existing entries of
+an off kind (past friendlies, bookings) still list on the Calendar under All, and the
+routes that let players pay what they owe for them stay open. Much of this file describes
+the full app; check the switch before assuming a feature is reachable.
 
 ### Co-captains
 
@@ -488,9 +510,12 @@ the reason and the refund. The organiser regenerates the schedule afterwards.
 
 Two separate facts (`supabase_gender_categories.sql`):
 
-- **`profiles.gender`** — who the player is: `male | female | prefer_not_to_say`, or null
-  for a player who registered before the question existed. `components/GenderPrompt`
+- **`profiles.gender`** — who the player is: `male | female | non_binary | prefer_not_to_say`,
+  or null for a player who registered before the question existed
+  (`supabase_gender_non_binary.sql` widens the check). `components/GenderPrompt`
   (mounted app-wide) asks that player once; "prefer not to say" is a real answer and ends it.
+  A non-binary player is treated exactly like one who preferred not to say: no default
+  category, never refused a fill-in (`categoryForGender` in `lib/gender.ts`).
 - **`gender_category`** on `teams`, `match_posts`, `ringer_requests` and `open_matches` —
   which competition a team or game is in: `male | female`. There is no mixed category;
   mixed will be the individual-spot social games, which aren't built.
