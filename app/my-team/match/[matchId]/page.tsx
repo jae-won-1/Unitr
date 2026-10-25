@@ -10,6 +10,7 @@ import {
 import { loadTeamTactics, type TeamTactic } from "@/components/my-team/TacticsTab";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import { loadLeadership } from "@/lib/team-leadership";
+import { isOn } from "@/lib/launch-scope";
 
 // `format` rides along on the pitch option the opponent picked ("7-a-side"),
 // so a confirmed friendly knows how many a side it is without needing a column
@@ -979,7 +980,7 @@ export default function ManageMatchPage({ params }: { params: { matchId: string 
             <p className="text-xs text-text-secondary text-center mt-3">The captain hasn&apos;t set the lineup yet.</p>
           ) : null}
 
-          {isCaptain && myTeamId && user && (
+          {isCaptain && myTeamId && user && isOn("ringers") && (
             <RingerRequestPanel matchId={params.matchId} teamId={myTeamId} userId={user.id} />
           )}
         </div>

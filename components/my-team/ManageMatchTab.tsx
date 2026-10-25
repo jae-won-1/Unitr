@@ -30,6 +30,7 @@ import { loadUpcomingTournamentFixtures } from "@/lib/tournament-fixtures";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import TournamentFixtureList from "@/components/TournamentFixtureList";
 import { loadLeadership } from "@/lib/team-leadership";
+import { isOn } from "@/lib/launch-scope";
 
 export type TeamFixture = {
   postId: string;
@@ -119,7 +120,9 @@ export async function loadTeamFixtures(userId: string, teamId: string | null): P
     .select("id, match_date, match_time, pitch_options, pitch_secured")
     .eq("captain_id", keyId).eq("status", "open");
 
-  const openPostFixtures: TeamFixture[] = (openPosts ?? []).map((p) => {
+  // No challenge can be accepted in a build without friendlies
+  // (lib/launch-scope.ts), so a post still waiting for one isn't listed.
+  const openPostFixtures: TeamFixture[] = (isOn("friendlies") ? openPosts ?? [] : []).map((p) => {
     const options = (p.pitch_options ?? []) as { name?: string }[];
     return {
       postId: p.id,
@@ -311,9 +314,11 @@ export default function ManageMatchTab({
                 // Don't tell a captain to post a match when their post is right
                 // below, waiting — say what's actually missing.
                 ? "Your post is live below. Once a team challenges it and you accept, the fixture appears here ready to organise."
-                : "Post a match or challenge another team to get one in the diary."}
+                : isOn("friendlies")
+                  ? "Post a match or challenge another team to get one in the diary."
+                  : "Enter one of Uniter's events from Home to get one in the diary."}
           </p>
-          {isCaptain && openPosts.length === 0 && (
+          {isCaptain && openPosts.length === 0 && isOn("friendlies") && (
             <a href="/play/create" className="inline-block px-5 py-2.5 rounded-btn bg-accent text-white font-bold text-xs">
               Post a Match
             </a>

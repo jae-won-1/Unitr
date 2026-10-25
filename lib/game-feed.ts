@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtKickoff, isKickoffPast } from "@/lib/match-dates";
 import { rowCategory, type GenderCategory } from "@/lib/gender";
+import { canEnterEvent, isUniterEvent } from "@/lib/launch-scope";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -67,6 +68,9 @@ export type Tournament = {
   organiserTeamName: string | null;
   // Set on admin-hosted (Uniter staff) events.
   organiserAdminName: string | null;
+  // Hosted by Uniter itself (organiser_admin_id set) — the only kind this
+  // build can enter (lib/launch-scope.ts).
+  uniterHosted: boolean;
   // Teams already bought in — so the card can say "you're entered" instead of
   // offering the buy-in again.
   joinedTeamIds: string[];
@@ -161,7 +165,7 @@ export function useOpenTournaments(teamId: string | null) {
     async function load() {
       const baseCols = "id, title, match_type, pitch_name, match_date, start_time, format, skill_level, price_per_team_pence, max_teams, organiser_team_id, organiser_team_name";
       let { data: oms, error: omErr } = await supabase.from("open_matches")
-        .select(`${baseCols}, organiser_admin_name, gender_category`)
+        .select(`${baseCols}, organiser_admin_id, organiser_admin_name, gender_category`)
         .in("match_type", ["tournament", "league", "match"])
         .neq("status", "cancelled")
         .order("match_date", { ascending: true });
@@ -173,13 +177,15 @@ export function useOpenTournaments(teamId: string | null) {
           .in("match_type", ["tournament", "league", "match"])
           .neq("status", "cancelled")
           .order("match_date", { ascending: true });
-        oms = (legacy ?? []).map((m) => ({ ...m, organiser_admin_name: null, gender_category: null }));
+        oms = (legacy ?? []).map((m) => ({ ...m, organiser_admin_id: null, organiser_admin_name: null, gender_category: null }));
       }
 
       // Hide the viewer's own hosted events; the !teamId branch keeps venue- and
       // admin-hosted posts (organiser_team_id null) visible to teamless viewers.
+      // A build that only enters Uniter's own events doesn't list anyone else's.
       const active = (oms ?? []).filter(
         (m) => (!teamId || m.organiser_team_id !== teamId) && !isKickoffPast(m.match_date, m.start_time)
+          && canEnterEvent(m)
       );
 
       // Pending invitations for the viewer's team → discount per tournament.
@@ -208,6 +214,7 @@ export function useOpenTournaments(teamId: string | null) {
           joinedCount: joinedTeamIds.length,
           organiserTeamName: m.organiser_team_name ?? null,
           organiserAdminName: ("organiser_admin_name" in m ? m.organiser_admin_name : null) ?? null,
+          uniterHosted: isUniterEvent(m),
           joinedTeamIds,
           inviteDiscountPence: discountByTournament.get(m.id) ?? 0,
           genderCategory: rowCategory(m),

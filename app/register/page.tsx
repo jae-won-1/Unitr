@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { isOn } from "@/lib/launch-scope";
 import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
@@ -23,7 +24,9 @@ import {
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [accountType, setAccountType] = useState<AccountType | null>(null);
+  // Without venue accounts (lib/launch-scope.ts) there is only one kind of
+  // account, so the choice isn't asked.
+  const [accountType, setAccountType] = useState<AccountType | null>(isOn("venues") ? null : "player");
 
   // Shared fields
   const [fullName, setFullName] = useState("");
@@ -115,7 +118,7 @@ export default function RegisterPage() {
         )}
 
         {/* Account type selector */}
-        <AccountTypeCards value={accountType} onChange={setAccountType} />
+        {isOn("venues") && <AccountTypeCards value={accountType} onChange={setAccountType} />}
 
         {/* Common fields — shown once account type is selected */}
         {accountType && (

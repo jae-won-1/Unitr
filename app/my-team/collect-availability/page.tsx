@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import AvailabilityPollForm, { DateOption } from "@/components/AvailabilityPollForm";
 import { loadLedTeam } from "@/lib/team-leadership";
+import { isOn } from "@/lib/launch-scope";
 
 type AvailabilityRequest = {
   id: string;
@@ -54,7 +55,9 @@ function CaptainResponsesView({
   const countAvailable = (id: string) => responses.filter((r) => r.available_date_ids.includes(id)).length;
   const best = request.date_options.reduce((b, d) => countAvailable(d.id) > countAvailable(b.id) ? d : b, request.date_options[0]);
 
-  const toggleDate = (id: string) =>
+  // Picking dates here is the first step of posting friendlies on them; a
+  // build without friendlies (lib/launch-scope.ts) shows the results only.
+  const toggleDate = (id: string) => isOn("friendlies") &&
     setChosenDates((p) => p.includes(id) ? p.filter((d) => d !== id) : p.length < 3 ? [...p, id] : p);
 
   const handleConfirm = () => {
@@ -154,10 +157,12 @@ function CaptainResponsesView({
         })}
       </div>
 
-      <button disabled={chosenDates.length === 0} onClick={handleConfirm}
-        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
-        {chosenDates.length === 0 ? "Select dates to post" : `Post ${chosenDates.length} Match${chosenDates.length > 1 ? "es" : ""} →`}
-      </button>
+      {isOn("friendlies") && (
+        <button disabled={chosenDates.length === 0} onClick={handleConfirm}
+          className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed">
+          {chosenDates.length === 0 ? "Select dates to post" : `Post ${chosenDates.length} Match${chosenDates.length > 1 ? "es" : ""} →`}
+        </button>
+      )}
     </div>
   );
 }

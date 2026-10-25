@@ -25,8 +25,8 @@ export async function teamCategoryRefusal(
   return `This is a ${genderCategoryLabel(event)?.toLowerCase()} ${what} — only ${genderCategoryLabel(event)?.toLowerCase()} teams can take part.`;
 }
 
-/** Null when this player may fill in; otherwise why not. A player who
- *  preferred not to say, or hasn't answered, isn't refused. */
+/** Null when this player may fill in; otherwise why not. A player who is
+ *  non-binary, preferred not to say, or hasn't answered, isn't refused. */
 export async function playerCategoryRefusal(playerId: string, requestId: string): Promise<string | null> {
   const [{ data: profile }, request] = await Promise.all([
     adminSupabase.from("profiles").select("*").eq("id", playerId).maybeSingle(),

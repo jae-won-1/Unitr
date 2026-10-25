@@ -5,7 +5,7 @@
 // Supabase client — so server routes (lib/gender-entry.ts) share it.
 //
 // Two different questions, kept apart on purpose:
-//   • profiles.gender — who the player is: 'male' | 'female' |
+//   • profiles.gender — who the player is: 'male' | 'female' | 'non_binary' |
 //     'prefer_not_to_say', or null when they haven't been asked yet
 //   • gender_category — which competition a team or game is in: 'male' | 'female'
 //
@@ -37,8 +37,9 @@ export function genderCategoryLabel(c: GenderCategory | null | undefined): strin
   return GENDER_CATEGORIES.find((g) => g.value === c)?.label ?? null;
 }
 
-/** The category a player's own answer puts them in, or null for someone who
- *  preferred not to say or hasn't answered — they see everything by default. */
+/** The category a player's own answer puts them in, or null for someone who is
+ *  non-binary, preferred not to say or hasn't answered — they see everything
+ *  by default. */
 export function categoryForGender(gender: string | null | undefined): GenderCategory | null {
   return gender === "male" || gender === "female" ? gender : null;
 }

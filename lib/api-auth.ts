@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { isOn, OFF_REASON, type Feature } from "@/lib/launch-scope";
 
 // Identify the signed-in caller of an API route from their Supabase access
 // token.
@@ -65,6 +66,12 @@ export function unauthorized(message = "Not signed in") {
 }
 export function forbidden(message = "Not allowed") {
   return NextResponse.json({ error: message }, { status: 403 });
+}
+
+// A feature this build has switched off (lib/launch-scope.ts) — refused before
+// anything else, signed in or not, so no money can move through it.
+export function switchedOff(feature: Feature) {
+  return isOn(feature) ? null : forbidden(OFF_REASON[feature]);
 }
 
 export async function isTeamCaptain(userId: string, teamId: string): Promise<boolean> {

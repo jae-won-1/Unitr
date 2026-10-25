@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, ownsPitch, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, ownsPitch, forbidden, unauthorized, switchedOff } from "@/lib/api-auth";
 
 // Refresh a VENUE's payout status from Stripe. The venue's pitches all share
 // one connected account, so the answer is mirrored onto every pitch row in
@@ -9,6 +9,9 @@ import { getCallerId, ownsPitch, forbidden, unauthorized } from "@/lib/api-auth"
 // can actually receive transfers.
 export async function POST(req: NextRequest) {
   try {
+    const off = switchedOff("venues");
+    if (off) return off;
+
     // Reads a Connect account's KYC state and writes payouts_enabled across
     // the venue's pitches — the venue's own manager, or an admin.
     const callerId = await getCallerId(req);

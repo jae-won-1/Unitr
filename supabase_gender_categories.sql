@@ -9,7 +9,7 @@
 -- category so a women's event can exist, and so a player sees their own
 -- side's games by default.
 --
---   profiles.gender          'male' | 'female' | 'prefer_not_to_say' | null
+--   profiles.gender          'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | null
 --   *.gender_category        'male' | 'female'
 --
 -- profiles.gender is who the player is (null = not answered yet; the app asks).
@@ -30,14 +30,13 @@
 -- ════════════════════════════════════════════════════════════════════════
 
 
--- ── 1. profiles.gender: three answers ───────────────────────────────────
--- 'non_binary' is no longer offered. Nobody chose it on the live database at
--- the time of writing; any such row folds into prefer_not_to_say.
-update public.profiles set gender = 'prefer_not_to_say' where gender = 'non_binary';
-
+-- ── 1. profiles.gender: four answers ────────────────────────────────────
+-- 'non_binary' was briefly folded into prefer_not_to_say here. It is offered
+-- again since 25 Oct 2026 (supabase_gender_non_binary.sql), so a re-run no
+-- longer rewrites anybody's answer.
 alter table public.profiles drop constraint if exists profiles_gender_check;
 alter table public.profiles add constraint profiles_gender_check
-  check (gender is null or gender in ('male', 'female', 'prefer_not_to_say'));
+  check (gender is null or gender in ('male', 'female', 'non_binary', 'prefer_not_to_say'));
 
 
 -- ── 2. teams.gender_category ────────────────────────────────────────────

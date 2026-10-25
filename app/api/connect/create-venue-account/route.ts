@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, ownsPitch, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, ownsPitch, forbidden, unauthorized, switchedOff } from "@/lib/api-auth";
 
 // Create (or reuse) ONE Stripe Connect EXPRESS account per VENUE and return an
 // onboarding link. A venue is the group of pitches sharing a venue_owner_id —
@@ -9,6 +9,9 @@ import { getCallerId, ownsPitch, forbidden, unauthorized } from "@/lib/api-auth"
 // per pitch in venue_transfers so reports can break it down.
 export async function POST(req: NextRequest) {
   try {
+    const off = switchedOff("venues");
+    if (off) return off;
+
     // Onboarding stamps a payout account onto every pitch in the venue group,
     // so only that venue's manager (or an admin) may start it. Otherwise
     // anyone could point a venue's pitches at an account they control.

@@ -3,6 +3,7 @@ import { loadTournamentFixtures } from "@/lib/tournament-fixtures";
 import { isUpcomingDate, sortKey, toDateKey } from "@/lib/match-dates";
 import { loadFixtureResults, resultKey, type FixtureResult } from "@/lib/match-results";
 import { loadLeadership } from "@/lib/team-leadership";
+import { isOn } from "@/lib/launch-scope";
 
 // Everything the viewer is committed to, from every table that can commit them,
 // flattened into one shape.
@@ -401,7 +402,9 @@ export async function loadCalendarEntries(userId: string): Promise<CalendarData>
   const [friendlies, tournaments, myPosts, ringers, bookings] = await Promise.all([
     loadFriendlies(captainId, teamId),
     loadTournaments(teamId),
-    isCaptain ? loadMyPosts(captainId) : Promise.resolve([]),
+    // An open post is waiting for a challenge this build can't accept
+    // (lib/launch-scope.ts), so it isn't a commitment worth listing.
+    isCaptain && isOn("friendlies") ? loadMyPosts(captainId) : Promise.resolve([]),
     loadRingerGames(userId),
     loadBookings(userId),
   ]);

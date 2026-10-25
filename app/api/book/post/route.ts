@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, forbidden, unauthorized, switchedOff } from "@/lib/api-auth";
 import { isKickoffPast } from "@/lib/match-dates";
 import { pitchFormatFor } from "@/lib/formations";
 import { dayNameOf } from "@/lib/pitch-day";
@@ -17,6 +17,9 @@ import { securedBookingPence } from "@/lib/secured-booking";
 // refuses secured posts written from a browser.
 export async function POST(req: NextRequest) {
   try {
+    const off = switchedOff("pitchBooking");
+    if (off) return off;
+
     const callerId = await getCallerId(req);
     if (!callerId) return unauthorized();
 

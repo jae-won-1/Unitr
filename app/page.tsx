@@ -9,6 +9,7 @@ import QuickNav from "@/components/QuickNav";
 import TeamsPanel from "@/components/TeamsPanel";
 import PlayerActionStrip from "@/components/PlayerActionStrip";
 import GameFeed, { GameTypeSelect } from "@/components/GameFeed";
+import { isOn } from "@/lib/launch-scope";
 import TeamCreditsBar from "@/components/TeamCreditsBar";
 import PollStatusTile from "@/components/PollStatusTile";
 import MyPostCard, { useMyPosts } from "@/components/MyPostCard";
@@ -357,11 +358,17 @@ function NewUserHome() {
 
         <TeamsPanel />
 
-        <section className="space-y-4">
-          <h3 className="font-bold">Find Matches</h3>
-          <TeamlessFeedToggle />
-          <RingerFeed showIntro={false} showDateDial />
-        </section>
+        {isOn("ringers") ? (
+          <section className="space-y-4">
+            <h3 className="font-bold">Find Matches</h3>
+            <TeamlessFeedToggle />
+            <RingerFeed showIntro={false} showDateDial />
+          </section>
+        ) : (
+          // Without Fill In there is nothing a teamless player can join by
+          // themselves, so they see the events a team would enter, read-only.
+          <GameFeed teamId={null} userId={user.id} />
+        )}
       </div>
     );
   }
@@ -382,14 +389,18 @@ function NewUserHome() {
           A visitor should be able to see there are real games happening here
           before being asked for anything — tapping a team or a match is what
           raises the sign-up gate, not scrolling. */}
-      <section className="space-y-4">
-        <div>
-          <h3 className="font-bold">Find Matches</h3>
-          <p className="text-xs text-text-secondary mt-0.5">Teams near you looking for players</p>
-        </div>
-        <TeamlessFeedToggle note="Matches and tournaments are team entries — create an account and join a team to unlock them." />
-        <RingerFeed showIntro={false} showDateDial />
-      </section>
+      {isOn("ringers") ? (
+        <section className="space-y-4">
+          <div>
+            <h3 className="font-bold">Find Matches</h3>
+            <p className="text-xs text-text-secondary mt-0.5">Teams near you looking for players</p>
+          </div>
+          <TeamlessFeedToggle note="Matches and tournaments are team entries — create an account and join a team to unlock them." />
+          <RingerFeed showIntro={false} showDateDial />
+        </section>
+      ) : (
+        <GameFeed teamId={null} userId={null} />
+      )}
     </div>
   );
 }
@@ -471,7 +482,11 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
         ) : !next ? (
           <div className="bg-surface border border-border shadow-card rounded-card p-5 text-center">
             <p className="text-sm text-text-secondary">No confirmed fixtures yet.</p>
-            <a href="/play/create" className="inline-block mt-2 text-xs text-accent-ink font-semibold">Post a match to get started →</a>
+            {isOn("friendlies") ? (
+              <a href="/play/create" className="inline-block mt-2 text-xs text-accent-ink font-semibold">Post a match to get started →</a>
+            ) : (
+              <p className="text-xs text-text-secondary mt-1">Enter one of Uniter&rsquo;s events below to get started.</p>
+            )}
           </div>
         ) : (
           <ConfirmedFixtureCard
@@ -500,7 +515,7 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
           teamId={teamId}
           userId={userId}
           canAct
-          matchesHeader={myPost ? <MyPostCard post={myPost} onRemoved={removeMyPost} /> : null}
+          matchesHeader={myPost && isOn("friendlies") ? <MyPostCard post={myPost} onRemoved={removeMyPost} /> : null}
         />
       )}
     </div>
