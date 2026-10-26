@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { getCaller, unauthorized } from "@/lib/api-auth";
+import { paymentRateLimit } from "@/lib/rate-limit";
 import { playerCategoryRefusal } from "@/lib/gender-entry";
 
 // Card payment for a ringer spot. The price is a flat fee paid to Uniter and
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
     // saved Stripe customer.
     const caller = await getCaller(req);
     if (!caller) return unauthorized();
+    const limited = await paymentRateLimit(caller.id);
+    if (limited) return limited;
     const playerId = caller.id;
     const email = caller.email;
 

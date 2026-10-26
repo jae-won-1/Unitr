@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
+import { loadOwnCard } from "@/lib/own-card";
 import { applyTopUp, useMyDues, type MyDue, type SavedCard } from "@/lib/dues";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
@@ -123,16 +124,11 @@ export default function DuesTopUpModal({ teamId, userId, onClose, onBalanceChang
     supabase.from("team_credits").select("balance_pence").eq("team_id", teamId).maybeSingle()
       .then(({ data }) => setCredits((data?.balance_pence ?? 0) / 100));
 
-    supabase.from("profiles").select("stripe_customer_id, stripe_payment_method_id, card_last4").eq("id", userId).maybeSingle()
-      .then(({ data }) => {
-        if (data?.stripe_customer_id && data?.stripe_payment_method_id) {
-          setSavedCard({
-            customerId: data.stripe_customer_id,
-            paymentMethodId: data.stripe_payment_method_id,
-            last4: data.card_last4 ?? null,
-          });
-        }
-      });
+    loadOwnCard(userId).then((own) => {
+      if (own?.customerId && own.paymentMethodId) {
+        setSavedCard({ customerId: own.customerId, paymentMethodId: own.paymentMethodId, last4: own.last4 });
+      }
+    });
   }, [teamId, userId]);
 
   const effectiveAmount = payTarget

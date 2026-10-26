@@ -11,6 +11,7 @@ import DeleteAccountPanel from "@/components/DeleteAccountPanel";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { loadOwnCard } from "@/lib/own-card";
 import TestModeNote from "@/components/TestModeNote";
 import EditProfileSheet from "@/components/EditProfileSheet";
 import {
@@ -96,12 +97,9 @@ function PaymentMethodSection() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles")
-      .select("stripe_payment_method_id, card_brand, card_last4")
-      .eq("id", user.id).maybeSingle()
-      .then(({ data }) => {
-        setCard(data?.stripe_payment_method_id ? { brand: data.card_brand, last4: data.card_last4 } : null);
-      });
+    loadOwnCard(user.id).then((own) => {
+      setCard(own?.paymentMethodId ? { brand: own.brand, last4: own.last4 } : null);
+    });
   }, [user]);
 
   const startSetup = async () => {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { getCaller, isTeamMember, forbidden, unauthorized } from "@/lib/api-auth";
+import { paymentRateLimit } from "@/lib/rate-limit";
+import { creditCapRefusal } from "@/lib/credit-cap";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 
 // Open a card payment that tops up a team's credit. The webhook credits the
@@ -12,6 +14,8 @@ export async function POST(req: NextRequest) {
   try {
     const caller = await getCaller(req);
     if (!caller) return unauthorized();
+    const limited = await paymentRateLimit(caller.id);
+    if (limited) return limited;
 
     const { amountPence, teamId } = await req.json();
 
@@ -24,6 +28,9 @@ export async function POST(req: NextRequest) {
     if (!(await isTeamMember(caller.id, teamId))) {
       return forbidden("You're not in that team.");
     }
+    // Refused before the card form opens, never after the money arrives.
+    const overCap = await creditCapRefusal(teamId, amountPence);
+    if (overCap) return NextResponse.json({ error: overCap }, { status: 409 });
 
     const playerId = caller.id;
 

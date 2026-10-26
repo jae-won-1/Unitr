@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCallerId } from "@/lib/api-auth";
+import { paymentRateLimit } from "@/lib/rate-limit";
+import { creditCapRefusal } from "@/lib/credit-cap";
 
 // What the client is allowed to ask for. Note what is NOT here: playerId,
 // customerId and paymentMethodId used to arrive in the body, so anyone who
@@ -83,6 +85,9 @@ export async function POST(req: NextRequest) {
     if (!callerId) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
+    // Charges a saved card off-session — the route most worth limiting.
+    const limited = await paymentRateLimit(callerId);
+    if (limited) return limited;
 
     const { items } = (await req.json()) as { items: SettleItem[] };
     if (!Array.isArray(items) || items.length === 0) {
@@ -149,6 +154,16 @@ export async function POST(req: NextRequest) {
       sharePence = amountPence - feePence;
 
       const purpose = purposeOf(it);
+
+      // A plain top-up is the one charge here that isn't settling something
+      // owed, so it is the one held to the team's credit cap (lib/credit-cap.ts).
+      if (it.teamId && purpose === "top_up") {
+        const overCap = await creditCapRefusal(it.teamId, sharePence);
+        if (overCap) {
+          results.push({ playerId: callerId, ok: false, error: overCap });
+          continue;
+        }
+      }
 
       try {
         const pi = await stripe.paymentIntents.create({

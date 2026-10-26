@@ -46,7 +46,15 @@ Both branches; nothing awaiting a port. **Committed locally, not pushed.**
   event, post or match ahead). `lib/delete-account.ts` now exports
   `checkAccountDeletion` / `accountDeletionCheck` (replacing
   `accountDeletionBlock` / `deletionBlockReason`).
-- **Not shipped to phones.** No OTA published. Order when ready: run both SQL
+- **Security fixes (launch plan item 4)** — `supabase_launch_security.sql`
+  (not run), `lib/own-card.ts`, `lib/rate-limit.ts`, `lib/credit-cap.ts`,
+  dispute cases in the webhook. Every client read of card columns now goes
+  through `loadOwnCard`; client `select("*")` on profiles removed (web
+  create-team page, `lib/viewer-gender.ts`, phone `create-team.tsx`).
+  **Order:** deploy web → OTA → run the SQL → enable `charge.dispute.created`
+  and `charge.dispute.closed` on the Stripe webhook endpoint.
+- **Not shipped to phones.** No OTA published — the auto-mode permission
+  check refused `eas update` when Claude tried; the user runs it. Order when ready: run both SQL
   files → push `main` (the phone calls the new routes on the live server) →
   publish the OTA from `mobile/` (`--platform android` / `--platform ios`,
   LAUNCH_PLAN item 9).

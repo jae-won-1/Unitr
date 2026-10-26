@@ -33,7 +33,7 @@ export default function CreateTeamPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
+    supabase.from("profiles").select("gender").eq("id", user.id).maybeSingle()
       .then(({ data }) => setGenderCategory((prev) => prev ?? categoryForGender(data?.gender)));
   }, [user]);
 

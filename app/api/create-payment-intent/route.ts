@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe, calcSplit } from "@/lib/stripe";
 import { feeWithin } from "@/lib/uniter-fee";
 import { getCaller, unauthorized } from "@/lib/api-auth";
+import { paymentRateLimit } from "@/lib/rate-limit";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 
 // Open a card payment for the caller's own share of a pitch. The payer and the
@@ -11,6 +12,8 @@ export async function POST(req: NextRequest) {
   try {
     const caller = await getCaller(req);
     if (!caller) return unauthorized();
+    const limited = await paymentRateLimit(caller.id);
+    if (limited) return limited;
 
     const { pitchPricePerHour, playerCount, bookingId, amountPence } = await req.json();
     const playerId = caller.id;

@@ -823,6 +823,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_tournament_fixture_duration.sql` | `tournament_matches.duration_minutes` — how long one fixture runs, from the organiser's match length; run after `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
+| `supabase_launch_security.sql` | `team_members` write policies matched to the real flows; team money readable only by the team / admins / the paid venue; `team_card_contributions` server-only; card columns on `profiles` unreadable from clients (column grants) + `my_saved_card()`; `api_rate_limits` + `hit_rate_limit()`. **Run only once the web code using `lib/own-card.ts` is deployed and the phone's OTA update is out**; after `supabase_core_tables_rls.sql`, `supabase_pilot_security.sql`, `supabase_co_captains.sql`, `supabase_payment_integrity.sql`, `supabase_refunds.sql`, `supabase_team_chat.sql`, `supabase_transfer_market.sql` |
 | `supabase_account_deletion.sql` | `hand_over_team()` (captaincy to a co-captain, re-filing the captain-keyed rows) and `delete_auth_identities()`, both service-role only — called by `/api/team/hand-over` and `/api/account/delete`; run after `supabase_co_captains.sql`, `supabase_captain_joining_fee.sql`, `supabase_joining_fee_current.sql`, `supabase_pilot_security.sql` |
 | `supabase_gender_non_binary.sql` | `profiles.gender` accepts `non_binary` again; run after `supabase_gender_categories.sql` |
 | `supabase_card_and_credit_lockdown.sql` | `profiles` card columns (`stripe_customer_id`, `stripe_payment_method_id`, `card_brand`, `card_last4`) writable only by the server — a client may clear them, never set them; `record_cash_credit` and `reimburse_team` become service-role only. **Run only once the card-save routes are deployed**; after `supabase_pilot_security.sql`, `supabase_card_on_file.sql`, `supabase_co_captains.sql`, `supabase_team_tournaments.sql` |
@@ -970,11 +971,33 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   player hands the captain is not in Uniter's account and never becomes credit; Payment
   Status' "Mark paid" is bookkeeping only. `record_cash_credit` survives for staff in the
   SQL editor.
-- **Saved cards are written by the server.** The card columns on `profiles` are readable by
-  everyone, and the routes that charge off-session trust the pair they find there, so
+- **Saved cards are written by the server, and read only by their owner.** The routes that
+  charge off-session trust the customer/payment-method pair they find on `profiles`, so
   `/api/payment-method` (after a SetupIntent) and `/api/payment-intent-method` (after a
   payment) save a card only once Stripe confirms it is on the caller's own customer, and
   the database refuses a client write that sets one. Clearing a card stays a client write.
+  Since `supabase_launch_security.sql` the four card columns are **not readable from a
+  client at all** — column privileges, because `profiles` is otherwise world-readable.
+  A client reads its own card with `loadOwnCard` (`lib/own-card.ts` → `my_saved_card()`).
+  Two consequences: **never `select("*")` on `profiles` from a client** (it asks for the
+  card columns and fails), and **a migration that adds a `profiles` column must re-run
+  §3 of that file**, which grants select column by column.
+- **Team money is readable by the team.** `team_credits` and `team_credit_transactions`
+  are visible to the team's squad, admins, and (ledger only) the venue whose pitch a row
+  paid for; `team_card_contributions` to the server only. `team_members` writes follow
+  the real flows — own pending row, own approved row only against a pending offer, leaders
+  update/remove, own delete.
+- **Payment routes are rate limited and credit is capped.** Every route that opens a
+  PaymentIntent, SetupIntent or off-session charge calls `paymentRateLimit`
+  (`lib/rate-limit.ts`, 20 per person per 10 minutes, counted in Postgres). A top-up into
+  credit is refused before charging if it would take the team over
+  `TEAM_CREDIT_CAP_PENCE` (£1,000, `lib/credit-cap.ts`); paying something owed is not
+  capped, and the webhook always credits what actually arrived.
+- **Card disputes reverse credit.** `charge.dispute.created` takes back the credit the
+  disputed payment created (`refund_credit`, keyed on the dispute id) and notifies every
+  admin; `charge.dispute.closed` notifies them of the verdict. A won dispute is not
+  reinstated automatically — staff decide. Both events must be enabled on the Stripe
+  webhook endpoint.
 - **Amounts are derived server-side, never believed.** The payer, their Stripe customer and
   the amount all come from the session and the database. `/api/connect/venue-transfer` is the
   sharp end: it moves real money out of the platform balance, so it caps every transfer at

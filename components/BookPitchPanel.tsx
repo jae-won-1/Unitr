@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { supabase } from "@/lib/supabase";
+import { loadOwnCard } from "@/lib/own-card";
 import { loadPitchDay, type DaySlot } from "@/lib/pitch-day";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -405,19 +406,11 @@ export default function BookPitchPanel({ initialDate, initialTime, autoPost, onD
   // any card payment on this screen can skip Stripe Elements' manual entry.
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles")
-      .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
-      .eq("id", user.id).maybeSingle()
-      .then(({ data: profile }) => {
-        if (profile?.stripe_customer_id && profile?.stripe_payment_method_id) {
-          setSavedCard({
-            customerId: profile.stripe_customer_id as string,
-            paymentMethodId: profile.stripe_payment_method_id as string,
-            brand: (profile.card_brand as string | null) ?? null,
-            last4: (profile.card_last4 as string | null) ?? null,
-          });
-        }
-      });
+    loadOwnCard(user.id).then((own) => {
+      if (own?.customerId && own.paymentMethodId) {
+        setSavedCard({ customerId: own.customerId, paymentMethodId: own.paymentMethodId, brand: own.brand, last4: own.last4 });
+      }
+    });
   }, [user]);
 
   // Build the full-day slot grid per pitch for the selected date — the same

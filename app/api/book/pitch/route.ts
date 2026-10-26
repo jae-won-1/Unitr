@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { stripe } from "@/lib/stripe";
 import { getCaller, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
+import { paymentRateLimit } from "@/lib/rate-limit";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { feeOn } from "@/lib/uniter-fee";
 import { isKickoffPast } from "@/lib/match-dates";
@@ -77,6 +78,12 @@ export async function POST(req: NextRequest) {
 
     if (!["credit", "saved_card", "intent", "card"].includes(method)) {
       return NextResponse.json({ error: "Unknown payment method" }, { status: 400 });
+    }
+    // The card-touching methods only. "card" finishes a payment already made,
+    // so refusing it would keep the money and drop the booking.
+    if (method === "saved_card" || method === "intent") {
+      const limited = await paymentRateLimit(callerId);
+      if (limited) return limited;
     }
     if (!pitchId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:00$/.test(time)) {
       return NextResponse.json({ error: "Pick a pitch, a date and an hour." }, { status: 400 });

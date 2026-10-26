@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { loadOwnCard } from "@/lib/own-card";
 import { saveCardFromIntent } from "@/lib/save-card";
 import { STRIPE_TEST_MODE } from "@/lib/stripe-mode";
 
@@ -51,14 +51,11 @@ export function useSaveCardTickbox(userId: string | undefined, opts?: { label?: 
   useEffect(() => {
     if (!userId) { setHasSavedCard(undefined); setCustomerId(null); return; }
     let live = true;
-    supabase.from("profiles")
-      .select("stripe_customer_id, stripe_payment_method_id")
-      .eq("id", userId).maybeSingle()
-      .then(({ data }) => {
-        if (!live) return;
-        setCustomerId((data?.stripe_customer_id as string | null) ?? null);
-        setHasSavedCard(Boolean(data?.stripe_customer_id && data?.stripe_payment_method_id));
-      });
+    loadOwnCard(userId).then((own) => {
+      if (!live) return;
+      setCustomerId(own?.customerId ?? null);
+      setHasSavedCard(Boolean(own?.customerId && own?.paymentMethodId));
+    });
     return () => { live = false; };
   }, [userId]);
 

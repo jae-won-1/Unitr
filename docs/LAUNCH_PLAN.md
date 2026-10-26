@@ -107,12 +107,14 @@ Work items, roughly in order. None are done unless marked.
 3. **Privacy policy and terms**, linked in the app and the store listings.
    The terms say: credit is a prepayment for Uniter events, not refundable,
    what happens when Uniter cancels, and how mistaken charges are handled.
-4. **Remaining security fixes** from the 20 Oct review:
-   - `team_members` is writable by anyone (`for all using (true)`);
-   - ledger tables, `team_card_contributions` and card brand/last4 are
-     readable by anyone — fix, or the privacy labels can't be accurate;
-   - handle `charge.dispute.*` in the webhook;
-   - rate-limit the routes that create payments; cap a team's balance.
+4. **Remaining security fixes** from the 20 Oct review — **code done 26 Oct**;
+   live once `supabase_launch_security.sql` is run (after the deploy and the
+   phone OTA) and the two dispute events are enabled on the Stripe webhook:
+   - `team_members` writes limited to the real flows;
+   - ledger, balances, `team_card_contributions` and card details readable
+     only by whoever they belong to;
+   - `charge.dispute.created` / `.closed` handled in the webhook;
+   - payment routes rate limited; team credit capped at £1,000.
 5. **Live payments** — follow `GO_LIVE.md`. A store build taking test-mode
    payments reads as a demo and is rejected.
 6. **Clean the live database** — remove `[TEST]` pitches and test fixtures.

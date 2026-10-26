@@ -4,6 +4,7 @@ import { useState, useEffect, type ReactNode } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
 import { supabase } from "@/lib/supabase";
+import { loadOwnCard } from "@/lib/own-card";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
 import { authedPost } from "@/lib/authed-fetch";
@@ -403,17 +404,13 @@ export default function PayPage({ params }: { params: { matchId: string } }) {
       }
 
       // Look up any card already saved on this player's profile.
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4")
-        .eq("id", user!.id)
-        .maybeSingle();
-      const hasSavedCard = !!(profile?.stripe_customer_id && profile?.stripe_payment_method_id);
-      setSavedCard(hasSavedCard ? {
-        customerId: profile!.stripe_customer_id as string,
-        paymentMethodId: profile!.stripe_payment_method_id as string,
-        brand: (profile!.card_brand as string | null) ?? null,
-        last4: (profile!.card_last4 as string | null) ?? null,
+      const own = await loadOwnCard(user!.id);
+      const hasSavedCard = Boolean(own?.customerId && own?.paymentMethodId);
+      setSavedCard(own?.customerId && own.paymentMethodId ? {
+        customerId: own.customerId,
+        paymentMethodId: own.paymentMethodId,
+        brand: own.brand,
+        last4: own.last4,
       } : null);
 
       // Resolve THIS player's amounts.

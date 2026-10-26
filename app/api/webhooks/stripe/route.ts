@@ -17,6 +17,17 @@ import { adminSupabase } from "@/lib/supabase-admin";
 export const runtime = "nodejs";        // needs the raw body and node crypto
 export const dynamic = "force-dynamic"; // never cache a webhook
 
+// A bell notification for every admin. Best effort: a failed notification must
+// not make Stripe redeliver an event whose money side already succeeded.
+async function notifyStaff(title: string, body: string): Promise<void> {
+  const { data: admins } = await adminSupabase.from("profiles").select("id").eq("account_type", "admin");
+  if (!admins?.length) return;
+  const { error } = await adminSupabase.from("notifications").insert(
+    admins.map((a) => ({ user_id: a.id, type: "stripe_dispute", title, body, link: "/admin/finance" })),
+  );
+  if (error) console.error("stripe-webhook: staff notification failed:", error.message);
+}
+
 export async function POST(req: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -137,6 +148,67 @@ export async function POST(req: NextRequest) {
           }
           console.log(`stripe-webhook: reversed ${amount}p from team ${deposit.team_id} (${refund.id})`);
         }
+        break;
+      }
+
+      // A card dispute (chargeback). Stripe pulls the disputed amount out of
+      // the platform balance the moment it opens, so the money is gone exactly
+      // as with a refund — the credit it created comes back off the team, by
+      // the same refund_credit, keyed on the dispute id so a redelivery can't
+      // take it twice. Staff are told, because a dispute needs evidence
+      // submitted in the Stripe dashboard within its deadline.
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const piId = typeof dispute.payment_intent === "string"
+          ? dispute.payment_intent
+          : dispute.payment_intent?.id;
+
+        const { data: deposit } = piId
+          ? await adminSupabase.from("team_credit_transactions")
+              .select("team_id, player_id, amount_pence")
+              .eq("stripe_payment_intent_id", piId).maybeSingle()
+          : { data: null };
+
+        if (deposit) {
+          const amount = Math.min(dispute.amount, deposit.amount_pence as number);
+          if (amount > 0) {
+            const { error } = await adminSupabase.rpc("refund_credit", {
+              p_team_id: deposit.team_id,
+              p_amount_pence: amount,
+              p_player_id: deposit.player_id,
+              p_stripe_refund_id: dispute.id,
+              p_payment_intent_id: piId,
+              p_allow_negative: true,
+            });
+            if (error) {
+              console.error(`stripe-webhook: dispute reversal failed for ${dispute.id}:`, error.message);
+              return NextResponse.json({ error: "Could not apply dispute" }, { status: 500 });
+            }
+            console.log(`stripe-webhook: dispute ${dispute.id} reversed ${amount}p from team ${deposit.team_id}`);
+          }
+        }
+
+        await notifyStaff(
+          "Card dispute opened",
+          `A £${(dispute.amount / 100).toFixed(2)} payment is disputed (${dispute.reason}). `
+            + (deposit ? "The team credit it created has been taken back. " : "")
+            + "Respond in the Stripe dashboard before the deadline.",
+        );
+        break;
+      }
+
+      // The bank's verdict. Won: Stripe returns the money to the platform.
+      // The credit is NOT reinstated automatically — deliberately, because a
+      // won dispute is rare and staff should decide, in the SQL editor, whether
+      // the team gets it back. Lost: nothing more to do.
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+        await notifyStaff(
+          dispute.status === "won" ? "Card dispute won" : "Card dispute closed",
+          dispute.status === "won"
+            ? `Dispute ${dispute.id} was won and the £${(dispute.amount / 100).toFixed(2)} is back with Uniter. The team's credit was not reinstated — do that by hand if it should be.`
+            : `Dispute ${dispute.id} closed as ${dispute.status}.`,
+        );
         break;
       }
 

@@ -24,7 +24,9 @@ export const NO_VIEWER_GENDER: ViewerGender = { gender: null, teamCategory: null
 
 export async function loadViewerGender(userId: string): Promise<ViewerGender> {
   const [{ data: profile }, led] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+    // Named columns, never "*": the card columns on profiles aren't readable
+    // from a client (supabase_launch_security.sql), and "*" asks for them.
+    supabase.from("profiles").select("gender, account_type").eq("id", userId).maybeSingle(),
     loadLeadership(userId),
   ]);
 
