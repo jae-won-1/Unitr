@@ -10,7 +10,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isOn } from "@/lib/launch-scope";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { inviteDestination } from "@/lib/team-invite";
@@ -26,9 +25,7 @@ export default function WelcomePage() {
   const router = useRouter();
   const { user, loading: authLoading, signOut } = useAuth();
 
-  // Without venue accounts (lib/launch-scope.ts) there is only one kind of
-  // account, so the choice isn't asked.
-  const [accountType, setAccountType] = useState<AccountType | null>(isOn("venues") ? null : "player");
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
   const [fullName, setFullName] = useState("");
   const [details, setDetails] = useState<PlayerDetails>(EMPTY_PLAYER_DETAILS);
   const [saving, setSaving] = useState(false);
@@ -141,7 +138,7 @@ export default function WelcomePage() {
             </div>
           )}
 
-          {isOn("venues") && <AccountTypeCards value={accountType} onChange={setAccountType} />}
+          <AccountTypeCards value={accountType} onChange={setAccountType} />
 
           {accountType && (
             <div className="flex flex-col gap-1.5">

@@ -22,7 +22,6 @@ import {
 import { matchesGenderFilter, wrongCategoryReason, type GenderCategory, type GenderFilter } from "@/lib/gender";
 import { defaultGenderFilter, useViewerGender } from "@/lib/viewer-gender";
 import { GenderBadge, GenderFilterChips } from "@/components/GenderControls";
-import { isOn } from "@/lib/launch-scope";
 
 export type { MatchPost, PitchOption, Tournament };
 
@@ -45,24 +44,12 @@ export type { MatchPost, PitchOption, Tournament };
 // rather than a row of pills that ran out of width as categories were added.
 type Tab = "all" | "ringer" | "matches" | "tournaments";
 
-// A type this build has switched off (lib/launch-scope.ts) isn't offered at
-// all — hidden, not greyed, because the stores reject unfinished features.
-const TYPE_ON: Record<Tab, boolean> = {
-  all: true,
-  matches: isOn("friendlies"),
-  tournaments: true,
-  ringer: isOn("ringers"),
-};
-
-export const GAME_TYPES: { key: Tab; label: string }[] = ([
+export const GAME_TYPES: { key: Tab; label: string }[] = [
   { key: "all", label: "All games" },
   { key: "matches", label: "Matches" },
   { key: "tournaments", label: "Tournaments" },
   { key: "ringer", label: "Fill In" },
-] as { key: Tab; label: string }[]).filter((t) => TYPE_ON[t.key]);
-
-/** Only one kind of game left to pick — the type dropdown has nothing to do. */
-export const SINGLE_GAME_TYPE = GAME_TYPES.length <= 2;
+];
 
 // ── Game-type dropdown ────────────────────────────────────────
 // Shared with the teamless home (app/page.tsx), which renders the same control
@@ -357,16 +344,6 @@ function EnteredTournamentActions({ t }: { t: Tournament }) {
   );
 }
 
-// A viewer with no team can look but not enter — entry is a team's.
-function TeamlessTournamentActions({ t }: { t: Tournament }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] text-text-secondary text-center">Join or register a team to enter</p>
-      <ViewScheduleLink id={t.id} />
-    </div>
-  );
-}
-
 // Only ever rendered for an event the viewer's team is *not* in — the feed
 // swaps in EnteredTournamentActions otherwise, so there is no entered branch
 // left to fall through to here.
@@ -441,8 +418,7 @@ function FeedEmpty({ title, hint }: { title: string; hint: string }) {
 // ── Feed ──────────────────────────────────────────────────────
 export default function GameFeed({ teamId, userId, canAct = false, matchesHeader }: {
   teamId: string | null;
-  // Null for a signed-out visitor, who browses the same feed read-only.
-  userId: string | null;
+  userId: string;
   // Captains commit the team directly — challenge a post, enter a tournament.
   // Squad players can only put a game in front of their captain.
   canAct?: boolean;
@@ -457,7 +433,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   const [ringerCounts, setRingerCounts] = useState<Map<string, number>>(new Map());
   const { posts: allPosts, loading: postsLoading, removePost } = useOpenMatchPosts(teamId);
   const { tournaments: allTournaments, loading: tLoading, markJoined } = useOpenTournaments(teamId);
-  const { suggested, unavailable, suggest } = useSuggestions(teamId, userId ?? "");
+  const { suggested, unavailable, suggest } = useSuggestions(teamId, userId);
   // Men's / Women's / All. Opens on the viewer's team's category (their own
   // gender if teamless) — lib/gender.ts. A game of the other category can still
   // be browsed under All, but its action is greyed: the database refuses a team
@@ -479,9 +455,9 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
   }, [teamId]);
 
   const showAll = tab === "all";
-  const showMatches = TYPE_ON.matches && (showAll || tab === "matches");
+  const showMatches = showAll || tab === "matches";
   const showTournaments = showAll || tab === "tournaments";
-  const showRinger = TYPE_ON.ringer && (showAll || tab === "ringer");
+  const showRinger = showAll || tab === "ringer";
 
   const visiblePosts = dateKey ? posts.filter((p) => toDateKey(p.match_date) === dateKey) : posts;
   const visibleTournaments = dateKey ? tournaments.filter((t) => toDateKey(t.matchDate) === dateKey) : tournaments;
@@ -506,9 +482,9 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
 
   return (
     <section className="space-y-4">
-      <h3 className="font-bold">{SINGLE_GAME_TYPE ? "Find Events" : "Find Matches"}</h3>
+      <h3 className="font-bold">Find Matches</h3>
 
-      {!SINGLE_GAME_TYPE && <GameTypeSelect value={tab} onChange={setTab} />}
+      <GameTypeSelect value={tab} onChange={setTab} />
 
       {!genderLoading && <GenderFilterChips value={genderFilter} onChange={setGenderPick} />}
 
@@ -567,7 +543,7 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
           )
         ) : (
           <div className="space-y-4">
-            {showAll && !SINGLE_GAME_TYPE && <SectionLabel>Tournaments</SectionLabel>}
+            {showAll && <SectionLabel>Tournaments</SectionLabel>}
             {visibleTournaments.map((t) => {
               // One test, both roles. It used to live inside the captain's
               // button, so a squad player was still offered "Suggest to team"
@@ -578,8 +554,6 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
                 <TournamentPostCard key={t.id} t={t} entered={entered}>
                   {entered
                     ? <EnteredTournamentActions t={t} />
-                    : !teamId
-                    ? <TeamlessTournamentActions t={t} />
                     : wrong
                     ? (
                       <div className="space-y-2">
@@ -607,16 +581,9 @@ export default function GameFeed({ teamId, userId, canAct = false, matchesHeader
       {/* In All the two team sections vanish when empty, so say once that they
           were empty rather than leaving Fill In looking like the whole feed. */}
       {nothingAtAll && !postsLoading && !tLoading && (
-        SINGLE_GAME_TYPE ? (
-          <FeedEmpty
-            title={dateKey ? "No events on this day." : "No events right now."}
-            hint="Uniter's tournaments and leagues show up here as soon as they're announced."
-          />
-        ) : (
-          <p className="text-xs text-text-secondary">
-            {dateKey ? "No matches or tournaments on this day." : "No open matches or tournaments right now."}
-          </p>
-        )
+        <p className="text-xs text-text-secondary">
+          {dateKey ? "No matches or tournaments on this day." : "No open matches or tournaments right now."}
+        </p>
       )}
 
       {showRinger && (

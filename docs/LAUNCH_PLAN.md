@@ -67,12 +67,19 @@ confirm before launch.
 | Ringers / fill-in games | Belong to friendlies | `/api/ringer/*` |
 | Venue portal, pitch registration | No venue features in v1 | `/venue/*`, `/pitches/register` |
 
-**Switched off means refused by the server, not just hidden.** The API routes
-can be called directly with the public anon key, so a hidden button changes
-nothing. Plan: one setting (`lib/launch-scope.ts`) that every route above
-checks first and refuses with a plain sentence, and that the apps read to
-leave those entry points out. Turning v1 back into the full app is then a
-one-line change, not a rebuild. (Built 25 Oct — see item 1.)
+**Switched off in the phone app only** (user, 26 Oct — replaces the earlier
+"refused by the server" plan). The web keeps every feature, and since both
+apps call the same API routes, the server refuses nothing. `lib/launch-scope.ts`
+reads `lib/app-scope.ts` ("full") on the web and `lib/app-scope.native.ts`
+("v1") on the phone; the phone leaves the entry points out. Turning the phone
+into the full app is a one-line change to `app-scope.native.ts`.
+
+**What this means for the money question above.** The prepayment framing —
+credit spent only on Uniter's own events, never moving between teams — now
+describes what the *store app* offers, not what Uniter as a platform does: on
+the web, credit still pays venues, splits pitch fees and moves between teams.
+Put that to the payments lawyer / Stripe as it is, because it is the business
+being reviewed, not just the app.
 
 **Hidden, not greyed, in the store build.** This is a deliberate exception to
 the house "greyed rather than hidden" rule: Apple and Google reject apps that
@@ -82,21 +89,20 @@ show unfinished or "coming soon" features, so v1 shows only what works.
 
 Work items, roughly in order. None are done unless marked.
 
-1. **Scope switch** — `lib/launch-scope.ts`; server refusals on every route in
-   the table; store build hides the entry points (web and phone). **Done
-   25 Oct** (`main` 0292bb8, `mobile` 8051318) — not yet deployed. Refused:
-   `/api/book/pitch` (except finishing a card payment already taken),
-   `/api/book/post`, `/api/challenges/accept`, `/api/ringer/create-intent`,
-   `/api/connect/create-venue-account` + `account-status`, and
-   `/api/tournaments/join` for any event without `organiser_admin_id`.
-   Left open on purpose: `/api/ringer/join` (completes a paid spot),
-   `/api/settle-match` and `/api/create-payment-intent` (players paying debts
-   from friendlies already played). Not closed: the browser can still insert
-   `match_posts` / team `open_matches` rows through PostgREST — harmless, as
-   nothing can accept or enter them, but a SQL guard would make it airtight.
-2. **Account deletion in the app** — required by both stores. Decide what
-   happens to a captain's team and its credit when the captain deletes their
-   account (hand the team to a co-captain, or block deletion until they do).
+1. **Scope switch** — **Done 26 Oct, phone only.** `lib/launch-scope.ts` +
+   `lib/app-scope(.native).ts`. The phone hides Post a Match, Book a Pitch,
+   Matches and Fill In in the feed, non-Uniter events, the Calendar chips for
+   off kinds, Turn into Match Post, the ringer panel, and the venue account
+   choice at sign-up. The web is unchanged. Not deployed.
+2. **Account deletion in the app** — **Done 26 Oct, both apps.** A captain is
+   refused until they hand the team to a co-captain (Team Settings → Make
+   captain); venue and admin accounts are closed by staff. Deleting
+   anonymises the profile, leaves the squad, deletes the Stripe customer and
+   soft-deletes the auth user; money records and debts stay (detail in
+   `CLAUDE.md`, Deleting an account). The web page at `/profile` doubles as
+   the deletion link Google Play asks for. Needs
+   `supabase_account_deletion.sql`. **Open question:** a captain with nobody
+   else in the squad has no co-captain to hand to, so today they can't delete.
 3. **Privacy policy and terms**, linked in the app and the store listings.
    The terms say: credit is a prepayment for Uniter events, not refundable,
    what happens when Uniter cancels, and how mistaken charges are handled.

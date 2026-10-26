@@ -10,7 +10,6 @@ import {
   type CalendarEntry, type EntryKind,
 } from "@/lib/calendar-entries";
 import { fmtKickoff } from "@/lib/match-dates";
-import { isOn } from "@/lib/launch-scope";
 import { OUTCOME_TEXT } from "@/lib/match-results";
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 
@@ -25,25 +24,14 @@ import AvailabilityButtons from "@/components/AvailabilityButtons";
 
 type Filter = "all" | EntryKind;
 
-// A kind whose feature this build switches off (lib/launch-scope.ts) loses its
-// chip. Older entries of that kind still list under All — they happened.
-const FILTER_ON: Record<Filter, boolean> = {
-  all: true,
-  friendly: isOn("friendlies"),
-  tournament: true,
-  my_post: isOn("friendlies"),
-  ringer: isOn("ringers"),
-  booking: isOn("pitchBooking"),
-};
-
-const FILTERS: { key: Filter; label: string }[] = ([
+const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "friendly", label: "Friendlies" },
   { key: "tournament", label: "Tournaments" },
   { key: "my_post", label: "Your posts" },
   { key: "ringer", label: "Ringer" },
   { key: "booking", label: "Pitch bookings" },
-] as { key: Filter; label: string }[]).filter((f) => FILTER_ON[f.key]);
+];
 
 function isFilter(v: string | null): v is Filter {
   return v != null && FILTERS.some((f) => f.key === v);

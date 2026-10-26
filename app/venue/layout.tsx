@@ -6,8 +6,6 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { loadVenuePitches, type VenuePitch } from "@/lib/venue-pitches";
-import { isOn } from "@/lib/launch-scope";
-import SwitchedOff from "@/components/SwitchedOff";
 
 // ── Nav config ────────────────────────────────────────────────
 // Icons draw in currentColor, so the link's text colour drives them.
@@ -107,13 +105,7 @@ function NavSection({ title, first, children }: { title?: string; first?: boolea
   );
 }
 
-// The portal is switched off in this build (lib/launch-scope.ts). A venue
-// account still signs in — every player route sends it here — and is told so.
 export default function VenueLayout({ children }: { children: React.ReactNode }) {
-  return isOn("venues") ? <VenuePortal>{children}</VenuePortal> : <SwitchedOff feature="venues" />;
-}
-
-function VenuePortal({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const [initials, setInitials] = useState("?");

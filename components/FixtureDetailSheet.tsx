@@ -9,7 +9,6 @@ import { loadResultScorers, OUTCOME_TEXT, type FixtureResult, type ResultScorer 
 import AvailabilityButtons from "@/components/AvailabilityButtons";
 import TournamentFixtureList from "@/components/TournamentFixtureList";
 import { takeDownPost } from "@/lib/take-down-post";
-import { isOn } from "@/lib/launch-scope";
 
 // What opens when you tap anything on the Calendar. Basic detail for everyone;
 // the management CTA appears only for the person entitled to it.
@@ -341,7 +340,7 @@ export default function FixtureDetailSheet({ entry, isCaptain, team, viewerId, v
             </a>
           )}
 
-          {entry.kind === "booking" && isOn("pitchBooking") && (
+          {entry.kind === "booking" && (
             entry.postId ? (
               <p className="text-xs text-text-secondary text-center">
                 Already posted as a match — it&apos;s under <span className="font-semibold text-text-primary">Your posts</span>.

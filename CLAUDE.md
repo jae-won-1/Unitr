@@ -10,8 +10,9 @@ local setup. Historical plans may be superseded by the implementation.
 
 **The first App Store / Play Store release has a narrower scope than this file
 describes** — Uniter-hosted events only, team credit spent only on them and not
-refundable, everything else switched off on the server. `docs/LAUNCH_PLAN.md` is
-that plan; read it before changing anything that touches money or the store build.
+refundable, everything else left out of the phone app (the web stays the full
+app). `docs/LAUNCH_PLAN.md` is that plan; read it before changing anything that
+touches money or the store build.
 
 A football platform providing: player-team matching, matchmaking, pitch booking, and a
 stats/video social space.
@@ -113,24 +114,26 @@ page was deleted. Don't "clean these up" without a reason; ~15 call sites point 
 Role decides which Home renders, whether the "Your posts" filter appears on the Calendar,
 and whether an action is a real button or a greyed slot. **Greyed rather than hidden** is the
 house convention — a missing element shifts everything around it and breaks muscle memory
-(see `components/QuickNav.tsx`). The one exception is a feature the build switches off
-(`lib/launch-scope.ts`, below): that is hidden for everyone, because the stores reject
-unfinished features.
+(see `components/QuickNav.tsx`). The one exception is a feature the phone build switches
+off (`lib/launch-scope.ts`, below): that is hidden, because the stores reject unfinished
+features.
 
-## Launch scope
+## Launch scope (phone only)
 
-`lib/launch-scope.ts` is the single switch between the first store release and the full
-app (`docs/LAUNCH_PLAN.md`). `LAUNCH_SCOPE = "v1"` turns off `pitchBooking`, `friendlies`,
-`ringers`, `teamAndVenueEvents` and `venues`; `"full"` turns them all back on. A route for
-an off feature refuses first with `switchedOff(feature)` from `lib/api-auth.ts`;
-`/api/tournaments/join` refuses any event without `organiser_admin_id` (`canEnterEvent`).
-Both apps read `isOn(feature)` to leave entry points out, and the feed lists only
-Uniter-hosted events. Pages for an off feature — `/book`, `/pitches`, `/play/create`,
-`/play/edit`, `/play/create-tournament`, `/venue/*` and the phone's `/book` and
-`/post-match` — render `SwitchedOff` if someone reaches them by URL. Existing entries of
-an off kind (past friendlies, bookings) still list on the Calendar under All, and the
-routes that let players pay what they owe for them stay open. Much of this file describes
-the full app; check the switch before assuming a feature is reachable.
+The first store release (`docs/LAUNCH_PLAN.md`) is narrower than the web, and **only the
+phone app is narrowed** — the web stays the full app (user, 26 Oct). `lib/launch-scope.ts`
+reads the platform's scope from `lib/app-scope.ts` (`"full"`) or, on the phone, Metro's
+pick of `lib/app-scope.native.ts` (`"v1"`). In v1 `isOn()` is false for `pitchBooking`,
+`friendlies`, `ringers`, `teamAndVenueEvents` and `venues`; the phone leaves those entry
+points out, lists only Uniter-hosted events (`canEnterEvent`, applied in
+`lib/game-feed.ts`), and renders `SwitchedOff` on `/book` and `/post-match` if reached.
+On the web every `isOn()` is true, so the shared `lib/` changes are inert there.
+
+**Nothing is refused by the server.** The routes run on the web side and serve the full
+web app, so a phone that calls one by hand gets what the web would. The switch is about
+what the store build shows, not about what the platform allows — which means the legal
+"credit is a prepayment for Uniter's own events" framing in the launch plan holds for the
+phone's screens only. Much of this file describes the full app.
 
 ### Co-captains
 
@@ -141,6 +144,17 @@ person who was handed the team. They reach the `captain` role, so every captain 
 CTA is theirs; `useRole().isCoCaptain` is the only place the two are told apart, and it
 changes exactly two things — that panel, and **Leave team**, which a co-captain can press
 because they have a membership row to give up and the captain hasn't (see Leaving a squad).
+
+**Handing the team over.** Each co-captain's row in that panel has **Make captain**
+(`lib/hand-over-team.ts` → `/api/team/hand-over`, captain only → the service-role-only
+`hand_over_team` in `supabase_account_deletion.sql`). One transaction: the co-captain's
+membership row goes and their joining-fee figures move onto the captain's copy on `teams`;
+the old captain gets an ordinary approved membership carrying their own figures, so they stay
+in the squad as a player; `teams.captain_id` flips; and everything filed under the captain's
+id for that team is re-filed under the new one — `match_posts.captain_id`,
+`challenges.challenger_captain_id`, `availability_requests.captain_id`, pending
+`player_offers`. Announcements keep their author. It is how a captain leaves, and the
+precondition for a captain deleting their account (see Deleting an account).
 
 Two rules make that work without rewriting every query, both living in
 **`lib/team-leadership.ts`**:
@@ -247,10 +261,33 @@ captain's Payment Status keeps listing them.
 
 The captain sees the button **greyed** with the reason, per the house convention: they hold
 the team, every fixture is filed under their id, and `teams.captain_id` is immutable from a
-browser session anyway. A co-captain is a squad member with a row to give up, so they leave
+browser session anyway. The reason points at the way out — hand the team to a co-captain,
+after which they are an ordinary member who can leave. A co-captain is a squad member with a row to give up, so they leave
 like anyone else — `useRole().isCoCaptain` is what tells the two apart here, the second place
 it matters after `CoCaptainsPanel`. Leaving finishes with `hardNavigate` rather than a router
 push, because role, team and every cached query belong to a membership that no longer exists.
+The withdrawal of future answers lives in `lib/membership-cleanup.ts`, which takes the
+Supabase client as a parameter so account deletion runs the same tidy-up server-side.
+
+#### Deleting an account
+
+Both stores require it; the web offers it too (`components/DeleteAccountPanel.tsx` at the
+foot of `/profile`, `delete-account-button.tsx` on the phone's Profile).
+`lib/delete-account.ts` holds the rule — `deletionBlockReason` — shared by the screens and
+`/api/account/delete`. **A captain is refused until they hand the team to a co-captain**
+(user, 26 Oct); venue and admin accounts are refused and closed by staff. The button is
+greyed with that reason, not hidden.
+
+It anonymises rather than erases, because the ledger, payments, bookings and results
+reference the user's id and Uniter must keep money records. The route leaves the squad (the
+Leave team tidy-up plus every membership row, chat state, offers, friend requests, watchlist
+entries and the person's notifications), deletes their Stripe customer (taking the saved
+card), nulls every personal profile field, renames them "Deleted player" and sets
+`account_type = 'deleted'` — the Transfer Market and search list only `'player'` accounts,
+so they drop out of both — then replaces the auth email, removes their sign-in identities
+(`delete_auth_identities`, so a Google account can register afresh) and soft-deletes the
+auth user so its row, and every foreign key to it, survives. What they owe the squad stays
+owed, and team credit is not refunded. Messages they sent remain, under "Deleted player".
 
 #### Team details, and the two multi-select answers
 
@@ -779,6 +816,8 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_tournament_fixture_duration.sql` | `tournament_matches.duration_minutes` — how long one fixture runs, from the organiser's match length; run after `supabase_tournament_schedule.sql` |
 | `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
+| `supabase_account_deletion.sql` | `hand_over_team()` (captaincy to a co-captain, re-filing the captain-keyed rows) and `delete_auth_identities()`, both service-role only — called by `/api/team/hand-over` and `/api/account/delete`; run after `supabase_co_captains.sql`, `supabase_captain_joining_fee.sql`, `supabase_joining_fee_current.sql`, `supabase_pilot_security.sql` |
+| `supabase_gender_non_binary.sql` | `profiles.gender` accepts `non_binary` again; run after `supabase_gender_categories.sql` |
 | `supabase_card_and_credit_lockdown.sql` | `profiles` card columns (`stripe_customer_id`, `stripe_payment_method_id`, `card_brand`, `card_last4`) writable only by the server — a client may clear them, never set them; `record_cash_credit` and `reimburse_team` become service-role only. **Run only once the card-save routes are deployed**; after `supabase_pilot_security.sql`, `supabase_card_on_file.sql`, `supabase_co_captains.sql`, `supabase_team_tournaments.sql` |
 
 ## Conventions worth knowing

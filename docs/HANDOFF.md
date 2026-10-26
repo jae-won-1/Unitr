@@ -15,28 +15,33 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
   phone fails until it does. `/api/payment-intent-method` is now POST.
 
-## Latest — 2026-10-25, Claude Code: v1 scope switch + non-binary
+## Latest — 2026-10-26, Claude Code: phone-only scope, handover, account deletion
 
-Both branches (`main` 0292bb8, merged into `mobile` and ported in 8051318), so
-nothing is awaiting a port. **Committed locally, not pushed** — pushing `main`
-switches the live web site to v1 scope.
+Both branches; nothing awaiting a port. **Committed locally, not pushed.**
 
-- **Scope switch** (`docs/LAUNCH_PLAN.md` item 1): `lib/launch-scope.ts`,
-  `LAUNCH_SCOPE = "v1"`. Routes refuse via `switchedOff()` in `lib/api-auth.ts`;
-  the list of what is refused / deliberately left open is in the launch plan.
-  Web: QuickNav, GameFeed (Uniter events only, teamless viewers see them
-  read-only), Calendar chips, Manage Match, fixture sheet, poll results,
-  sign-up's account-type cards. `/book`, `/pitches`, `/play/create`,
-  `/play/edit`, `/play/create-tournament` and `/venue/*` render `SwitchedOff`.
-  Phone: the same set (see `mobile/PORTED.md`).
-- **Non-binary** is a gender answer again (`lib/profile-options.ts`), so it
-  appears at registration, `/welcome`, Edit Profile and the one-time prompt on
-  both apps. Treated like prefer-not-to-say. **User must run
-  `supabase_gender_non_binary.sql`** before deploying, or picking it fails the
-  profile check constraint. `supabase_gender_categories.sql` no longer folds
-  non-binary answers away on a re-run.
+- **v1 scope is phone-only** (user, 26 Oct: "don't hide anything on the web").
+  The 25 Oct web hiding and every server refusal are reverted — web `app/` and
+  `components/` match a742403 apart from the additions below.
+  `lib/launch-scope.ts` now reads `lib/app-scope.ts` ("full") /
+  `lib/app-scope.native.ts` ("v1", picked by Metro). The phone screens from
+  25 Oct are unchanged (`mobile/PORTED.md`). The launch plan notes what this
+  means for the legal framing of team credit.
+- **Hand over the team** — Team Settings → co-captain row → Make captain, web
+  and phone (`lib/hand-over-team.ts`, `/api/team/hand-over`,
+  `hand_over_team` SQL). Old captain stays as a player.
+- **Delete account** — foot of Profile, web and phone
+  (`lib/delete-account.ts`, `/api/account/delete`). Captains refused until
+  they hand over (user's decision); venue/admin refused. Anonymise +
+  soft-delete; see CLAUDE.md "Deleting an account". Leave team's tidy-up moved
+  to `lib/membership-cleanup.ts` (`leaveTeam` unchanged in shape).
+- **Non-binary** gender answer (from 25 Oct) stands.
+- **User must run**, before deploying: `supabase_gender_non_binary.sql` and
+  `supabase_account_deletion.sql`.
 - Checked: web `tsc`, lint (four pre-existing warnings), `npm run build`;
-  phone `tsc`, `expo lint`. Not exercised in a browser or on a device.
+  phone `tsc`, `expo lint`. Not run: either SQL file, any handover or
+  deletion against a real database, a browser, a device.
+- Open: a captain alone in their team can't delete (no co-captain to hand to)
+  — asked the user.
 
 ## Earlier — 2026-10-23: launch plan for the first store release
 

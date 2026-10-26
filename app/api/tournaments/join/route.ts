@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
-import { canEnterEvent, OFF_REASON } from "@/lib/launch-scope";
 import { payVenue } from "@/lib/venue-payout";
 import { feeOn } from "@/lib/uniter-fee";
 import { teamCategoryRefusal } from "@/lib/gender-entry";
@@ -51,9 +50,6 @@ export async function POST(req: NextRequest) {
     if (om.status === "cancelled") {
       return NextResponse.json({ error: "This tournament has been cancelled." }, { status: 409 });
     }
-    // This build enters Uniter's own events only (lib/launch-scope.ts): a
-    // team's or a venue's buy-in would become someone else's money.
-    if (!canEnterEvent(om)) return forbidden(OFF_REASON.teamAndVenueEvents);
     // Men's teams enter men's events, women's teams women's — checked before
     // the debit below; the database refuses the entry row as well.
     const wrongCategory = await teamCategoryRefusal(teamId, { table: "open_matches", id: openMatchId });

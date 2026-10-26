@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
-import { getCaller, unauthorized, switchedOff } from "@/lib/api-auth";
+import { getCaller, unauthorized } from "@/lib/api-auth";
 import { playerCategoryRefusal } from "@/lib/gender-entry";
 
 // Card payment for a ringer spot. The price is a flat fee paid to Uniter and
@@ -11,9 +11,6 @@ import { playerCategoryRefusal } from "@/lib/gender-entry";
 // isn't asked for card details for a spot that has just gone.
 export async function POST(req: NextRequest) {
   try {
-    const off = switchedOff("ringers");
-    if (off) return off;
-
     // The ringer paying is the caller — a playerId in the body would let
     // someone open a spot in another player's name and, worse, reuse their
     // saved Stripe customer.

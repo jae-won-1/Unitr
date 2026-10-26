@@ -1,38 +1,36 @@
 // What this build of Uniter does. docs/LAUNCH_PLAN.md is the decision: the
 // first App Store / Play Store release (v1) is a team app for entering
 // Uniter-hosted events, and everything that moves money anywhere else is
-// switched off — kept in the code, refused by the server, left out of both apps.
+// switched off in the PHONE app — kept in the code, left out of the screens.
 //
-// This is the only switch. Every API route for a switched-off feature asks
-// here first and refuses with OFF_REASON; the web and the phone ask here to
-// leave the entry points out. Bringing the full app back is changing
-// LAUNCH_SCOPE to "full".
+// The web app is the full app and stays that way (user, 26 Oct). The scope is
+// therefore per platform: lib/app-scope.ts says "full" and Metro picks
+// lib/app-scope.native.ts ("v1") for the phone. Server routes run on the web
+// side, so they see "full" and refuse nothing — a phone that reaches a route
+// by hand gets what the web would. Bringing the phone up to the full app is
+// changing app-scope.native.ts.
 //
 // Hidden, not greyed, while a feature is off — a deliberate exception to the
 // house convention, because the stores reject apps that show unfinished or
-// "coming soon" features. Pure (no React, no Supabase), so server routes and
-// both apps share it.
+// "coming soon" features. Pure (no React, no Supabase), so both apps share it.
 
-export type LaunchScope = "v1" | "full";
+import { APP_SCOPE } from "@/lib/app-scope";
 
-// `as`, so the comparison below stays a real one when this reads "v1".
-export const LAUNCH_SCOPE = "v1" as LaunchScope;
+export type { LaunchScope } from "@/lib/app-scope";
 
-const full = LAUNCH_SCOPE === "full";
+const full = APP_SCOPE === "full";
 
 export type Feature =
-  /** Booking a pitch outright — /book, /api/book/pitch, /api/book/post. */
+  /** Booking a pitch outright — the phone's /book. */
   | "pitchBooking"
   /** Teams posting friendlies and accepting them (secured posts included) —
-   *  /play/create, /play/edit, /api/challenges/accept. */
+   *  the phone's /post-match and Challenge. */
   | "friendlies"
-  /** Paid fill-in spots in a friendly — /api/ringer/*. */
+  /** Paid fill-in spots in a friendly. */
   | "ringers"
-  /** Events a team or a venue hosts, as opposed to Uniter's own —
-   *  /play/create-tournament, and entering one through /api/tournaments/join. */
+  /** Entering an event a team or a venue hosts, as opposed to Uniter's own. */
   | "teamAndVenueEvents"
-  /** The venue portal, pitch registration and Connect payouts — /venue/*,
-   *  /pitches/register, /api/connect/create-venue-account, account-status. */
+  /** Venue accounts — the account-type choice at sign-up. */
   | "venues";
 
 export const FEATURES: Record<Feature, boolean> = {
@@ -47,8 +45,7 @@ export function isOn(feature: Feature): boolean {
   return FEATURES[feature];
 }
 
-/** The plain sentence a route refuses with, or a screen shows when someone
- *  reaches a switched-off page by its URL. */
+/** What a screen shows when someone reaches a switched-off one by a link. */
 export const OFF_REASON: Record<Feature, string> = {
   pitchBooking: "Booking a pitch isn't available in this version of Uniter.",
   friendlies: "Posting and accepting friendlies isn't available in this version of Uniter.",

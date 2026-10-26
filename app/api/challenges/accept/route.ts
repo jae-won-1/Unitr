@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { seedAvailabilityFromPoll } from "@/lib/event-availability";
-import { getCallerId, isTeamLeader, forbidden, unauthorized, switchedOff } from "@/lib/api-auth";
+import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { feeOn } from "@/lib/uniter-fee";
 import { payVenue } from "@/lib/venue-payout";
 import { securedBookingPence } from "@/lib/secured-booking";
@@ -51,9 +51,6 @@ async function availablePence(teamId: string): Promise<{ available: number; bala
 
 export async function POST(req: NextRequest) {
   try {
-    const off = switchedOff("friendlies");
-    if (off) return off;
-
     const userId = await getCallerId(req);
     if (!userId) return unauthorized();
 

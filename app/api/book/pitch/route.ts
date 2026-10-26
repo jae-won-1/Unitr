@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { stripe } from "@/lib/stripe";
-import { getCaller, isTeamLeader, forbidden, unauthorized, switchedOff } from "@/lib/api-auth";
+import { getCaller, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { feeOn } from "@/lib/uniter-fee";
 import { isKickoffPast } from "@/lib/match-dates";
@@ -65,13 +65,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const method = body.method as Method;
-    // Switched off in this build (lib/launch-scope.ts) — except "card", which
-    // only finishes a payment the payer has already made: refusing it would
-    // keep their money and give them nothing.
-    if (method !== "card") {
-      const off = switchedOff("pitchBooking");
-      if (off) return off;
-    }
     const pitchId = String(body.pitchId ?? "");
     const date = String(body.date ?? "");
     const time = String(body.time ?? "");

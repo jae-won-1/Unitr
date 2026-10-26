@@ -2,7 +2,6 @@
 
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { isOn } from "@/lib/launch-scope";
 
 // The home screen's quick-action row: four fixed slots, identical for every
 // role and in the same order every time, so the bar is muscle memory whether
@@ -32,21 +31,17 @@ export default function QuickNav() {
 
   const noTeam = role === "new_user";
 
-  // A slot whose feature this build switches off (lib/launch-scope.ts) is left
-  // out entirely — the one exception to greyed-not-hidden, since the stores
-  // reject features that don't work. It is the same for every role, so the row
-  // is still identical whoever is looking.
   const items: Item[] = [
     // Posting a match commits the team to a fixture and a pitch fee, so it stays
     // a captain's action — a squad player sees it greyed rather than hidden.
-    ...(isOn("friendlies") ? [{
+    {
       label: "Post a Match",
       href: "/play/create",
       icon: ICONS.ball,
       disabled: role !== "captain",
       reason: noTeam ? "Join or register a team first" : "Only your captain can post a match",
-    }] : []),
-    ...(isOn("pitchBooking") ? [{ label: "Book a Pitch", href: user ? "/book" : "/login", icon: ICONS.pitch }] : []),
+    },
+    { label: "Book a Pitch", href: user ? "/book" : "/login", icon: ICONS.pitch },
     // Open to every role, signed in or not — the market page itself sends a
     // signed-out visitor to register the moment they try to act on it.
     { label: "Transfer Market", href: "/my-team/transfer", icon: ICONS.transfer },

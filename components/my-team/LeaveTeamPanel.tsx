@@ -64,7 +64,7 @@ export default function LeaveTeamPanel({
             Leave team
           </div>
           <p className="text-[11px] text-text-secondary text-center mt-2">
-            You captain {teamName}, so you can&apos;t leave it.
+            You captain {teamName}. Hand it to a co-captain in Team Settings to leave.
           </p>
         </>
       ) : !confirming ? (
