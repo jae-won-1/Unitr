@@ -57,6 +57,9 @@ create policy "Users can delete their own profile" on public.profiles
 -- ── teams ───────────────────────────────────────────────────────────────
 -- Teams are public by design: the whole point of TeamsPanel and the Transfer
 -- Market is browsing teams you are not in, including signed out.
+-- supabase_account_deletion.sql later narrows this read to teams that aren't
+-- closed. Re-running THIS file puts closed teams back on every list — re-run
+-- supabase_account_deletion.sql after it.
 alter table public.teams enable row level security;
 drop policy if exists "Anyone can view teams" on public.teams;
 create policy "Anyone can view teams" on public.teams

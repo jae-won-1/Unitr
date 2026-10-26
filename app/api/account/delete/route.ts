@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCallerId, forbidden, unauthorized } from "@/lib/api-auth";
-import { deletionBlockReason } from "@/lib/delete-account";
+import { checkAccountDeletion } from "@/lib/delete-account";
 import { withdrawFutureAnswers, withdrawPollAnswers } from "@/lib/membership-cleanup";
 
 // Delete the caller's own account (lib/delete-account.ts). Required by both
@@ -25,8 +25,13 @@ import { withdrawFutureAnswers, withdrawPollAnswers } from "@/lib/membership-cle
 //
 // What they owe the squad stays owed, exactly as when someone leaves.
 //
-// Refused for a captain (user, 26 Oct 2026): they hand the team to a
-// co-captain first (/api/team/hand-over), which makes them an ordinary member.
+// A captain (user, 26 Oct 2026): with anyone else in the squad, refused until
+// they hand the team to a co-captain (/api/team/hand-over). Alone in it, the
+// team is CLOSED with the account — teams.closed_at, which the read policy in
+// supabase_account_deletion.sql hides from every browser and phone query.
+// Never deleted: the ledger, payments and results cascade off teams. Its
+// remaining credit is forfeited (credit is non-refundable). The rule, and its
+// refusals, are lib/delete-account.ts — the screens ask the same function.
 // Refused for venue and admin accounts, which Uniter staff close by hand.
 
 // Profile fields that are not about the person and stay as they are.
@@ -37,12 +42,32 @@ export async function POST(req: NextRequest) {
     const userId = await getCallerId(req);
     if (!userId) return unauthorized();
 
-    const [{ data: profile }, { data: captained }] = await Promise.all([
+    const [{ data: profile }, check] = await Promise.all([
       adminSupabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-      adminSupabase.from("teams").select("id, name").eq("captain_id", userId).maybeSingle(),
+      checkAccountDeletion(adminSupabase, userId),
     ]);
-    const blocked = deletionBlockReason(profile?.account_type ?? null, captained?.name ?? null);
-    if (blocked) return forbidden(blocked);
+    if (check.block) return forbidden(check.block);
+
+    // ── The empty team this captain is leaving behind ──
+    if (check.closesTeam) {
+      const teamId = check.closesTeam.id;
+      const { error: closeErr } = await adminSupabase
+        .from("teams").update({ closed_at: new Date().toISOString() }).eq("id", teamId);
+      if (closeErr) {
+        // Nothing irreversible yet. Most likely the migration isn't run.
+        console.error("account delete: close team", closeErr);
+        return NextResponse.json(
+          { error: "Couldn't close your team — the Uniter team needs to finish setting up account deletion." },
+          { status: 503 });
+      }
+      // Nobody is left to answer these.
+      await Promise.all([
+        adminSupabase.from("team_members").delete().eq("team_id", teamId).eq("status", "pending"),
+        adminSupabase.from("tournament_invitations").update({ status: "cancelled" })
+          .eq("team_id", teamId).eq("status", "pending"),
+        adminSupabase.from("player_offers").delete().eq("team_id", teamId).eq("status", "pending"),
+      ]);
+    }
 
     // ── The squad ──
     const { data: memberships } = await adminSupabase

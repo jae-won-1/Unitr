@@ -8,9 +8,9 @@
 -- can't simply vanish — the team, its credit and every fixture filed under
 -- their id would be left with nobody holding them — so deletion is refused
 -- until the captain hands the team to one of their co-captains (user, 26 Oct
--- 2026). This file is the handover. The deletion itself runs in
--- /api/account/delete with the service key; the one piece of it that needs
--- SQL is removing the sign-in identities, below.
+-- 2026). A captain alone in their team deletes it with them: the team is
+-- closed (§3). This file is the handover and those two pieces of the deletion
+-- that need SQL; the rest runs in /api/account/delete with the service key.
 --
 -- Both functions are SERVICE ROLE ONLY. The routes check who is asking
 -- (lib/api-auth.ts) and then call them; a browser calling them directly would
@@ -127,6 +127,25 @@ end $fn$;
 
 revoke all on function public.delete_auth_identities(uuid) from public, anon, authenticated;
 grant  execute on function public.delete_auth_identities(uuid) to service_role;
+
+
+-- ── 3. Closing an empty team ────────────────────────────────────────────
+-- A captain alone in their team may delete their account, and the team goes
+-- with it (user, 26 Oct 2026). Closed, never deleted: team_credits, the
+-- ledger, payment rows and results all cascade off teams, and money records
+-- must stay. /api/account/delete sets closed_at with the service key.
+--
+-- Hidden from every browser and phone query by the read policy rather than
+-- by filters at each call site: the team lists, the Transfer Market, search
+-- and the tournament invite list all stop showing it at once. The server
+-- (service role) still sees it, so finance and reconciliation are unchanged.
+-- Other teams' history that names it (a tournament schedule) shows the team
+-- as unknown — it had nobody in it.
+alter table public.teams add column if not exists closed_at timestamptz;
+
+drop policy if exists "Anyone can view teams" on public.teams;
+create policy "Anyone can view teams" on public.teams
+  for select using (closed_at is null);
 
 
 -- ── Verify ──────────────────────────────────────────────────────────────

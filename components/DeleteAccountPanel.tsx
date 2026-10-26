@@ -2,27 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { accountDeletionBlock, deleteOwnAccount } from "@/lib/delete-account";
+import { accountDeletionCheck, deleteOwnAccount, type DeletionCheck } from "@/lib/delete-account";
 import { hardNavigate } from "@/lib/hard-navigate";
 
 // The foot of /profile: delete this account (lib/delete-account.ts). Asks a
 // second time, like Leave team, and says plainly what goes and what stays.
 //
-// A captain sees the button greyed with the reason — they hand the team to a
-// co-captain first — per the house convention, so the way out is visible.
+// A captain with a squad sees the button greyed with the reason — they hand
+// the team to a co-captain first — per the house convention, so the way out
+// is visible. A captain alone in their team is told the team closes too.
 export default function DeleteAccountPanel() {
   const { user } = useAuth();
-  const [block, setBlock] = useState<string | null | undefined>(undefined);
+  const [check, setCheck] = useState<DeletionCheck | undefined>(undefined);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    accountDeletionBlock(user.id).then(setBlock);
+    accountDeletionCheck(user.id).then(setCheck);
   }, [user]);
 
   if (!user) return null;
+  const block = check === undefined ? undefined : check.block;
 
   async function confirm() {
     setBusy(true);
@@ -53,6 +55,12 @@ export default function DeleteAccountPanel() {
               You leave your squad, your saved card is removed and your profile is erased. This
               can&rsquo;t be undone.
             </p>
+            {check?.closesTeam && (
+              <p className="text-sm text-text-secondary mt-2">
+                Nobody else is in <span className="font-semibold text-text-primary">{check.closesTeam.name}</span>,
+                so the team closes too. Any credit left in it is lost.
+              </p>
+            )}
             <p className="text-sm text-text-secondary mt-2">
               Payment records stay, because Uniter has to keep them — and anything you still owe
               your team stays owed. Team credit isn&rsquo;t refunded.

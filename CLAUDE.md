@@ -273,10 +273,17 @@ Supabase client as a parameter so account deletion runs the same tidy-up server-
 
 Both stores require it; the web offers it too (`components/DeleteAccountPanel.tsx` at the
 foot of `/profile`, `delete-account-button.tsx` on the phone's Profile).
-`lib/delete-account.ts` holds the rule — `deletionBlockReason` — shared by the screens and
-`/api/account/delete`. **A captain is refused until they hand the team to a co-captain**
-(user, 26 Oct); venue and admin accounts are refused and closed by staff. The button is
-greyed with that reason, not hidden.
+`lib/delete-account.ts` holds the rule — `checkAccountDeletion(db, userId)`, run by the
+screens on their own client and again by `/api/account/delete` on the service key. **A
+captain with anyone else in the squad is refused until they hand the team to a
+co-captain** (user, 26 Oct). **A captain alone in their team deletes it with them**: the
+team is closed — `teams.closed_at`, never a delete, because team credit, the ledger,
+payments and results cascade off `teams` — and the teams read policy
+(`supabase_account_deletion.sql`) hides closed teams from every browser and phone query,
+so every team list drops it with no filter at the call sites. Its leftover credit is
+forfeited; its pending join requests, invitations and offers go. That is refused while the
+team still has an entered event, a live post or a match ahead. Venue and admin accounts
+are refused and closed by staff. A refused button is greyed with the reason, not hidden.
 
 It anonymises rather than erases, because the ledger, payments, bookings and results
 reference the user's id and Uniter must keep money records. The route leaves the squad (the

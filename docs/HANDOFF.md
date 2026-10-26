@@ -40,8 +40,16 @@ Both branches; nothing awaiting a port. **Committed locally, not pushed.**
 - Checked: web `tsc`, lint (four pre-existing warnings), `npm run build`;
   phone `tsc`, `expo lint`. Not run: either SQL file, any handover or
   deletion against a real database, a browser, a device.
-- Open: a captain alone in their team can't delete (no co-captain to hand to)
-  — asked the user.
+- **Captain alone in their team** (user, later 26 Oct): deleting the account
+  closes the team (`teams.closed_at`, hidden by the teams read policy in
+  `supabase_account_deletion.sql`; credit forfeited; refused while it has an
+  event, post or match ahead). `lib/delete-account.ts` now exports
+  `checkAccountDeletion` / `accountDeletionCheck` (replacing
+  `accountDeletionBlock` / `deletionBlockReason`).
+- **Not shipped to phones.** No OTA published. Order when ready: run both SQL
+  files → push `main` (the phone calls the new routes on the live server) →
+  publish the OTA from `mobile/` (`--platform android` / `--platform ios`,
+  LAUNCH_PLAN item 9).
 
 ## Earlier — 2026-10-23: launch plan for the first store release
 

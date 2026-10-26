@@ -101,8 +101,9 @@ Work items, roughly in order. None are done unless marked.
    soft-deletes the auth user; money records and debts stay (detail in
    `CLAUDE.md`, Deleting an account). The web page at `/profile` doubles as
    the deletion link Google Play asks for. Needs
-   `supabase_account_deletion.sql`. **Open question:** a captain with nobody
-   else in the squad has no co-captain to hand to, so today they can't delete.
+   `supabase_account_deletion.sql`. A captain alone in their team deletes the
+   team with them (closed, its credit forfeited) — user's decision, 26 Oct —
+   unless it still has an event, post or match ahead.
 3. **Privacy policy and terms**, linked in the app and the store listings.
    The terms say: credit is a prepayment for Uniter events, not refundable,
    what happens when Uniter cancels, and how mistaken charges are handled.
