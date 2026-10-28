@@ -22,6 +22,8 @@ import { useRole } from "@/contexts/RoleContext";
 const SETUP_ROUTES = [
   "/welcome", "/auth/callback", "/login", "/register",
   "/forgot-password", "/reset-password",
+  // Public documents — readable before the profile exists, and linked from it.
+  "/privacy", "/terms",
 ];
 
 export default function ProfileGate() {

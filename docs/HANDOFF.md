@@ -53,8 +53,16 @@ Both branches; nothing awaiting a port. **Committed locally, not pushed.**
   create-team page, `lib/viewer-gender.ts`, phone `create-team.tsx`).
   **Order:** deploy web → OTA → run the SQL → enable `charge.dispute.created`
   and `charge.dispute.closed` on the Stripe webhook endpoint.
-- **Not shipped to phones.** No OTA published — the auto-mode permission
-  check refused `eas update` when Claude tried; the user runs it. Order when ready: run both SQL
+- **Shipped (27–28 Oct):** user published the OTA (Android + iOS) and ran
+  `supabase_launch_security.sql`; production EAS env already has the live
+  Stripe key. Still to check: the two dispute events on the live Stripe webhook.
+- **Privacy policy + terms drafted (28 Oct)** — `app/privacy`, `app/terms`,
+  `lib/legal.ts`, links on both apps. Committed on `main` and `mobile`, **not
+  pushed and no OTA**: fill the placeholders in `lib/legal.ts` first, then push
+  `main` and publish an OTA (the phone links open the live pages). Minimum age
+  drafted as 13, under-18s need a parent's permission to pay — user to confirm.
+- Play Console account is **personal**: production needs a 12-tester, 14-day
+  closed test first. Order when ready: run both SQL
   files → push `main` (the phone calls the new routes on the live server) →
   publish the OTA from `mobile/` (`--platform android` / `--platform ios`,
   LAUNCH_PLAN item 9).

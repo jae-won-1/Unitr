@@ -296,6 +296,19 @@ so they drop out of both — then replaces the auth email, removes their sign-in
 auth user so its row, and every foreign key to it, survives. What they owe the squad stays
 owed, and team credit is not refunded. Messages they sent remain, under "Deleted player".
 
+#### Privacy policy and terms
+
+`/privacy` and `/terms` (`app/privacy`, `app/terms`, shared frame
+`components/LegalPage.tsx`) are public, static pages — exempt from `ProfileGate` and the
+venue redirect. Who runs Uniter, the address, contact email and minimum age live once in
+`lib/legal.ts`, which both apps and both documents read; the phone opens the web pages
+(`PRIVACY_URL` / `TERMS_URL`) rather than holding a copy. Linked under the sign-up buttons
+(`SignUpAgreement`) and at the foot of Profile on both apps. **The privacy policy lists what
+the code collects and every service data goes to** — Supabase, Stripe, Vercel, Expo, Google
+sign-in, OpenStreetMap tiles; no analytics, ads, location or push. Adding any of those means
+updating it, and the Play data-safety form. The terms' team-credit section must agree with
+`TEAM_CREDIT_NON_REFUNDABLE` and `TEAM_CREDIT_CAP_PENCE` (`lib/team-credit-terms.ts`).
+
 #### Team details, and the two multi-select answers
 
 Everything `/my-team/create` asks at registration is editable afterwards in Team Settings

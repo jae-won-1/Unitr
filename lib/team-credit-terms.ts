@@ -7,3 +7,7 @@
 // cancelled event, a mistaken charge) and the webhook takes the credit back.
 export const TEAM_CREDIT_NON_REFUNDABLE =
   "Team credit can't be withdrawn or refunded to your card — it's spent on your team's pitches and events.";
+
+/** The most credit a team can hold — enforced in lib/credit-cap.ts, stated in
+ *  the terms (app/terms). */
+export const TEAM_CREDIT_CAP_PENCE = 100_000; // £1,000

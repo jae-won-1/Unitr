@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { inviteAuthHref, inviteDestination, inviteFromLocation } from "@/lib/team-invite";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
+import { SignUpAgreement } from "@/components/LegalLinks";
 import {
   AccountTypeCards, PlayerDetailsFields, VenueNextStepsNote,
 } from "@/components/RegistrationFields";
@@ -182,6 +183,8 @@ export default function RegisterPage() {
             ) : accountType === "venue_manager" ? "Create Venue Account" : "Create Account"}
           </button>
         )}
+
+        <SignUpAgreement />
 
         {/* Google creates the account from the same tap that signs one in, so
             this is on both screens. It skips the questions above — /welcome

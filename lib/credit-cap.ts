@@ -1,4 +1,5 @@
 import { adminSupabase } from "@/lib/supabase-admin";
+import { TEAM_CREDIT_CAP_PENCE } from "@/lib/team-credit-terms";
 
 // The most team credit a team can hold. Credit is a prepayment for the team's
 // pitches and events (docs/LAUNCH_PLAN.md), so a balance far beyond what a
@@ -9,7 +10,7 @@ import { adminSupabase } from "@/lib/supabase-admin";
 // Checked only where a card is about to be charged INTO credit — before the
 // money moves, never after. The webhook always credits what was actually
 // paid, because refusing then would keep money and give nothing for it.
-export const TEAM_CREDIT_CAP_PENCE = 100_000; // £1,000
+export { TEAM_CREDIT_CAP_PENCE };
 
 /** Null if `addPence` fits under the cap; otherwise the sentence to refuse with. */
 export async function creditCapRefusal(teamId: string, addPence: number): Promise<string | null> {

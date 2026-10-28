@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { inviteDestination } from "@/lib/team-invite";
+import { SignUpAgreement } from "@/components/LegalLinks";
 import {
   AccountTypeCards, PlayerDetailsFields, VenueNextStepsNote,
 } from "@/components/RegistrationFields";
@@ -174,6 +175,8 @@ export default function WelcomePage() {
               ) : accountType === "venue_manager" ? "Create Venue Account" : "Finish"}
             </button>
           )}
+
+          <SignUpAgreement />
 
           {/* The way out for somebody who signed in with the wrong Google
               account. Without it this page is a dead end — ProfileGate sends

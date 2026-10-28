@@ -8,6 +8,7 @@ import { confirmCardSetup } from "@/lib/confirm-payment";
 import { paymentMethodIdOf, persistSavedCard } from "@/lib/save-card";
 import SignInMethods from "@/components/SignInMethods";
 import DeleteAccountPanel from "@/components/DeleteAccountPanel";
+import { LegalFooterLinks } from "@/components/LegalLinks";
 import { useRole } from "@/contexts/RoleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -454,6 +455,8 @@ function ProfileContent({ isCaptain, profile, teamName, onSaved }: {
       </button>
 
       <DeleteAccountPanel />
+
+      <LegalFooterLinks />
     </div>
   );
 }

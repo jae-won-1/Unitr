@@ -87,6 +87,7 @@ export default function BottomNav() {
         // Still finishing sign-up — /welcome sends a venue account to the
         // portal itself once the profile exists.
         "/auth", "/welcome",
+        "/privacy", "/terms",
       ];
       if (!allowed.some((p) => pathname.startsWith(p))) {
         router.replace("/venue/calendar");
