@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { fmtDate, loadTournamentEntries, parseOptionDate, type HistoryFixture } from "@/lib/settle-payments";
-import { isUpcomingDate, toDateKey } from "@/lib/match-dates";
+import {
+  fmtDate, loadMatchFixtures, loadTournamentEntries, parseOptionDate, sortSettleFixtures,
+  type HistoryFixture, type SettleMatchRow,
+} from "@/lib/settle-payments";
 import { outcomeOf, OUTCOME_TEXT } from "@/lib/match-results";
 import { JoiningFeeAmountPanel } from "@/components/JoiningFeePanels";
 import BottomSheet from "@/components/BottomSheet";
@@ -28,15 +30,7 @@ type CollectTarget =
   | { kind: "tournament"; openMatchId: string };
 
 
-type MatchRow = {
-  id: string;
-  posting_team_id: string;
-  challenging_team_id: string;
-  confirmed_pitch: { price?: number } | null;
-  fees_settled: boolean;
-  result_submitted: boolean;
-  result_verified: boolean;
-};
+type MatchRow = SettleMatchRow;
 
 type RosterPlayer = { player_id: string; name: string };
 type CollectRow = { player_id: string; share_pence: number; received: boolean };
@@ -314,96 +308,13 @@ export function SettlePaymentsList() {
       setTeamId(tid);
       setIsCaptainViewer(Boolean(led?.canManage));
 
-      // Matches where this team posted and was challenged
-      const { data: myPosts } = await supabase.from("match_posts")
-        .select("id, match_date, match_time").eq("captain_id", captainId).eq("status", "matched");
-
-      const posterFixtures = await Promise.all(
-        (myPosts ?? []).map(async (post) => {
-          const { data: ch } = await supabase.from("challenges")
-            .select("challenger_team_name, selected_pitch").eq("post_id", post.id).eq("status", "accepted").maybeSingle();
-          return {
-            postId: post.id,
-            opponent: (ch as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
-            date: post.match_date,
-            time: post.match_time,
-            pitch: ((ch as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
-          };
-        })
-      );
-
-      // Matches where this team challenged another team's post
-      const { data: myChallenges } = await supabase.from("challenges")
-        .select("post_id, selected_pitch").eq("challenger_captain_id", captainId).eq("status", "accepted");
-
-      const challengerFixtures = await Promise.all(
-        (myChallenges ?? []).map(async (c) => {
-          const { data: post } = await supabase.from("match_posts")
-            .select("id, team_name, match_date, match_time").eq("id", c.post_id).maybeSingle();
-          return {
-            postId: c.post_id,
-            opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
-            date: (post as { match_date: string } | null)?.match_date ?? "",
-            time: (post as { match_time: string } | null)?.match_time ?? "",
-            pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
-          };
-        })
-      );
-
-      // Settle Payments shows both past fixtures and upcoming ones (marked
-      // "Upcoming" so a captain can still issue payment requests ahead of the
-      // game, just not submit a result before it's played).
-      // Normalise the date rather than requiring ISO: legacy rows store
-      // "Wed, 03 JUN 2026", and dropping them hid played fixtures from history
-      // entirely while the same string kept them pinned in Upcoming elsewhere.
-      const all = [...posterFixtures, ...challengerFixtures]
-        .map((f) => ({ ...f, date: toDateKey(f.date), isUpcoming: isUpcomingDate(f.date) }))
-        .filter((f) => f.date !== "");
-
-      const { data: rows } = all.length > 0
-        ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", all.map((f) => f.postId))
-        : { data: [] };
-      const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
-      setMatchRows(Object.fromEntries((rows ?? []).map((r) => [r.id, r as unknown as MatchRow])));
-
-      // Fetch all match_results for these matches, then filter client-side to the
-      // current team only. Consistent with match detail page which uses the same
-      // pattern — server-side eq("team_id") can return opponent rows unexpectedly.
-      const allMatchIds = (rows ?? []).map((r) => r.id);
-      if (allMatchIds.length > 0 && tid) {
-        const { data: results } = await supabase.from("match_results")
-          .select("match_id, team_id, team_score, opponent_score").in("match_id", allMatchIds);
-        const myResults = (results ?? []).filter((r) => r.team_id === tid);
-        setMatchResults(Object.fromEntries(myResults.map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }])));
-      }
-
-      const matchById = new Map((rows ?? []).map((r) => [r.id, r]));
-      const matchFixtures: HistoryFixture[] = all.map((f) => {
-        const matchRowId = byPostId.get(f.postId) ?? null;
-        const m = matchRowId ? matchById.get(matchRowId) : undefined;
-        // Each team covers 50% of the pitch fee; the poster carries the odd penny.
-        const feePence = Math.round(((m?.confirmed_pitch as { price?: number } | null)?.price ?? 0) * 100);
-        const half = Math.floor(feePence / 2);
-        return {
-          ...f,
-          key: `match:${f.postId}`,
-          kind: "match" as const,
-          matchRowId,
-          openMatchId: null,
-          label: f.opponent,
-          teamPoolPence: m?.posting_team_id === tid ? feePence - half : half,
-          settled: Boolean(m?.fees_settled),
-        };
-      });
+      const { fixtures: matchFixtures, matchRows: rowsById, matchResults: results } = await loadMatchFixtures(captainId, tid);
+      setMatchRows(rowsById);
+      setMatchResults(results);
 
       const tournamentFixtures = await loadTournamentEntries(tid!);
 
-      const withRows = [...matchFixtures, ...tournamentFixtures]
-        // Soonest upcoming first, then most recent past first.
-        .sort((a, b) => {
-          if (a.isUpcoming !== b.isUpcoming) return a.isUpcoming ? -1 : 1;
-          return a.isUpcoming ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
-        });
+      const withRows = sortSettleFixtures([...matchFixtures, ...tournamentFixtures]);
 
       setFixtures(withRows);
       setLoading(false);

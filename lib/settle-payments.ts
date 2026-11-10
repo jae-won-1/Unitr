@@ -105,3 +105,121 @@ export async function loadTournamentEntries(teamId: string): Promise<HistoryFixt
     isUpcoming: isUpcomingDate(t.match_date),
   })).filter((t) => t.date !== "");
 }
+
+// ── Friendlies this team played (or will), as settleable history rows ──────
+// Moved unchanged out of SettlePaymentsList so the phone's Settle screen lists
+// the same friendlies the web does. Everything here is filed under the TEAM'S
+// captain id (lib/team-leadership.ts), so pass `captainId`, not the viewer's.
+
+export type SettleMatchRow = {
+  id: string;
+  post_id: string;
+  posting_team_id: string;
+  challenging_team_id: string;
+  confirmed_pitch: { price?: number } | null;
+  fees_settled: boolean;
+  result_submitted: boolean;
+  result_verified: boolean;
+};
+
+export type SettleMatchResult = { teamScore: number; opponentScore: number };
+
+export async function loadMatchFixtures(captainId: string, teamId: string): Promise<{
+  fixtures: HistoryFixture[];
+  matchRows: Record<string, SettleMatchRow>;
+  matchResults: Record<string, SettleMatchResult>;
+}> {
+  // Matches where this team posted and was challenged
+  const { data: myPosts } = await supabase.from("match_posts")
+    .select("id, match_date, match_time").eq("captain_id", captainId).eq("status", "matched");
+
+  const posterFixtures = await Promise.all(
+    (myPosts ?? []).map(async (post) => {
+      const { data: ch } = await supabase.from("challenges")
+        .select("challenger_team_name, selected_pitch").eq("post_id", post.id).eq("status", "accepted").maybeSingle();
+      return {
+        postId: post.id as string,
+        opponent: (ch as { challenger_team_name: string } | null)?.challenger_team_name ?? "Unknown",
+        date: post.match_date as string,
+        time: post.match_time as string,
+        pitch: ((ch as { selected_pitch?: { name: string } } | null)?.selected_pitch?.name) ?? "TBC",
+      };
+    })
+  );
+
+  // Matches where this team challenged another team's post
+  const { data: myChallenges } = await supabase.from("challenges")
+    .select("post_id, selected_pitch").eq("challenger_captain_id", captainId).eq("status", "accepted");
+
+  const challengerFixtures = await Promise.all(
+    (myChallenges ?? []).map(async (c) => {
+      const { data: post } = await supabase.from("match_posts")
+        .select("id, team_name, match_date, match_time").eq("id", c.post_id).maybeSingle();
+      return {
+        postId: c.post_id as string,
+        opponent: (post as { team_name: string } | null)?.team_name ?? "Unknown",
+        date: (post as { match_date: string } | null)?.match_date ?? "",
+        time: (post as { match_time: string } | null)?.match_time ?? "",
+        pitch: (c.selected_pitch as { name: string } | null)?.name ?? "TBC",
+      };
+    })
+  );
+
+  // Settle Payments shows both past fixtures and upcoming ones (marked
+  // "Upcoming" so a captain can still issue payment requests ahead of the
+  // game, just not submit a result before it's played).
+  // Normalise the date rather than requiring ISO: legacy rows store
+  // "Wed, 03 JUN 2026", and dropping them hid played fixtures from history
+  // entirely while the same string kept them pinned in Upcoming elsewhere.
+  const all = [...posterFixtures, ...challengerFixtures]
+    .map((f) => ({ ...f, date: toDateKey(f.date), isUpcoming: isUpcomingDate(f.date) }))
+    .filter((f) => f.date !== "");
+
+  const { data: rows } = all.length > 0
+    ? await supabase.from("matches").select("id, post_id, posting_team_id, challenging_team_id, confirmed_pitch, fees_settled, result_submitted, result_verified").in("post_id", all.map((f) => f.postId))
+    : { data: [] };
+  const byPostId = new Map((rows ?? []).map((r) => [r.post_id, r.id]));
+  const matchRows: Record<string, SettleMatchRow> =
+    Object.fromEntries((rows ?? []).map((r) => [r.id, r as unknown as SettleMatchRow]));
+
+  // Fetch all match_results for these matches, then filter client-side to the
+  // current team only. Consistent with match detail page which uses the same
+  // pattern — server-side eq("team_id") can return opponent rows unexpectedly.
+  let matchResults: Record<string, SettleMatchResult> = {};
+  const allMatchIds = (rows ?? []).map((r) => r.id);
+  if (allMatchIds.length > 0) {
+    const { data: results } = await supabase.from("match_results")
+      .select("match_id, team_id, team_score, opponent_score").in("match_id", allMatchIds);
+    const myResults = (results ?? []).filter((r) => r.team_id === teamId);
+    matchResults = Object.fromEntries(myResults.map((r) => [r.match_id, { teamScore: r.team_score, opponentScore: r.opponent_score }]));
+  }
+
+  const matchById = new Map((rows ?? []).map((r) => [r.id, r]));
+  const fixtures: HistoryFixture[] = all.map((f) => {
+    const matchRowId = byPostId.get(f.postId) ?? null;
+    const m = matchRowId ? matchById.get(matchRowId) : undefined;
+    // Each team covers 50% of the pitch fee; the poster carries the odd penny.
+    const feePence = Math.round(((m?.confirmed_pitch as { price?: number } | null)?.price ?? 0) * 100);
+    const half = Math.floor(feePence / 2);
+    return {
+      ...f,
+      key: `match:${f.postId}`,
+      kind: "match" as const,
+      matchRowId,
+      openMatchId: null,
+      label: f.opponent,
+      teamPoolPence: m?.posting_team_id === teamId ? feePence - half : half,
+      settled: Boolean(m?.fees_settled),
+    };
+  });
+
+  return { fixtures, matchRows, matchResults };
+}
+
+/** Soonest upcoming first, then most recent past first. */
+export function sortSettleFixtures(list: HistoryFixture[]): HistoryFixture[] {
+  return [...list].sort((a, b) => {
+    if (a.isUpcoming !== b.isUpcoming) return a.isUpcoming ? -1 : 1;
+    return a.isUpcoming ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date);
+  });
+}
