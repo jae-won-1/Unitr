@@ -22,8 +22,10 @@ v1 it is **only a tool to make paying easy**:
   with `organiser_admin_id` set). Nothing else.
 - **How it gets in:** players pay by card for something named — their joining
   fee, their share of an event buy-in, or the shortfall when the captain enters
-  an event. No free-amount "top up a balance" in the store build
-  (`TEST_TOP_UP` in `mobile/src/store-review.ts` stays dev-only).
+  an event — and the captain can **top up** a chosen amount, as on the web
+  (user, 10 Nov: `TOP_UP` in `mobile/src/store-review.ts` is on in store
+  builds). Tell reviewers credit only buys real-world football events, which
+  is outside both stores' in-app billing rules.
 - **Not refundable to players.** Shown before every payment
   (`lib/team-credit-terms.ts`); `/api/credit/refund` is staff-only. Done
   22 Oct.
@@ -105,10 +107,12 @@ Work items, roughly in order. None are done unless marked.
    team with them (closed, its credit forfeited) — user's decision, 26 Oct —
    unless it still has an event, post or match ahead.
 3. **Privacy policy and terms**, linked in the app and the store listings.
-   **Drafted 28 Oct** (`/privacy`, `/terms`, linked from sign-up and Profile on
-   both apps) — **not deployed**: `lib/legal.ts` still has [bracketed]
-   placeholders for the operator's legal name, address and contact email, and
-   the drafts want review by someone qualified.
+   **Drafted 28 Oct, details filled 10 Nov** (`/privacy`, `/terms`, linked from
+   sign-up and Profile on both apps). Operator Jaewon Choi (personal), London
+   SW17 0HF, unitrteam@gmail.com; **accounts are 18+** (user, 10 Nov) — the
+   Under 18 age group is gone from sign-up and the sign-up line asks people to
+   confirm their age. Live once `main` is pushed. The drafts still want review
+   by someone qualified.
    The terms say: credit is a prepayment for Uniter events, not refundable,
    what happens when Uniter cancels, and how mistaken charges are handled.
 4. **Remaining security fixes** from the 20 Oct review — **code done 26 Oct**;

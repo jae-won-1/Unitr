@@ -15,7 +15,34 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
   phone fails until it does. `/api/payment-intent-method` is now POST.
 
-## Latest — 2026-10-26, Claude Code: phone-only scope, handover, account deletion
+## Latest — 2026-11-10, Claude Code: legal details, phone money fixes
+
+Both branches, committed locally, **not pushed, no OTA, no build.**
+
+- **Legal** (`main`): `lib/legal.ts` filled — Jaewon Choi (personal), London
+  SW17 0HF, unitrteam@gmail.com (user's choice). **Accounts are 18+**: the
+  under-18 parental wording is gone from both documents, `under-18` left
+  `AGE_GROUPS` (old rows show the raw key), and the sign-up line on both apps
+  asks people to confirm 18+. Play target audience must be 18+.
+- **Stripe:** user confirmed `charge.dispute.created` / `.closed` are on the
+  live webhook.
+- **Settle Payments** (`main` → `mobile`): the web's friendly-fixture loader
+  moved unchanged to `lib/settle-payments.ts` (`loadMatchFixtures`,
+  `sortSettleFixtures`). The phone's `settle.tsx` now lists friendlies too —
+  it only ever listed tournament entries, which is why past friendlies
+  couldn't be settled.
+- **Top Up on the phone** (`mobile`): `TEST_TOP_UP = __DEV__` →
+  `TOP_UP = true` (user, 10 Nov). The launch plan's "no free-amount top up"
+  line is updated; mention real-world events in the review notes.
+- **Create menu** (`mobile`): a column under the + with labels beside each
+  circle, replacing the arc whose label pills overlapped.
+- Checked: web `tsc`, lint (pre-existing warnings only); phone `tsc`,
+  `expo lint`. **Not run on a device or in a browser.**
+- Still greyed on the phone: Payment Status (marking who has paid), and the
+  credit log behind the balance pill. Both web-only.
+- Next: push `main` → OTA (android + ios) → `production-apk` build to test.
+
+## Earlier — 2026-10-26, Claude Code: phone-only scope, handover, account deletion
 
 Both branches; nothing awaiting a port. **Committed locally, not pushed.**
 
