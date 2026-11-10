@@ -40,7 +40,9 @@ Both branches, committed locally, **not pushed, no OTA, no build.**
   `expo lint`. **Not run on a device or in a browser.**
 - Still greyed on the phone: Payment Status (marking who has paid), and the
   credit log behind the balance pill. Both web-only.
-- Next: push `main` → OTA (android + ios) → `production-apk` build to test.
+- **Pushed `main` (b37877f) 10 Nov; Vercel live** — /privacy shows the new
+  operator and email, /terms returns 200. User is running the OTA (android +
+  ios) and the `production-apk` build themselves.
 
 ## Earlier — 2026-10-26, Claude Code: phone-only scope, handover, account deletion
 
