@@ -24,8 +24,7 @@ export default function TermsPage() {
 
       <H2>Your account</H2>
       <List items={[
-        <>You must be at least {LEGAL.minimumAge}. If you are under 18 you need a parent or
-          guardian&rsquo;s permission before making any payment.</>,
+        <>You must be at least {LEGAL.minimumAge} to create an account.</>,
         <>Give accurate details, including the men&rsquo;s or women&rsquo;s category your team
           plays in, and keep your sign-in to yourself. You are responsible for what happens on
           your account.</>,

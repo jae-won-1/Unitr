@@ -8,7 +8,7 @@ const link = "text-accent-ink font-semibold underline underline-offset-2";
 export function SignUpAgreement() {
   return (
     <p className="text-[11px] text-text-secondary text-center">
-      By continuing you agree to the{" "}
+      By continuing you confirm you are 18 or over and agree to the{" "}
       <a href="/terms" className={link}>Terms</a> and{" "}
       <a href="/privacy" className={link}>Privacy policy</a>.
     </p>

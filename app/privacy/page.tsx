@@ -99,8 +99,9 @@ export default function PrivacyPage() {
 
       <H2>Children</H2>
       <p>
-        You must be at least {LEGAL.minimumAge} to have a Uniter account. If you are under 18,
-        you need a parent or guardian&rsquo;s permission before making any payment.
+        Uniter is for adults: you must be at least {LEGAL.minimumAge} to have an account. We do
+        not knowingly collect information from anyone younger; if you believe someone under{" "}
+        {LEGAL.minimumAge} has an account, contact us and we will delete it.
       </p>
 
       <H2>Changes and contact</H2>

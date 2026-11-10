@@ -15,8 +15,9 @@ export const POSITIONS = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "LW", "RW"
 /** Stored verbatim — the label is the value. */
 export const EXPERIENCE_LEVELS = ["Beginner", "Casual", "Intermediate", "Semi-Pro"];
 
+// No "under-18": accounts are 18+ (LEGAL.minimumAge). A row that still holds it
+// from before displays as the raw key through optionLabel.
 export const AGE_GROUPS: Option[] = [
-  { value: "under-18", label: "Under 18" },
   { value: "18-24", label: "18–24" },
   { value: "25-34", label: "25–34" },
   { value: "35-44", label: "35–44" },
