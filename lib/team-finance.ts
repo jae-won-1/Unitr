@@ -78,6 +78,13 @@ export type FinanceDashboard = {
   entries: FinanceEntry[];
   /** Leaders only — who a new request can be sent to. */
   squad: SquadMember[];
+  /**
+   * Leaders only: what the team paid by card to enter each event, fee
+   * included and net of refunds, keyed by open_match_id. Settle match fees
+   * shares this figure rather than the listing's price, which knows nothing
+   * of an invitation discount or the fee.
+   */
+  entrySpend?: Record<string, number>;
 };
 
 export type Owed = {

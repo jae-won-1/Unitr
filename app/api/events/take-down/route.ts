@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { refundEventEntryToCard } from "@/lib/event-entry-server";
+
+// Where a returned buy-in lands: team credit, or — on linked finance, where
+// there is no credit — the card that paid (lib/event-entry-server.ts).
+const BACK_TO = LINKED_FINANCE ? "has been refunded to the card that paid" : "is back in your team credit";
 
 // Take one of Uniter's own hosted events off the feed.
 //
@@ -93,6 +99,19 @@ export async function POST(req: NextRequest) {
     const refundByTeam = new Map<string, number>();
 
     for (const entry of entered ?? []) {
+      // Linked finance: each entry was a card payment and goes back to that
+      // card. Idempotent on the payment, so a repeated take-down pays nobody twice.
+      if (LINKED_FINANCE) {
+        try {
+          const pence = await refundEventEntryToCard(entry.team_id as string, openMatchId, callerId);
+          refundByTeam.set(entry.team_id as string, pence);
+          if (pence > 0) { refundedPence += pence; refundedTeams += 1; }
+        } catch (err) {
+          refundError = "Event taken down, but at least one entry couldn't be refunded to its card — check Stripe.";
+          console.error("take-down card refund failed:", (err as Error).message);
+        }
+        continue;
+      }
       const { data: amount, error: refErr } = await adminSupabase.rpc("refund_event_buyin", {
         p_team_id: entry.team_id,
         p_open_match_id: openMatchId,
@@ -138,7 +157,7 @@ export async function POST(req: NextRequest) {
             title: `${event.title ?? "An event"} was cancelled`,
             body: `Uniter cancelled the ${label} on ${event.match_date}`
               + `${event.start_time ? ` at ${event.start_time}` : ""}. Reason: ${note}`
-              + `${back > 0 ? ` Your £${(back / 100).toFixed(2)} buy-in is back in your team credit.` : ""}`,
+              + `${back > 0 ? ` Your £${(back / 100).toFixed(2)} buy-in ${BACK_TO}.` : ""}`,
             link: "/calendar",
           };
         });

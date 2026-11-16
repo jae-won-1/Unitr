@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import TournamentInvitePanel from "@/components/TournamentInvitePanel";
 import EnterTournamentPanel from "@/components/EnterTournamentPanel";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
 import { isKickoffPast } from "@/lib/match-dates";
 import { computeStandings } from "@/lib/standings";
 import { loadEventRevenue, fmtPence, type EventRevenue } from "@/lib/event-revenue";
@@ -478,7 +479,7 @@ export default function TournamentDetailPage() {
     const { teamName, refundedPence } = res.result;
     setKickNote(
       refundedPence > 0
-        ? `${teamName} removed. £${(refundedPence / 100).toFixed(2)} went back to their team credit.`
+        ? `${teamName} removed. £${(refundedPence / 100).toFixed(2)} went back to ${LINKED_FINANCE ? "the card that paid" : "their team credit"}.`
         : `${teamName} removed. They had paid no buy-in, so nothing was refunded.`,
     );
     setKicking(null);
@@ -559,7 +560,7 @@ export default function TournamentDetailPage() {
                       <div className="mt-2 space-y-2 border-t border-border pt-2">
                         <p className="text-[11px] text-text-secondary">
                           {tm.team_name} leaves this {noun.toLowerCase()}, their buy-in goes straight back
-                          to their team credit, and their captain is told what you type here. The spot
+                          to {LINKED_FINANCE ? "the card that paid" : "their team credit"}, and their captain is told what you type here. The spot
                           opens up again.
                         </p>
                         <input value={kickReason} onChange={(e) => setKickReason(e.target.value)} autoFocus

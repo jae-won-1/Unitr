@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { getCallerId, isAdmin, forbidden, unauthorized } from "@/lib/api-auth";
 import { isKickoffPast } from "@/lib/match-dates";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { refundEventEntryToCard } from "@/lib/event-entry-server";
+
+// Where a returned buy-in lands: team credit, or — on linked finance, where
+// there is no credit — the card that paid (lib/event-entry-server.ts).
+const BACK_TO = LINKED_FINANCE ? "has been refunded to the card that paid" : "is back in your team credit";
 
 // Remove ONE team from one of Uniter's own hosted events, and give it its
 // buy-in back.
@@ -81,11 +87,28 @@ export async function POST(req: NextRequest) {
     // Before the entry row goes, so a failure here leaves the team still
     // entered and the kick retryable, rather than out of the event and out of
     // pocket.
-    const { data: amount, error: refErr } = await adminSupabase.rpc("refund_event_buyin", {
-      p_team_id: teamId,
-      p_open_match_id: openMatchId,
-      p_actor_id: callerId,
-    });
+    // Linked finance: the buy-in was a card payment, so it goes back to that
+    // card. Same order and same promise — refund first, idempotent, and a
+    // failure leaves the team entered.
+    let cardRefundPence = 0;
+    if (LINKED_FINANCE) {
+      try {
+        cardRefundPence = await refundEventEntryToCard(teamId, openMatchId, callerId);
+      } catch (err) {
+        console.error("kick-team card refund failed:", (err as Error).message);
+        return NextResponse.json(
+          { error: "Couldn't refund that team's entry to their card, so they haven't been removed — check Stripe." },
+          { status: 500 },
+        );
+      }
+    }
+    const { data: amount, error: refErr } = LINKED_FINANCE
+      ? { data: cardRefundPence, error: null }
+      : await adminSupabase.rpc("refund_event_buyin", {
+          p_team_id: teamId,
+          p_open_match_id: openMatchId,
+          p_actor_id: callerId,
+        });
     if (refErr) {
       // 42883: the function isn't there (migration not run). Nothing has moved
       // yet, so refuse outright rather than removing a team whose money we
@@ -201,7 +224,7 @@ export async function POST(req: NextRequest) {
         title: `Your team was removed from ${event.title ?? "an event"}`,
         body: `Uniter removed ${entry.team_name || teamRow.name || "your team"} from the ${label} on ${event.match_date}`
           + `${event.start_time ? ` at ${event.start_time}` : ""}. Reason: ${note}`
-          + `${refundedPence > 0 ? ` Your £${(refundedPence / 100).toFixed(2)} buy-in is back in your team credit.` : ""}`,
+          + `${refundedPence > 0 ? ` Your £${(refundedPence / 100).toFixed(2)} buy-in ${BACK_TO}.` : ""}`,
         link: "/calendar",
       });
       if (notifErr) console.error("kick-team notification failed:", notifErr.message);

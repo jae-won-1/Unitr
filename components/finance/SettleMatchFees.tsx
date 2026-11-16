@@ -140,8 +140,10 @@ function FixtureCard({ fixture, teamId, userId, onIssued }: {
   );
 }
 
-export default function SettleMatchFees({ teamId, captainId, userId, requests, onIssued }: {
+export default function SettleMatchFees({ teamId, captainId, userId, requests, entrySpend, onIssued }: {
   teamId: string;
+  /** What the team paid by card to enter each event (dashboard.entrySpend). */
+  entrySpend?: Record<string, number>;
   /** The team's real captain — fixtures are filed under their id. */
   captainId: string;
   userId: string;
@@ -169,7 +171,13 @@ export default function SettleMatchFees({ teamId, captainId, userId, requests, o
 
   const requestedMatches = new Set(requests.map((r) => r.matchId).filter(Boolean));
   const requestedEvents = new Set(requests.map((r) => r.openMatchId).filter(Boolean));
-  const unsettled = fixtures.filter((f) =>
+  // An entry paid by card is shared at what the card was charged; the loader
+  // only knows the listing's price (and the credit ledger, which is empty here).
+  const priced = fixtures.map((f) => {
+    const paid = f.kind === "tournament" && f.openMatchId ? entrySpend?.[f.openMatchId] : undefined;
+    return paid && paid > 0 ? { ...f, teamPoolPence: paid } : f;
+  });
+  const unsettled = priced.filter((f) =>
     f.teamPoolPence > 0
     && (f.kind === "match"
       ? Boolean(f.matchRowId) && !requestedMatches.has(f.matchRowId)

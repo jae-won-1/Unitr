@@ -386,6 +386,7 @@ export default function TeamFinancePage() {
         <SettleMatchFees
           teamId={teamId} captainId={captainId} userId={userId}
           requests={dashboard.requests}
+          entrySpend={dashboard.entrySpend}
           onIssued={async () => { await reload(); setTab("dashboard"); }}
         />
       ) : (

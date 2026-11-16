@@ -1,10 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminSupabase } from "@/lib/supabase-admin";
-import { seedAvailabilityFromPoll, squadPlayerIds } from "@/lib/event-availability";
 import { getCallerId, isTeamLeader, forbidden, unauthorized } from "@/lib/api-auth";
 import { payVenue } from "@/lib/venue-payout";
 import { feeOn } from "@/lib/uniter-fee";
 import { teamCategoryRefusal } from "@/lib/gender-entry";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { stripe } from "@/lib/stripe";
+import { paymentRateLimit } from "@/lib/rate-limit";
+import { ensureStripeCustomer } from "@/lib/stripe-customer";
+import { afterEventEntry, finalizeEventEntry, isRefusal, priceEventEntry } from "@/lib/event-entry-server";
+
+// ── Linked finance: the buy-in is paid by card ──────────────────────────
+// docs/PAYMENT_PIVOT.md step 2. There is no team credit to debit, so entering
+// is a purchase made on the spot by the leader entering the team, in two calls
+// to this route (the shape /api/book/pitch uses):
+//
+//   1. no paymentIntentId — check the entry and open a PaymentIntent for the
+//      buy-in plus the fee. A venue's or a team's event names that host's
+//      Stripe account as the charge's destination; Uniter's own event is an
+//      ordinary sale. A free entry is simply recorded.
+//   2. paymentIntentId — the payer's app confirmed the card. Verify the intent
+//      with Stripe and record the entry (lib/event-entry-server.ts), which
+//      refunds the card if the event filled or was cancelled meanwhile. The
+//      webhook runs the same function, so an app that dies after paying still
+//      ends up entered.
+async function enterByCard(
+  req: NextRequest, userId: string,
+  body: { openMatchId: string; teamId: string; teamName?: string; paymentIntentId?: string },
+) {
+  const { openMatchId, teamId, teamName, paymentIntentId } = body;
+
+  if (paymentIntentId) {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (pi.metadata?.type !== "event_entry" || pi.metadata.openMatchId !== openMatchId
+        || pi.metadata.teamId !== teamId || pi.metadata.userId !== userId) {
+      return forbidden("That payment isn't for this entry.");
+    }
+    if (pi.status !== "succeeded") {
+      return NextResponse.json({ error: "That payment hasn't gone through yet." }, { status: 409 });
+    }
+    const outcome = await finalizeEventEntry(pi);
+    if (outcome.status === "refunded") {
+      return NextResponse.json({ error: outcome.reason, refunded: true }, { status: 409 });
+    }
+    if (outcome.status === "not_an_entry") {
+      return NextResponse.json({ error: "That payment isn't for an entry." }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true, buyInPence: outcome.buyInPence, totalPence: outcome.totalPence, paidBy: "card" });
+  }
+
+  const price = await priceEventEntry(openMatchId, teamId);
+  if (isRefusal(price)) return NextResponse.json({ error: price.refusal }, { status: price.status });
+
+  // Nothing to pay (a full-discount invitation, a free event): just enter.
+  if (price.totalPence <= 0) {
+    const { error: joinErr } = await adminSupabase.from("open_match_teams").insert({
+      open_match_id: openMatchId, team_id: teamId, team_name: teamName ?? "",
+      joined_by: userId, payment_status: "paid",
+    });
+    if (joinErr) {
+      return NextResponse.json({ error: `Couldn't enter the tournament: ${joinErr.message}` }, { status: 500 });
+    }
+    await afterEventEntry({
+      event: price.event, teamId, userId, joinedBefore: price.joinedCount, invite: price.invite,
+    });
+    return NextResponse.json({ ok: true, buyInPence: 0, totalPence: 0, paidBy: "card" });
+  }
+
+  const limited = await paymentRateLimit(userId);
+  if (limited) return limited;
+
+  const { data: authUser } = await adminSupabase.auth.admin.getUserById(userId);
+  const customer = await ensureStripeCustomer(userId, authUser?.user?.email ?? null);
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: price.totalPence,
+    currency: "gbp",
+    customer,
+    // Lets the payer tick "save this card"; it stays on their own customer.
+    setup_future_usage: "off_session",
+    // Cards and wallets only — see the convention in CLAUDE.md.
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    ...(price.destination
+      ? {
+          transfer_data: { destination: price.destination },
+          ...(price.feePence > 0 ? { application_fee_amount: price.feePence } : {}),
+        }
+      : {}),
+    // finalizeEventEntry records the entry off this metadata — the only link
+    // between the charge and what it bought.
+    metadata: {
+      type: "event_entry",
+      openMatchId,
+      teamId,
+      userId,
+      teamName: (teamName ?? "").slice(0, 120),
+      buyInPence: String(price.buyInPence),
+      feePence: String(price.feePence),
+      host: price.host,
+      ...(price.invite && price.invite.status === "pending" ? { inviteId: price.invite.id } : {}),
+    },
+    description: `Uniter — entry to ${price.event.title || "a tournament"}`,
+  });
+
+  return NextResponse.json({
+    needsPayment: true,
+    clientSecret: paymentIntent.client_secret,
+    buyInPence: price.buyInPence,
+    feePence: price.feePence,
+    totalPence: price.totalPence,
+  });
+}
 
 // A team buys into a tournament (open_matches, match_type='tournament').
 // The full per-team buy-in is debited from the joining team's credit here. Where the
@@ -32,13 +138,17 @@ export async function POST(req: NextRequest) {
     const userId = await getCallerId(req);
     if (!userId) return unauthorized();
 
-    const { openMatchId, teamId, teamName } = await req.json();
+    const body = await req.json();
+    const { openMatchId, teamId, teamName } = body;
     if (!openMatchId || !teamId) {
       return NextResponse.json({ error: "Missing openMatchId or teamId" }, { status: 400 });
     }
     if (!(await isTeamLeader(userId, teamId))) {
       return forbidden("Only the captain or a co-captain can enter the team into a tournament.");
     }
+
+    // Linked finance: no credit to debit — the buy-in is paid by card.
+    if (LINKED_FINANCE) return await enterByCard(req, userId, body);
 
     // 1) Load the tournament listing.
     const { data: om } = await adminSupabase
@@ -184,53 +294,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6) Mark the tournament full if this was the last spot.
-    if (joinedTeams.length + 1 >= om.max_teams) {
-      await adminSupabase.from("open_matches").update({ status: "full" }).eq("id", openMatchId);
-    }
-
-    // Mark a pending invitation accepted so its discount can't be reused.
-    if (invite && invite.status === "pending") {
-      await adminSupabase.from("tournament_invitations").update({ status: "accepted" }).eq("id", invite.id);
-    }
-
-    // 7) Ask the squad whether they can play it.
-    //    A tournament entry commits the team the same way an accepted challenge
-    //    does, and captains often enter one without running a poll first — so
-    //    the entry raises the same availability question on Home and the
-    //    Calendar, keyed off open_match_id since there is no matches row
-    //    (supabase_event_availability.sql). Where a poll DID propose this date,
-    //    its answers carry straight over. Best-effort throughout: the team is
-    //    already entered and paid, and a database missing the migration must not
-    //    fail the join.
-    try {
-      const squad = await squadPlayerIds(adminSupabase, teamId, userId);
-      if (squad.length > 0) {
-        // A team that left and re-entered still has its old rows, and the
-        // partial unique index would reject the whole insert over one of them.
-        const { data: already } = await adminSupabase
-          .from("match_confirmations").select("player_id")
-          .eq("open_match_id", openMatchId).in("player_id", squad);
-        const answered = new Set((already ?? []).map((r) => r.player_id as string));
-        const missing = squad.filter((pid) => !answered.has(pid));
-        if (missing.length > 0) {
-          await adminSupabase.from("match_confirmations").insert(
-            missing.map((pid) => ({
-              open_match_id: openMatchId, player_id: pid, team_id: teamId, status: "pending",
-            })),
-          );
-        }
-        await seedAvailabilityFromPoll(adminSupabase, {
-          teamId,
-          target: { openMatchId },
-          date: om.match_date,
-          time: om.start_time,
-          playerIds: squad,
-        });
-      }
-    } catch (err) {
-      console.error("tournaments/join availability seed failed:", err);
-    }
+    // 6–7) Mark the tournament full on the last spot, use up the invitation,
+    //    and ask the squad whether they can play it. A tournament entry commits
+    //    the team the same way an accepted challenge does, and captains often
+    //    enter one without running a poll first — so the entry raises the same
+    //    availability question on Home and the Calendar, keyed off
+    //    open_match_id (supabase_event_availability.sql); where a poll DID
+    //    propose this date its answers carry straight over. Shared with the
+    //    card path (lib/event-entry-server.ts); best-effort throughout.
+    await afterEventEntry({
+      event: om, teamId, userId, joinedBefore: joinedTeams.length, invite: invite ?? null,
+    });
 
     // 8) Pre-create pending replenishments for the joining squad (best-effort — the
     //    buy-in is already paid from credit; this just sets up who refills it).

@@ -1,7 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { authedPost } from "@/lib/authed-fetch";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { stripePromise, cardElementOptions } from "@/lib/stripe-client";
+import { confirmCardPayment } from "@/lib/confirm-payment";
+import { useSaveCardTickbox } from "@/components/SaveCardPrompt";
+import TestModeNote from "@/components/TestModeNote";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { fmtKickoff } from "@/lib/match-dates";
@@ -14,6 +20,74 @@ import TopUpModal from "@/components/TopUpModal";
 // The buy-in comes out of team credit server-side (/api/tournaments/join) —
 // this sheet only confirms and reports. The route re-applies any invitation
 // discount authoritatively; the discount here just keeps the UI in sync.
+//
+// On linked finance (lib/finance-mode.ts) there is no credit: the same route
+// answers with a PaymentIntent for the buy-in plus the fee, the leader pays it
+// here by card, and a second call records the entry. The server prices it and
+// the Stripe webhook backs the second call up, so a tab lost after paying
+// still ends up entered.
+
+type CardStart = { clientSecret: string; buyInPence: number; feePence: number; totalPence: number };
+const gbp = (pence: number) => `£${(pence / 100).toFixed(2)}`;
+
+function EntryCardForm({ start, title, saveCardSlot, onPaid }: {
+  start: CardStart; title: string; saveCardSlot: ReactNode;
+  onPaid: (paymentIntentId: string) => Promise<string | null>;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pay = async () => {
+    if (!stripe || !elements) return;
+    setPaying(true);
+    setError(null);
+    const { error: payError, paymentIntent } = await confirmCardPayment({
+      stripe, elements, clientSecret: start.clientSecret,
+      // "credit": finishing the payment is all a resumed tab has to do — the
+      // webhook records the entry off the intent.
+      kind: "credit", amountPence: start.totalPence, label: `Entry — ${title}`,
+    });
+    if (payError) { setError(payError.message ?? "Payment failed."); setPaying(false); return; }
+    if (paymentIntent?.status === "succeeded" || paymentIntent?.status === "processing") {
+      const refused = await onPaid(paymentIntent.id);
+      if (refused) { setError(refused); setPaying(false); }
+    } else {
+      setError("Payment did not complete. Please try again.");
+      setPaying(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-panel border border-border rounded-btn px-4 py-3 text-xs space-y-1.5">
+        <div className="flex justify-between text-text-secondary">
+          <span>Buy-in</span><span className="font-semibold text-text-primary">{gbp(start.buyInPence)}</span>
+        </div>
+        {start.feePence > 0 && (
+          <div className="flex justify-between text-text-secondary">
+            <span>Service fee</span><span className="font-semibold text-text-primary">{gbp(start.feePence)}</span>
+          </div>
+        )}
+        <div className="flex justify-between pt-1.5 border-t border-border">
+          <span className="font-bold text-text-primary">Total</span>
+          <span className="font-bold text-text-primary">{gbp(start.totalPence)}</span>
+        </div>
+      </div>
+      <div className="bg-surface border border-border rounded-btn p-4">
+        <PaymentElement options={cardElementOptions} />
+      </div>
+      {saveCardSlot}
+      <TestModeNote />
+      {error && <p className="text-xs text-red-600 text-center">{error}</p>}
+      <button onClick={pay} disabled={!stripe || paying}
+        className="w-full py-3.5 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
+        {paying ? "Processing…" : `Pay ${gbp(start.totalPence)} & Enter`}
+      </button>
+    </div>
+  );
+}
 
 export type EnterTournamentTarget = {
   id: string;
@@ -52,6 +126,10 @@ export default function EnterTournamentPanel({
   // topped up right here rather than sending the captain off to My Team and back.
   const [shortfall, setShortfall] = useState<{ shortfallPence: number; balancePence: number } | null>(null);
   const [topUpOpen, setTopUpOpen] = useState(false);
+  // Linked finance: the card form for this entry, and what the card was charged.
+  const [cardStart, setCardStart] = useState<CardStart | null>(null);
+  const [paidPence, setPaidPence] = useState<number | null>(null);
+  const saveCard = useSaveCardTickbox(user?.id);
 
   const buyIn = Math.max(0, t.pricePerTeamPence - t.inviteDiscountPence);
 
@@ -65,6 +143,15 @@ export default function EnterTournamentPanel({
       openMatchId: t.id, teamId: myTeamId, teamName: myTeamName,
     });
     const data = await res.json().catch(() => ({}));
+    // Linked finance: the route has priced the entry and opened a payment.
+    if (res.ok && data.needsPayment && data.clientSecret) {
+      setSaving(false);
+      setCardStart({
+        clientSecret: data.clientSecret, buyInPence: data.buyInPence ?? buyIn,
+        feePence: data.feePence ?? 0, totalPence: data.totalPence ?? buyIn,
+      });
+      return;
+    }
     if (!res.ok) {
       setSaving(false);
       if (data.error === "INSUFFICIENT_CREDIT") {
@@ -90,6 +177,25 @@ export default function EnterTournamentPanel({
     setConfirmed(true);
   };
 
+  // The card went through: record the entry. Returns a sentence when the entry
+  // couldn't stand (the route has then refunded the card), otherwise null.
+  const finishCardEntry = async (paymentIntentId: string): Promise<string | null> => {
+    if (!myTeamId) return "You need to be a captain or co-captain to enter a tournament.";
+    const res = await authedPost("/api/tournaments/join", {
+      openMatchId: t.id, teamId: myTeamId, teamName: myTeamName, paymentIntentId,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return data.error
+        ?? "Your payment went through but we couldn't confirm the entry. It will appear shortly — don't pay again.";
+    }
+    await saveCard.commit(paymentIntentId);
+    setPaidPence(typeof data.totalPence === "number" ? data.totalPence : cardStart?.totalPence ?? buyIn);
+    setCardStart(null);
+    setConfirmed(true);
+    return null;
+  };
+
   if (confirmed) {
     return (
       <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-scrim" onClick={onJoined}>
@@ -99,7 +205,12 @@ export default function EnterTournamentPanel({
           </div>
           <p className="text-lg font-bold mb-1">You&apos;re in!</p>
           <p className="text-sm text-text-secondary mb-5">
-            {myTeamName} has entered <span className="font-semibold text-text-primary">{t.title}</span>. £{(buyIn / 100).toFixed(2)} was taken from your team credit and paid to {t.organiserName}. Your squad can settle their share afterwards from Team Credits.
+            {myTeamName} has entered <span className="font-semibold text-text-primary">{t.title}</span>.{" "}
+            {LINKED_FINANCE
+              ? (paidPence && paidPence > 0
+                  ? <>{gbp(paidPence)} was paid by card. Ask your squad for their shares in Team finance → Settle match fees.</>
+                  : <>There was nothing to pay.</>)
+              : <>£{(buyIn / 100).toFixed(2)} was taken from your team credit and paid to {t.organiserName}. Your squad can settle their share afterwards from Team Credits.</>}
           </p>
           {transferFailed && (
             <p className="text-xs text-yellow-600 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2 mb-5 text-left">
@@ -147,9 +258,18 @@ export default function EnterTournamentPanel({
           </div>
         </div>
 
+        {cardStart ? (
+          <Elements stripe={stripePromise} options={{ clientSecret: cardStart.clientSecret, appearance: { theme: "stripe", variables: { colorPrimary: "#008000", borderRadius: "12px" } } }}>
+            <EntryCardForm start={cardStart} title={t.title} saveCardSlot={saveCard.checkbox} onPaid={finishCardEntry} />
+          </Elements>
+        ) : (
+        <>
         <p className="text-xs text-text-secondary mb-4">
-          The buy-in comes out of your team credit now and is paid to {t.organiserName}. Your players
-          each refill their share from the tournament page afterwards.
+          {LINKED_FINANCE
+            ? <>You pay the buy-in by card now, to {t.organiserName} — the next step shows the total with the service fee.
+                Afterwards, ask your squad for their shares in Team finance → Settle match fees.</>
+            : <>The buy-in comes out of your team credit now and is paid to {t.organiserName}. Your players
+                each refill their share from the tournament page afterwards.</>}
         </p>
 
         {error && (shortfall ? (
@@ -164,9 +284,11 @@ export default function EnterTournamentPanel({
 
         <button onClick={handleJoin} disabled={saving || !myTeamId}
           className="w-full py-3 rounded-btn bg-accent text-white font-bold text-sm disabled:opacity-50">
-          {saving ? "Entering…" : `Pay £${(buyIn / 100).toFixed(2)} & Enter`}
+          {saving ? "Entering…" : LINKED_FINANCE ? (buyIn > 0 ? "Continue to payment" : "Enter") : `Pay £${(buyIn / 100).toFixed(2)} & Enter`}
         </button>
         {!myTeamId && <p className="text-[11px] text-text-secondary text-center mt-2">Only a team’s captain or co-captain can enter a tournament.</p>}
+        </>
+        )}
       </div>
 
       {/* Top up mid-entry — this sheet stays mounted behind it so the captain

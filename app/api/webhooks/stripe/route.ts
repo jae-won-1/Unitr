@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
 import { applyRequestPayment } from "@/lib/team-finance-server";
+import { finalizeEventEntry } from "@/lib/event-entry-server";
 
 // Stripe webhook — the ONLY place a card payment turns into team credit.
 //
@@ -77,6 +78,22 @@ export async function POST(req: NextRequest) {
             // The payer HAS been charged — 5xx so Stripe redelivers.
             console.error("stripe-webhook:", (err as Error).message);
             return NextResponse.json({ error: "Could not record payment" }, { status: 500 });
+          }
+          break;
+        }
+
+        // An event entry paid by card (linked finance). /api/tournaments/join
+        // records it when the payer's app comes back; this is for the app that
+        // never does. Same function, idempotent, and it refunds the card if
+        // the entry can no longer stand.
+        if (pi.metadata?.type === "event_entry") {
+          try {
+            const outcome = await finalizeEventEntry(pi);
+            console.log(`stripe-webhook: event entry ${pi.id}: ${outcome.status}`);
+          } catch (err) {
+            // The payer HAS been charged — 5xx so Stripe redelivers.
+            console.error("stripe-webhook:", (err as Error).message);
+            return NextResponse.json({ error: "Could not record entry" }, { status: 500 });
           }
           break;
         }

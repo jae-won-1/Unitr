@@ -131,7 +131,15 @@ export async function GET(req: NextRequest) {
   let balancePence: number | null = null;
   let entries: FinanceDashboard["entries"] = [];
   let squad: FinanceDashboard["squad"] = [];
+  const entrySpend: Record<string, number> = {};
   if (isLeader) {
+    const { data: spendRows } = await adminSupabase.from("team_finance_entries")
+      .select("open_match_id, amount_pence")
+      .eq("team_id", teamId).eq("kind", "spend").not("open_match_id", "is", null);
+    for (const s of spendRows ?? []) {
+      const id = s.open_match_id as string;
+      entrySpend[id] = (entrySpend[id] ?? 0) - (s.amount_pence as number);
+    }
     const [balance, { data: entryRows }, squadRows] = await Promise.all([
       trackedBalancePence(teamId),
       adminSupabase.from("team_finance_entries")
@@ -162,6 +170,7 @@ export async function GET(req: NextRequest) {
     requests,
     entries,
     squad,
+    ...(isLeader ? { entrySpend } : {}),
   };
   return NextResponse.json(body);
 }
