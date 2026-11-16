@@ -92,13 +92,15 @@ the app is exactly as it was and every `/api/finance/*` route answers 503.
 
 1. **Team Finance: requests, joining fee, match fees — built 10 Nov, web
    only, not run against a database.** See "What is built".
-2. **Pitch, match and event payments on the team card** — save a team card;
-   `/api/book/pitch`, `/api/challenges/accept`, `/api/tournaments/join`, the
-   take-down and kick-team refunds, venue payment as the charge's destination;
-   each writes a `spend` row to `team_finance_entries`. **Not started. Do not
-   turn the switch on in production before this** — until then entering an
-   event still spends team credit, and the switch removes the Top Up button.
-3. **Port to the phone** (`mobile` branch).
+2. **Pitch, match and event payments by card** — `/api/book/pitch`,
+   `/api/challenges/accept`, `/api/tournaments/join`, the take-down and
+   kick-team refunds, venue payment as the charge's destination; each writes a
+   `spend` row to `team_finance_entries`. **Event entry and its refunds built
+   16 Nov** (see "What is built (step 2, events)"). **Pitch booking and
+   friendlies not started** — they still spend credit, so the switch can only
+   go on where they are off (the phone's v1 scope) or once they are rebuilt.
+3. **Port to the phone** (`mobile` branch) — **done 16 Nov** for everything
+   built so far: Team Finance and event entry by card (`mobile/PORTED.md`).
 4. **Change over, then remove credit** — top-ups, the ledger functions, the
    cap, the staff cash-out, credit reversal on disputes, the credit terms;
    rebuild `/admin/finance`. The ledger is referenced in 25 TypeScript files;
@@ -147,6 +149,36 @@ the app is exactly as it was and every `/api/finance/*` route answers 503.
 - **Balance:** paid requests plus `team_finance_entries`. A leader can **Set
   balance** to what the bank shows; the difference is stored as an adjustment.
 
+## What is built (step 2, events) — 16 Nov, untested
+
+- **Entering an event** on linked finance: `/api/tournaments/join` prices the
+  entry and opens a card payment (buy-in + fee), then records the entry once
+  it has paid. `lib/event-entry-server.ts`. Uniter's own event is an ordinary
+  sale; a venue's event pays the venue's Stripe account and a team's event the
+  host team's linked account, as the charge's destination. The webhook
+  finishes an entry whose app never came back, and the card is refunded if the
+  event filled or was cancelled while the leader was paying.
+- **No stored team card.** The leader entering pays on the spot, with their
+  own saved card if they have one. This differs from "a leader saves a card
+  for the team" above — it needs no new table or card-management screen, and
+  works with 3D Secure. **User to confirm**, or ask for a saved team card.
+- **Refunds:** taking an event down, or removing a team, refunds the entry to
+  the card that paid (Uniter's own events, the only ones those routes act on).
+- **Settle match fees** shares what the card was charged for an entry.
+- **On both apps.** No new SQL.
+
+### Switching on
+
+1. Publish the phone update (OTA) with `EXPO_PUBLIC_FINANCE_MODE` **unset** —
+   it carries the new entry sheet but stays on credit.
+2. Set `NEXT_PUBLIC_FINANCE_MODE=linked` in Vercel and
+   `EXPO_PUBLIC_FINANCE_MODE=linked` in `mobile/eas.json`; redeploy and
+   publish a second OTA.
+
+The order matters: an older phone build reads the join route's "now pay"
+answer as "entered". On the web, pitch booking and friendlies must be hidden
+or rebuilt first — they still spend credit.
+
 ### To try it
 
 0. **Sign Uniter's Stripe account up for Connect**
@@ -179,6 +211,12 @@ the app is exactly as it was and every `/api/finance/*` route answers 503.
 - A refund made in the Stripe dashboard takes the money from Uniter unless
   "reverse transfer" is ticked; the member's row is unticked either way.
 - No expense logging yet (`expense` entries have no screen).
+- `/admin/finance` and `lib/event-revenue.ts` read the credit ledger, so an
+  entry paid by card shows no revenue there (rebuilt in step 4).
+- A request's screenshot can't be attached from the phone (needs an
+  image-picker module, so a new build rather than an OTA).
+- The phone links the bank account on Stripe's hosted page; the embedded form
+  is web only.
 
 ## Credit to wind down
 

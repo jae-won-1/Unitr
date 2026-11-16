@@ -16,9 +16,10 @@ touches money or the store build.
 
 **Team credit is being replaced** (user, 10 Nov 2026) by linked team accounts,
 a team card and payment requests, so that Uniter holds no money; the store
-release waits for it. `docs/PAYMENT_PIVOT.md` is that plan. Its first step is
-built behind a switch that is off (see Linked finance below) — the payment
-sections of this file describe the code as it runs today, on credit.
+release waits for it. `docs/PAYMENT_PIVOT.md` is that plan. Team Finance and
+event entry by card are built on both apps behind a switch that is off (see
+Linked finance below) — the payment sections of this file describe the code
+as it runs today, on credit.
 
 A football platform providing: player-team matching, matchmaking, pitch booking, and a
 stats/video social space.
@@ -821,9 +822,36 @@ The replacement for team credit, built complete behind `lib/finance-mode.ts`
 (`NEXT_PUBLIC_FINANCE_MODE=linked`) so the app changes over once instead of
 running two pots for live teams. **Off, nothing below is reachable**: the
 screens fall back to the credit ones and every `/api/finance/*` route answers
-503. `docs/PAYMENT_PIVOT.md` has the plan, what is built and what is left —
-do not switch it on in production until pitches and event entries are paid by
-team card, because until then they still spend credit.
+503. `docs/PAYMENT_PIVOT.md` has the plan, what is built and what is left.
+**Two switches, changed together:** `NEXT_PUBLIC_FINANCE_MODE` on the server
+and web, `EXPO_PUBLIC_FINANCE_MODE` on the phone (`lib/finance-mode.native.ts`).
+The phone's update must be out **before** the server's switch goes on: an older
+phone build reads the join route's "now pay" answer as "entered". Booking a
+pitch and friendlies still spend credit, so the switch can only go on while
+those are off (the phone's v1 scope) or once they are rebuilt.
+
+**Entering an event is paid by card** (`lib/event-entry-server.ts`). With no
+credit to debit, `/api/tournaments/join` is called twice, the shape
+`/api/book/pitch` uses: first it prices the entry — invitation discount
+applied, the fee added on top — and opens a PaymentIntent; then, once the
+leader's card has paid, it records the entry. Where the money goes is part of
+the charge: Uniter's own event is an ordinary sale, a venue's event names the
+venue's Stripe account as the destination, a team's event the host team's
+linked account. `finalizeEventEntry` is idempotent and is also run by the
+Stripe webhook, so an app that dies after paying still ends up entered; it
+refunds the card if the event filled or was cancelled meanwhile. There is no
+stored "team card" yet — the leader entering pays, with their own saved card
+if they have one. What the card was charged is a `spend` row in
+`team_finance_entries`, which the tracked balance, Settle match fees
+(`dashboard.entrySpend`) and refunds read. **Take-down and kick-team refund
+that payment to the card** (`refundEventEntryToCard`) instead of returning
+credit.
+
+**On the phone** the same screens exist behind its switch: `finance.tsx` and
+`finance-sheets.tsx` (paying through Stripe's PaymentSheet; the bank account
+linked on Stripe's hosted page in the in-app browser, returning through
+`/api/finance/app-return`, which only hands back to the app's own link).
+A request's screenshot can't be attached from the phone yet.
 
 **Uniter holds no money.** A leader links the team's bank account through
 Stripe (an Express Connect account, `team_finance_accounts`, one row per

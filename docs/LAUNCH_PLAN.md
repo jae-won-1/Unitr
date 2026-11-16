@@ -83,8 +83,15 @@ show unfinished or "coming soon" features, so v1 shows only what works.
 Work items, roughly in order. None are done unless marked.
 
 0. **The payment pivot** — steps 1–4 of `docs/PAYMENT_PIVOT.md`, on both apps.
-   Step 1 (Team Finance) built on the web 10 Nov, behind a switch that is off;
-   the rest not started. Everything below that mentions money depends on it.
+   **Built on both apps 16 Nov, behind switches that are off:** Team Finance
+   (requests, joining fee, match fees, linked bank account) and entering an
+   event by card with refunds to the card — everything v1's scope pays for.
+   **Left before the switch goes on:** try each flow in Stripe test mode
+   (nothing has been run signed in); confirm the two decisions in the handoff
+   (no stored team card; the fee on event entries); rewrite the terms and
+   privacy policy (item 3); then follow "Switching on" in the pivot doc.
+   Removing credit (step 4) and rebuilding pitch booking and friendlies on
+   cards can follow the release — the phone's v1 scope has neither.
 1. **Scope switch** — **Done 26 Oct, phone only.** `lib/launch-scope.ts` +
    `lib/app-scope(.native).ts`. The phone hides Post a Match, Book a Pitch,
    Matches and Fill In in the feed, non-Uniter events, the Calendar chips for

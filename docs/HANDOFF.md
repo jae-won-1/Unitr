@@ -15,21 +15,46 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
   phone fails until it does. `/api/payment-intent-method` is now POST.
 
-## Web changes awaiting a phone port — linked finance (10 Nov)
+- **Web's Members sub-tabs (16 Nov)** — Squad · Requests · Scout · Watchlist.
+  The phone keeps one Members list with join requests on top; Scout and
+  Watchlist have no phone screen (the Transfer Market is its own screen).
 
-- New web screen `/my-team/finance` and `components/finance/*`; Home's money
-  row and the player's Top Up tile change when the switch is on.
-- `lib/authed-fetch.ts` gained **`authedPostForm`** (multipart). The shared
-  `lib/team-finance.ts` imports it, and `lib/joining-fee.ts` /
-  `lib/availability-gate.ts` now import `lib/team-finance.ts` — so
-  **`authed-fetch.native.ts` needs an `authedPostForm` export or the phone
-  won't type-check after the merge.**
-- `lib/finance-mode.ts` reads `NEXT_PUBLIC_FINANCE_MODE`, which Expo doesn't
-  inline: the phone stays on credit until it gets a `.native` copy.
-- `loadSettleRoster` moved out of `SettlePaymentsModal` into
-  `lib/settle-payments.ts` (web behaviour unchanged).
+## Latest — 2026-11-16 (later), Claude Code: phone port, event entry by card
 
-## Latest — 2026-11-16, Claude Code: four fixes, pivot step 1 committed
+`main` and `mobile`, committed. Everything below is behind the finance switch,
+which is still **off** everywhere.
+
+- **Phone port done** (`mobile`): the four fixes (dial Done, join requests on
+  Notifications + Members badge, team name, notification links) and Team
+  Finance (`finance.tsx`, `finance-sheets.tsx`) — see `mobile/PORTED.md`.
+  Shared additions: `lib/finance-mode.native.ts` (`EXPO_PUBLIC_FINANCE_MODE`),
+  `authedPostForm` in `authed-fetch.native.ts`, `/api/finance/app-return`.
+- **Pivot step 2, event entry** (`main` → `mobile`): entering an event is paid
+  by card on linked finance, and take-down / kick-team refund to that card.
+  `lib/event-entry-server.ts`; CLAUDE.md → Linked finance. No new SQL.
+- **Decisions taken without the user — confirm or change:**
+  1. No stored team card. The leader entering pays on the spot (their own
+     saved card if they have one). A saved team card can be added later.
+  2. The fee (1.5% + 20p, `lib/payment-fee.ts`) is added to an event entry
+     too, Uniter's own events included, as the launch plan says.
+- **Switch-on order** (nothing done yet): OTA the phone update with
+  `EXPO_PUBLIC_FINANCE_MODE` still unset → set `NEXT_PUBLIC_FINANCE_MODE=linked`
+  in Vercel and `EXPO_PUBLIC_FINANCE_MODE=linked` in `mobile/eas.json`, then a
+  second OTA. An older phone build treats the join route's "now pay" answer as
+  "entered", so the first OTA must be out before the server switch.
+- **Before the switch can go on at all:** pitch booking and friendlies still
+  spend credit (web only — the phone's v1 scope hides them); the terms and
+  privacy policy still describe credit; `/admin/finance` and
+  `lib/event-revenue.ts` read the credit ledger, so card entries don't show
+  there; the Stripe webhook needs nothing new.
+- Checked: web `tsc`, lint (four pre-existing warnings), touched pages
+  compile on the dev server, `/api/finance/app-return` refuses a non-app link;
+  phone `tsc`, `expo lint`, an iOS `expo export` with the switch on.
+  **Not run: `npm run build`; any signed-in flow; any payment, entry or
+  refund; nothing on a device.** The entry and refund paths are reasoned,
+  not observed — try one of each in test mode before trusting them.
+
+## Earlier — 2026-11-16, Claude Code: four fixes, pivot step 1 committed
 
 On `main`, committed and pushed together with the payment-pivot work below
 (the switch is still off in production).
