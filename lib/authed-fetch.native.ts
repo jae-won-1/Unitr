@@ -33,6 +33,14 @@ export async function authedPost(path: string, body: unknown): Promise<Response>
   return fetch(resolve(path), { method: "POST", headers: await authHeaders(), body: JSON.stringify(body) });
 }
 
+// A form with a file in it. No Content-Type: fetch writes its own, with the
+// multipart boundary in it — the same rule as the web half.
+export async function authedPostForm(path: string, form: FormData): Promise<Response> {
+  const { "Content-Type": _json, ...headers } = await authHeaders();
+  void _json;
+  return fetch(resolve(path), { method: "POST", headers, body: form });
+}
+
 export async function authedDelete(path: string, body: unknown): Promise<Response> {
   return fetch(resolve(path), { method: "DELETE", headers: await authHeaders(), body: JSON.stringify(body) });
 }

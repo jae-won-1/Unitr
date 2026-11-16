@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const caller = await getCaller(req);
     if (!caller) return unauthorized();
 
-    const { teamId, action } = await req.json().catch(() => ({}));
+    const { teamId, action, returnTo } = await req.json().catch(() => ({}));
     if (!UUID.test(teamId ?? "")) return bad("Missing teamId");
     if (!ACTIONS.includes(action)) return bad("Unknown action.");
     if (!(await isTeamLeader(caller.id, teamId))) {
@@ -120,10 +120,16 @@ export async function POST(req: NextRequest) {
 
     // The hosted page — kept as the fallback if the embedded form can't load.
     const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+    // From the phone: Stripe only returns to an https address, so it returns
+    // to /api/finance/app-return, which hands back to the app's own link.
+    // That route refuses anything but the app's scheme.
+    const appReturn = typeof returnTo === "string" && /^(uniter|exp):\/\//.test(returnTo)
+      ? `${origin}/api/finance/app-return?to=${encodeURIComponent(returnTo)}`
+      : null;
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${origin}/my-team/finance?connect=refresh`,
-      return_url: `${origin}/my-team/finance?connect=done`,
+      refresh_url: appReturn ? `${appReturn}&connect=refresh` : `${origin}/my-team/finance?connect=refresh`,
+      return_url: appReturn ? `${appReturn}&connect=done` : `${origin}/my-team/finance?connect=done`,
       type: "account_onboarding",
     });
     return NextResponse.json({ url: link.url });

@@ -223,19 +223,21 @@ export type NewRequest = {
 };
 
 export async function createRequest(r: NewRequest): Promise<{ requestId: string } | Failed> {
+  // append, not set: React Native's FormData has no set(), and on a fresh
+  // form the two do the same thing.
   const form = new FormData();
-  form.set("teamId", r.teamId);
-  form.set("kind", r.kind);
-  form.set("title", r.title);
-  if (r.description) form.set("description", r.description);
-  if (r.amountPence != null) form.set("amountPence", String(r.amountPence));
-  if (r.totalPence != null) form.set("totalPence", String(r.totalPence));
-  if (r.dueDate) form.set("dueDate", r.dueDate);
-  if (r.playerIds) form.set("playerIds", JSON.stringify(r.playerIds));
-  if (r.kind === "joining_fee") form.set("captainExempt", r.captainExempt ? "true" : "false");
-  if (r.matchId) form.set("matchId", r.matchId);
-  if (r.openMatchId) form.set("openMatchId", r.openMatchId);
-  if (r.image) form.set("image", r.image);
+  form.append("teamId", r.teamId);
+  form.append("kind", r.kind);
+  form.append("title", r.title);
+  if (r.description) form.append("description", r.description);
+  if (r.amountPence != null) form.append("amountPence", String(r.amountPence));
+  if (r.totalPence != null) form.append("totalPence", String(r.totalPence));
+  if (r.dueDate) form.append("dueDate", r.dueDate);
+  if (r.playerIds) form.append("playerIds", JSON.stringify(r.playerIds));
+  if (r.kind === "joining_fee") form.append("captainExempt", r.captainExempt ? "true" : "false");
+  if (r.matchId) form.append("matchId", r.matchId);
+  if (r.openMatchId) form.append("openMatchId", r.openMatchId);
+  if (r.image) form.append("image", r.image);
   return read<{ requestId: string }>(await authedPostForm("/api/finance/requests", form));
 }
 
@@ -260,11 +262,16 @@ export async function confirmRequestPayment(paymentIntentId: string): Promise<{ 
 
 export type AccountAction = "link" | "session" | "refresh" | "dashboard";
 
+/**
+ * `returnTo` is for the phone, with action "link": the app's own link
+ * (uniter://…) that Stripe's hosted page should hand back to when it is done.
+ * Left out, the hosted page returns to the website's Team finance.
+ */
 export async function accountAction(
-  teamId: string, action: AccountAction,
+  teamId: string, action: AccountAction, returnTo?: string,
 ): Promise<{ url?: string; clientSecret?: string; account?: FinanceAccount } | Failed> {
   return read<{ url?: string; clientSecret?: string; account?: FinanceAccount }>(
-    await authedPost("/api/finance/account", { teamId, action }));
+    await authedPost("/api/finance/account", { teamId, action, ...(returnTo ? { returnTo } : {}) }));
 }
 
 export async function setTrackedBalance(teamId: string, balancePence: number): Promise<{ balancePence: number } | Failed> {
