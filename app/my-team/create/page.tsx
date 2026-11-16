@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { TEAM_FORMATS, TEAM_LEVELS } from "@/lib/team-options";
 import { categoryForGender, type GenderCategory } from "@/lib/gender";
 import { GenderCategoryPicker } from "@/components/GenderControls";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
 
 // Shared with Team Settings (lib/team-options.ts), which edits these same
 // answers afterwards — a team that later plays 5s as well as 11s says so
@@ -180,6 +181,9 @@ export default function CreateTeamPage() {
           </div>
         </div>
 
+        {/* Linked finance sets the joining fee on the Team Finance screen once
+            the team exists, as a payment request — not here. */}
+        {!LINKED_FINANCE && (
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-text-secondary">Joining fee <span className="text-text-secondary font-normal">(optional)</span></label>
           <div className="relative">
@@ -201,6 +205,7 @@ export default function CreateTeamPage() {
             Settings, and the whole squad moves onto the new amount.
           </p>
         </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-text-secondary">Description <span className="text-text-secondary font-normal">(optional)</span></label>

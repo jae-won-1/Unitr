@@ -26,6 +26,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fmtFee, getJoiningFeeStatus } from "@/lib/joining-fee";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { loadOwed } from "@/lib/team-finance";
 
 export type AvailabilityGate = {
   feeOwedPence: number;
@@ -46,6 +48,11 @@ const CLEAR: AvailabilityGate = { feeOwedPence: 0, duesOwedPence: 0, blocked: fa
 // request for who *did* play — so there's no date filter here. Scoped to the
 // team, because a debt is owed to a squad, not to football in general.
 async function loadDuesOwed(teamId: string, playerId: string): Promise<number> {
+  // Linked finance: unpaid MATCH-FEE requests. Kit, a dinner and any other
+  // request never block a vote (user, 10 Nov 2026). Shares its round trip with
+  // the joining-fee half, which asks the same route.
+  if (LINKED_FINANCE) return (await loadOwed(teamId)).duesOwedPence;
+
   const { data, error } = await supabase
     .from("payment_collection_status")
     .select("share_pence, credited_pence")
@@ -111,6 +118,13 @@ export function useAvailabilityGate(
 
   return { ...gate, loading, reload };
 }
+
+/**
+ * Where a blocked player goes to pay, as the tail of "Pay … to vote
+ * available". Team credit paid through the Top Up button; linked finance pays
+ * each request on the Team Finance screen.
+ */
+export const PAY_WHERE = LINKED_FINANCE ? "in Team finance" : "(Top Up on Home)";
 
 /**
  * What the player owes, as a noun phrase — "your £20 joining fee and £6 for

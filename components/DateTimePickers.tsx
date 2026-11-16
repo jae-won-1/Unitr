@@ -223,6 +223,14 @@ export function TimePicker({
     emit(hour, a, m);
   };
 
+  // Done confirms what the dial is showing. With no value yet the dial opens
+  // on 9 AM, highlighted as if chosen — so Done has to choose it, or the field
+  // stays empty after the picker said otherwise. (emit refuses a past time.)
+  const done = () => {
+    if (!value) emit(hour, ampm, minute);
+    setOpen(false);
+  };
+
   const display = value
     ? (() => {
         const p = parse(value);
@@ -353,7 +361,7 @@ export function TimePicker({
 
           {/* The dial stays open after a pick so AM/PM and minutes can still
               change; centred over a scrim, it needs an obvious way out. */}
-          <button type="button" onClick={() => setOpen(false)}
+          <button type="button" onClick={done}
             className="w-full mt-3 py-2.5 rounded-xl text-sm font-bold text-accent-ink border border-border">
             Done
           </button>

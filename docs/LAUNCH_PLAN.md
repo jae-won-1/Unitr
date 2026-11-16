@@ -1,47 +1,40 @@
 # First store release — launch plan
 
-Decided by the user on 23 Oct 2026. This is the scope of the **first App Store /
-Play Store release** (v1). Later builds bring the full feature set back; this
-file says what is in, what is switched off and why, and what must be done
-before submitting. Product detail for every feature stays in `CLAUDE.md`.
+Scope decided by the user on 23 Oct 2026; **revised 10 Nov 2026: the store
+release now comes after the payment pivot** (`docs/PAYMENT_PIVOT.md`). This
+file says what is in the first App Store / Play Store release (v1), what is
+switched off and why, and what must be done before submitting. Product detail
+for every feature stays in `CLAUDE.md`.
 
 ## The one-line version
 
-**v1 is a team app for entering Uniter-hosted events.** Team credit is the way
-a team pays for them. It is a prepayment to Uniter, spent only on Uniter-hosted
-events, and it is not refundable.
+**v1 is a team app for entering Uniter-hosted events, paid for by card.**
+Uniter holds no money for teams: a team pays an entry with its team card, and
+collects from its squad into its own linked bank account.
 
-## Team credit in v1
+## What changed on 10 Nov
 
-Team credit is essential to every current and future feature, so it stays. In
-v1 it is **only a tool to make paying easy**:
+The 23 Oct plan kept team credit and framed it as a non-refundable prepayment
+for Uniter's own events, to stay clear of e-money rules. That framing only
+ever described the phone app — on the web, credit still paid venues and moved
+between teams. The user has decided to remove team credit instead, so the
+store release waits until it is gone. Until then the code, and the live app,
+still run on credit as `CLAUDE.md` describes.
 
-- **What it is:** a team's prepayment to Uniter. Real money sits in Uniter's
-  account; the balance shows how much of it the team has left to spend.
-- **What it pays for:** buy-ins to **Uniter-hosted events** (`open_matches`
-  with `organiser_admin_id` set). Nothing else.
-- **How it gets in:** players pay by card for something named — their joining
-  fee, their share of an event buy-in, or the shortfall when the captain enters
-  an event — and the captain can **top up** a chosen amount, as on the web
-  (user, 10 Nov: `TOP_UP` in `mobile/src/store-review.ts` is on in store
-  builds). Tell reviewers credit only buys real-world football events, which
-  is outside both stores' in-app billing rules.
-- **Not refundable to players.** Shown before every payment
-  (`lib/team-credit-terms.ts`); `/api/credit/refund` is staff-only. Done
-  22 Oct.
-- **Exceptions handled by Uniter:** if Uniter cancels an event or removes a
-  team, the buy-in returns to the team's **credit** (`/api/events/take-down`,
-  `/api/events/kick-team`). A mistaken charge is refunded by staff from the
-  Stripe dashboard; the webhook takes the matching credit back.
-- **Never moves between teams.** With only Uniter-hosted events, no team's
-  payment can become another team's balance.
+## Paying in v1
 
-Why this shape: credit that can only be spent with one business, on that
-business's own services, is a prepayment (like a gym account balance), not
-money held for customers to spend anywhere or withdraw. That keeps v1 clear of
-e-money / payment-services questions and of the "money management" category
-in Apple's and Google's review rules. Get a payments lawyer or Stripe to
-confirm before launch.
+- **Entering a Uniter-hosted event:** the team card is charged the buy-in plus
+  the fee. It is an ordinary sale by Uniter of its own event.
+- **Collecting from the squad:** payment requests (joining fee, match and
+  event shares) paid by card, Apple Pay or Google Pay into the team's linked
+  account. The player pays the fee on top.
+- **If Uniter cancels an event or removes a team:** the buy-in is refunded to
+  the card that paid it.
+- **No balance, no top-up, nothing to withdraw.** Tell reviewers the app takes
+  payment for real-world football events and lets a team collect its own fees,
+  both outside the stores' in-app billing rules.
+
+Get a payments lawyer or Stripe to confirm the structure before launch.
 
 ## In v1
 
@@ -50,38 +43,36 @@ confirm before launch.
   leaving a squad
 - Squad tools: team chat, announcements, availability polls, tactics, the
   Transfer Market (finding players and teams — no money involved)
-- **Uniter-hosted events:** browse, enter (paid from team credit), the
-  schedule and fixtures, results entered by staff
-- Team money for those events: joining fee, Settle Payments / Payment Status
-  for event buy-ins, the non-refundable team credit balance
+- **Uniter-hosted events:** browse, enter (paid by team card), the schedule
+  and fixtures, results entered by staff
+- Team money: linked account, team card, payment requests, Settle Payments /
+  Payment Status, the team finance tab
 - Calendar and notifications for all of the above
 - Admin: create events, take one down, remove a team, finance view (web)
 
 ## Switched off in v1 (kept in the code)
 
-| Feature | Why it's off | Where it lives |
-|---|---|---|
-| Booking a pitch | Money goes to a venue, not a Uniter event | `/book`, `/api/book/pitch`, `/api/book/post` |
-| Posting matches / challenges (friendlies) | Splits a fee between two teams | `/play/create`, `/play/edit`, `/api/challenges/accept` |
-| Secured posts | Moves one team's payment into another's credit | `/api/book/post`, `reimburse_secured_pitch` |
-| Team-hosted tournaments | Entrants' buy-ins become the host team's credit | `/play/create-tournament`, `reimburse_team` |
-| Venue-hosted events and venue payouts | Credit paying a venue, not Uniter | `/api/tournaments/join` (venue branch), `lib/venue-payout.ts` |
-| Ringers / fill-in games | Belong to friendlies | `/api/ringer/*` |
-| Venue portal, pitch registration | No venue features in v1 | `/venue/*`, `/pitches/register` |
+| Feature | Where it lives |
+|---|---|
+| Booking a pitch | `/book`, `/api/book/pitch`, `/api/book/post` |
+| Posting matches / challenges (friendlies) | `/play/create`, `/play/edit`, `/api/challenges/accept` |
+| Secured posts | `/api/book/post` |
+| Team-hosted tournaments | `/play/create-tournament` |
+| Venue-hosted events and venue payouts | `/api/tournaments/join` (venue branch), `lib/venue-payout.ts` |
+| Ringers / fill-in games | `/api/ringer/*` |
+| Venue portal, pitch registration | `/venue/*`, `/pitches/register` |
 
-**Switched off in the phone app only** (user, 26 Oct — replaces the earlier
-"refused by the server" plan). The web keeps every feature, and since both
-apps call the same API routes, the server refuses nothing. `lib/launch-scope.ts`
-reads `lib/app-scope.ts` ("full") on the web and `lib/app-scope.native.ts`
-("v1") on the phone; the phone leaves the entry points out. Turning the phone
-into the full app is a one-line change to `app-scope.native.ts`.
+**These were switched off because each one moved credit to a venue or between
+teams. That reason goes with credit.** Whether the phone stays this narrow for
+its first release is the user's call once the pivot is built; until they say
+otherwise the scope above stands.
 
-**What this means for the money question above.** The prepayment framing —
-credit spent only on Uniter's own events, never moving between teams — now
-describes what the *store app* offers, not what Uniter as a platform does: on
-the web, credit still pays venues, splits pitch fees and moves between teams.
-Put that to the payments lawyer / Stripe as it is, because it is the business
-being reviewed, not just the app.
+**Switched off in the phone app only** (user, 26 Oct). The web keeps every
+feature, and since both apps call the same API routes, the server refuses
+nothing. `lib/launch-scope.ts` reads `lib/app-scope.ts` ("full") on the web
+and `lib/app-scope.native.ts` ("v1") on the phone; the phone leaves the entry
+points out. Turning the phone into the full app is a one-line change to
+`app-scope.native.ts`.
 
 **Hidden, not greyed, in the store build.** This is a deliberate exception to
 the house "greyed rather than hidden" rule: Apple and Google reject apps that
@@ -91,57 +82,48 @@ show unfinished or "coming soon" features, so v1 shows only what works.
 
 Work items, roughly in order. None are done unless marked.
 
+0. **The payment pivot** — steps 1–4 of `docs/PAYMENT_PIVOT.md`, on both apps.
+   Step 1 (Team Finance) built on the web 10 Nov, behind a switch that is off;
+   the rest not started. Everything below that mentions money depends on it.
 1. **Scope switch** — **Done 26 Oct, phone only.** `lib/launch-scope.ts` +
    `lib/app-scope(.native).ts`. The phone hides Post a Match, Book a Pitch,
    Matches and Fill In in the feed, non-Uniter events, the Calendar chips for
    off kinds, Turn into Match Post, the ringer panel, and the venue account
-   choice at sign-up. The web is unchanged. Not deployed.
-2. **Account deletion in the app** — **Done 26 Oct, both apps.** A captain is
-   refused until they hand the team to a co-captain (Team Settings → Make
-   captain); venue and admin accounts are closed by staff. Deleting
-   anonymises the profile, leaves the squad, deletes the Stripe customer and
-   soft-deletes the auth user; money records and debts stay (detail in
-   `CLAUDE.md`, Deleting an account). The web page at `/profile` doubles as
-   the deletion link Google Play asks for. Needs
-   `supabase_account_deletion.sql`. A captain alone in their team deletes the
-   team with them (closed, its credit forfeited) — user's decision, 26 Oct —
-   unless it still has an event, post or match ahead.
-3. **Privacy policy and terms**, linked in the app and the store listings.
-   **Drafted 28 Oct, details filled 10 Nov** (`/privacy`, `/terms`, linked from
-   sign-up and Profile on both apps). Operator Jaewon Choi (personal), London
-   SW17 0HF, unitrteam@gmail.com; **accounts are 18+** (user, 10 Nov) — the
-   Under 18 age group is gone from sign-up and the sign-up line asks people to
-   confirm their age. Live once `main` is pushed. The drafts still want review
-   by someone qualified.
-   The terms say: credit is a prepayment for Uniter events, not refundable,
-   what happens when Uniter cancels, and how mistaken charges are handled.
-4. **Remaining security fixes** from the 20 Oct review — **code done 26 Oct**;
-   live once `supabase_launch_security.sql` is run (after the deploy and the
-   phone OTA) and the two dispute events are enabled on the Stripe webhook:
-   - `team_members` writes limited to the real flows;
-   - ledger, balances, `team_card_contributions` and card details readable
-     only by whoever they belong to;
-   - `charge.dispute.created` / `.closed` handled in the webhook;
-   - payment routes rate limited; team credit capped at £1,000.
+   choice at sign-up. The web is unchanged.
+2. **Account deletion in the app** — **Done 26 Oct, both apps**; detail in
+   `CLAUDE.md`, Deleting an account. **Revisit after the pivot:** a lone
+   captain's deletion forfeits the team's credit today, and there will be no
+   credit — decide instead what happens to the team's linked Stripe account
+   and saved team card.
+3. **Privacy policy and terms** — **live 10 Nov** (`/privacy`, `/terms`,
+   linked from sign-up and Profile on both apps; accounts are 18+).
+   **Rewrite after the pivot:** the terms' team-credit section (prepayment,
+   not refundable) becomes how payment requests, fees and refunds work; the
+   privacy policy must add that a leader linking a bank account gives Stripe
+   their identity and bank details. Both still want review by someone
+   qualified.
+4. **Security fixes** from the 20 Oct review — **done** (`supabase_launch_security.sql`
+   run 28 Oct; dispute events confirmed on the live webhook 10 Nov).
+   The £1,000 credit cap and credit reversal on disputes go with credit; the
+   new payment routes need the same caller checks and rate limit.
 5. **Live payments** — follow `GO_LIVE.md`. A store build taking test-mode
    payments reads as a demo and is rejected.
-6. **Clean the live database** — remove `[TEST]` pitches and test fixtures.
+6. **Clean the live database** — remove `[TEST]` pitches and test fixtures,
+   and the test teams' leftover credit. No real team holds credit (user,
+   11 Nov), so there is nothing to refund (`docs/PAYMENT_PIVOT.md`).
 7. **Developer accounts as an organisation** (Apple and Google), not personal.
-   Google Play Console account created by the user (25 Oct); confirm it is an
-   organisation account. Apple still to do.
+   The Play Console account is personal: production needs a 12-tester, 14-day
+   closed test first. Apple still to do.
 8. **Store paperwork** — App Store privacy labels, Play data safety form,
-   Play financial features declaration (team credit is a prepayment for the
-   developer's own services), a demo account and review notes explaining how
-   paying works.
+   Play financial features declaration (no stored balance: card payments for
+   real-world events, and a team collecting its own fees), a demo account and
+   review notes explaining how paying works.
 9. **Fix `npm run update` in `mobile/`** — it fails on the web export; publish
    with `--platform android` and `--platform ios` until it's changed.
 
 ## Later builds
 
-Bring back the full feature set: booking pitches, teams posting matches,
-team- and venue-hosted events, and splitting a match fee between two teams
-through team credit. How the split works — today's mechanism (each team pays
-its own half; secured posts reimburse the poster) or the holding mechanism
-(Uniter fronts the second half, held against the posting team's credit until
-an opponent pays) — is decided then. Anything that lets one team's payment
-become another team's balance needs the legal check again first.
+Bring back whatever the first release leaves off: booking pitches, teams
+posting matches, team- and venue-hosted events, ringers. After the pivot each
+of these is a card payment to a venue or to another team's linked account, so
+none needs the legal check that moving credit between teams did.

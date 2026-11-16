@@ -18,6 +18,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { loadOwed } from "@/lib/team-finance";
 
 export type JoiningFeeStatus = {
   duePence: number;   // the team's current fee
@@ -37,6 +39,15 @@ export async function getJoiningFeeStatus(
   playerId: string | null | undefined,
 ): Promise<JoiningFeeStatus> {
   if (!teamId || !playerId) return NOTHING_OWED;
+
+  // Linked finance (docs/PAYMENT_PIVOT.md): the joining fee is a payment
+  // request, not columns on team_members. The route answers for the signed-in
+  // player only — which is who every caller of this asks about.
+  if (LINKED_FINANCE) {
+    const owed = await loadOwed(teamId);
+    return { duePence: owed.feeDuePence, paidPence: owed.feePaidPence, owedPence: owed.feeOwedPence };
+  }
+
   const { data, error } = await supabase
     .from("team_members")
     .select("joining_fee_due_pence, joining_fee_paid_pence")

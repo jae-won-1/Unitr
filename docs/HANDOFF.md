@@ -15,7 +15,113 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   user runs `supabase_card_and_credit_lockdown.sql`, or "Save this card" on the
   phone fails until it does. `/api/payment-intent-method` is now POST.
 
-## Latest — 2026-11-10, Claude Code: legal details, phone money fixes
+## Web changes awaiting a phone port — linked finance (10 Nov)
+
+- New web screen `/my-team/finance` and `components/finance/*`; Home's money
+  row and the player's Top Up tile change when the switch is on.
+- `lib/authed-fetch.ts` gained **`authedPostForm`** (multipart). The shared
+  `lib/team-finance.ts` imports it, and `lib/joining-fee.ts` /
+  `lib/availability-gate.ts` now import `lib/team-finance.ts` — so
+  **`authed-fetch.native.ts` needs an `authedPostForm` export or the phone
+  won't type-check after the merge.**
+- `lib/finance-mode.ts` reads `NEXT_PUBLIC_FINANCE_MODE`, which Expo doesn't
+  inline: the phone stays on credit until it gets a `.native` copy.
+- `loadSettleRoster` moved out of `SettlePaymentsModal` into
+  `lib/settle-payments.ts` (web behaviour unchanged).
+
+## Latest — 2026-11-16, Claude Code: four fixes, pivot step 1 committed
+
+On `main`, committed and pushed together with the payment-pivot work below
+(the switch is still off in production).
+
+- **Time dial:** Done now picks the time the dial is showing (an empty field
+  opened on 9 AM but Done left it empty).
+- **Join requests:** answered from the notification bell (Approve / Decline
+  per row); the Join Requests row, and Home's strip, open My Team → Members →
+  **Requests** (new sub-tab; the list above the tabs is gone, the Members icon
+  carries the count). `lib/join-requests.ts` is the shared list/answer code.
+- **Notification links:** `lib/notification-links.ts` (`notificationHref`)
+  decides where a feed notification goes; Pay Your Share opens Team finance,
+  or Home on credit.
+- **My Team** shows the team's name (and location · level · formats) at the top.
+- **Venue Settings:** every tab now reports a failed save instead of showing
+  "Saved". Save Schedule was writing to `pitch_availability`, which does not
+  exist on the live database — **the user must run `supabase_venue_hours.sql`**
+  (new; owner-only writes, seeds nothing). Holiday closures
+  (`pitches.blocked_dates`) are now read by `lib/pitch-day.ts`, so they close
+  those hours for booking.
+- The user's "make it possible to save changes in settings page" was read as
+  the venue portal's Settings. Team Settings' save was read through and looks
+  sound, but **was not exercised** — ask which page if it still fails.
+- Checked: `tsc`, lint (the four pre-existing warnings), and every touched
+  page compiles on the running dev server. **`npm run build` not run** (the
+  user's dev server holds `.next`); no signed-in flow was clicked through.
+- 16 Nov: user confirmed the venue payout link (embedded onboarding) works.
+
+## Earlier — 2026-11-10 (later), Claude Code: payment pivot, step 1 built
+
+On `main`, **uncommitted, not pushed, SQL not run.**
+
+- User decided to replace team credit with a Spond-style model: a linked team
+  bank account (Stripe Connect), a team card, and payment requests, so Uniter
+  holds no money. **`docs/PAYMENT_PIVOT.md`** holds the model, the decisions,
+  what is built, how to try it, the known gaps and the open questions.
+  **Store release now comes after the pivot** (`docs/LAUNCH_PLAN.md`
+  rewritten, new item 0).
+- **Built behind a switch that is off** (`lib/finance-mode.ts`,
+  `NEXT_PUBLIC_FINANCE_MODE=linked`): Team Finance — payment requests, the
+  joining fee and match fees as requests, card payment into the team's linked
+  Stripe account, payment status, the dashboard filter, a tracked balance with
+  Set balance. `CLAUDE.md` → Linked finance. With the switch off the app is as
+  it was.
+- **New SQL `supabase_team_finance.sql`** — additive, safe on the live
+  database, **not run**.
+- Shared code touched with the switch off: `SettlePaymentsModal` now gets its
+  roster from `lib/settle-payments.ts`; the webhook has two new branches that
+  only fire for `payment_request` intents.
+- Checked: `tsc`, lint (the four pre-existing warnings), `npm run build`; on a
+  local server with the switch on, every `/api/finance/*` route refuses an
+  unsigned call and `/my-team/finance` and Home render. **Not checked: any
+  signed-in flow** — the tables don't exist until the SQL is run, so no
+  request has been created, paid or ticked, no bank account linked, and the
+  webhook branches have never fired.
+- **Next:** user runs the SQL and tries it locally (steps in
+  `docs/PAYMENT_PIVOT.md`); then step 2, team card for pitches and events.
+  Do not set the switch in Vercel before that.
+- 11 Nov: the user ran `supabase_team_finance.sql` (check-migrations: 7/7
+  objects) and tried Team finance locally. Fee kept at 1.5% + 20p for now.
+  Link bank account failed: the Stripe account has not signed up for Connect
+  (Stripe: "You can only create new accounts if you've signed up for
+  Connect"), in test mode at least. Dashboard step for the user; the route
+  now says so instead of "Couldn't reach Stripe". 12 Nov: Connect switched
+  on; Stripe then refused with "Stripe no longer recommends Accounts v1" — the
+  user must enable Accounts v1 support under Settings → Developers → API
+  policies (per mode). Migrating team and venue accounts to v2 is a later job.
+- 14 Nov: linking the bank account now happens inside Uniter — Stripe's
+  embedded onboarding in a sheet (`components/ConnectOnboardingSheet.tsx`,
+  action `session`), hosted page as fallback. The venue portal's payout
+  account uses the same sheet (`/api/connect/create-venue-account` with
+  `embedded: true`); not yet tried in a browser either. New deps `@stripe/connect-js` and
+  `@stripe/react-connect-js` pinned at 3.5.0. A test-mode account session for
+  the Test team's account was created successfully; the sheet itself is not
+  yet tried in a browser, and `npm run build` was not run (the dev server was
+  using `.next`). **Phone:** the embedded component is web-only — the port
+  needs a WebView or Stripe's hosted page.
+- 13 Nov: the joining fee works end to end for a member (nmplayer).
+- 13 Nov: Link bank account works in test mode (Test team, account ready).
+  The page briefly showed it unlinked; loads now ignore out-of-date answers.
+  Added **Exempt the captain** to the joining fee — needs
+  `supabase_team_finance_captain_exempt.sql` run (not yet). Untested signed in.
+- Decided 11 Nov: if the posting team's card fails when a friendly is
+  accepted, the match waits for that captain to pay, with a deadline, then
+  falls through. Step 2 starts with event entry by team card.
+- Live credit balances on 10 Nov: Regent Legend FC £2.00 (refunded in person
+  by the user — ignore), 72s fc £0, Young Boys FC £0. The five other teams
+  holding credit (Test, Nomoney, Ballers United, Test2,
+  `[RN-PORT TEST] Opponents`) are test teams (user, 11 Nov) — no real team
+  has credit to refund.
+
+## Earlier — 2026-11-10, Claude Code: legal details, phone money fixes
 
 Both branches, committed locally, **not pushed, no OTA, no build.**
 

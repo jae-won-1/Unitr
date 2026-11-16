@@ -19,10 +19,20 @@ export async function authedPost(path: string, body: unknown): Promise<Response>
   return fetch(path, { method: "POST", headers: await authHeaders(), body: JSON.stringify(body) });
 }
 
+// A form with a file in it. No Content-Type here: the browser has to write its
+// own, with the multipart boundary in it.
+export async function authedPostForm(path: string, form: FormData): Promise<Response> {
+  const { "Content-Type": _json, ...headers } = await authHeaders();
+  void _json;
+  return fetch(path, { method: "POST", headers, body: form });
+}
+
 export async function authedDelete(path: string, body: unknown): Promise<Response> {
   return fetch(path, { method: "DELETE", headers: await authHeaders(), body: JSON.stringify(body) });
 }
 
 export async function authedGet(path: string): Promise<Response> {
-  return fetch(path, { headers: await authHeaders() });
+  // no-store: these answers are per person and change the moment somebody
+  // pays, so the browser must never hand back an earlier one.
+  return fetch(path, { headers: await authHeaders(), cache: "no-store" });
 }

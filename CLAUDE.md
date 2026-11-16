@@ -14,6 +14,12 @@ refundable, everything else left out of the phone app (the web stays the full
 app). `docs/LAUNCH_PLAN.md` is that plan; read it before changing anything that
 touches money or the store build.
 
+**Team credit is being replaced** (user, 10 Nov 2026) by linked team accounts,
+a team card and payment requests, so that Uniter holds no money; the store
+release waits for it. `docs/PAYMENT_PIVOT.md` is that plan. Its first step is
+built behind a switch that is off (see Linked finance below) — the payment
+sections of this file describe the code as it runs today, on credit.
+
 A football platform providing: player-team matching, matchmaking, pitch booking, and a
 stats/video social space.
 
@@ -85,6 +91,14 @@ Bottom nav has **three** tabs, not five:
 Messages (`/messages`) and Profile (`/profile`) moved to the **TopBar** — a message icon and
 an avatar menu, alongside a notification bell. Search lives at `/search`, reached from the
 Transfer Market rather than Home.
+
+**Every item in the bell leads to the screen that deals with it.** A leader answers a join
+request in the panel itself (Approve / Decline per row, like a follow request); the Join
+Requests row opens My Team → Members → Requests (`JOIN_REQUESTS_HREF`). `lib/join-requests.ts`
+is the only place requests are listed and answered. A feed notification goes where
+`notificationHref` (`lib/notification-links.ts`) says: the type decides where it can — several
+rows are written by SQL triggers with a link that can't know which payment system is on —
+and the stored `link` is the fallback. Pay Your Share opens Team finance, or Home on credit.
 
 Venue managers never see this nav at all; they're redirected into `/venue/*` (see below).
 
@@ -190,7 +204,7 @@ Three variants keyed off role, all sharing the same skeleton: quick-nav row → 
   sign-up gate.
 - **player** — `PlayerActionStrip` (what the captain needs from you), **next fixture only**,
   then `GameFeed` where the action is "Suggest to team" rather than entering directly.
-- **captain** — join-request strip, `SuggestionsStrip` (squad suggestions to review),
+- **captain** — join-request strip (opens My Team → Members → Requests), `SuggestionsStrip` (squad suggestions to review),
   `TeamCreditsBar`, `PollStatusTile` (poll progress **and** availability for games already
   committed to), next fixture with a
   "Manage match" CTA, then `GameFeed` with real actions (Challenge / Enter) and the captain's
@@ -225,7 +239,11 @@ organising isn't entering, and an organiser buys into its own tournament like an
 
 ### My Team (`app/my-team/page.tsx`)
 
-Squad, stats, upcoming fixtures, and the captain's control panel. Sub-pages:
+Squad, stats, upcoming fixtures, and the captain's control panel. The team's name heads the
+page, above the icon row. The Members tab has four sub-tabs — Squad · Requests · Scout ·
+Watchlist; **Requests** is where a leader approves or declines join requests
+(`?tab=members&sub=requests`), and the Members icon carries a red count while any wait.
+Sub-pages:
 
 | Route | Purpose |
 |---|---|
@@ -502,6 +520,18 @@ player app send a venue manager, so it opens the first pitch's calendar; "first"
 the date carry over when switching pitch. A booking's colour is its **kind** (Uniter booking,
 manual, tournament, league, open match), drawn as a solid block inset from its neighbours so
 back-to-back bookings read as separate.
+
+**Payout account** (Settings → Payouts) is linked inside the portal, not by
+a redirect: `components/ConnectOnboardingSheet.tsx` (Stripe's embedded
+onboarding, the same sheet Team finance uses), fed by
+`/api/connect/create-venue-account` with `embedded: true`. Without that flag
+the route still returns Stripe's hosted link — the sheet's fallback.
+
+**Settings saves say what happened.** Every tab reports a failed write instead of showing
+"Saved". Opening hours (Schedule) live in `pitch_availability`, created by
+`supabase_venue_hours.sql` with owner-only writes — until it is run the tab says so and every
+pitch stays open 07:00–22:00. Closures (Holidays) are written to `pitches.blocked_dates`, and
+`lib/pitch-day.ts` reads them, so a blocked date closes those hours for booking.
 
 The portal uses the player app's light theme and green (`accent` fills with white text,
 `accent-ink` for green text). Hard-coded dark surfaces and the old `#00E676` are gone — use the
@@ -785,6 +815,75 @@ Consequences worth knowing:
 - Settle Payments' fixture panel disappears once `fees_settled` is true, exactly as before —
   a settled fixture has nothing left to issue.
 
+## Linked finance (behind a switch, off)
+
+The replacement for team credit, built complete behind `lib/finance-mode.ts`
+(`NEXT_PUBLIC_FINANCE_MODE=linked`) so the app changes over once instead of
+running two pots for live teams. **Off, nothing below is reachable**: the
+screens fall back to the credit ones and every `/api/finance/*` route answers
+503. `docs/PAYMENT_PIVOT.md` has the plan, what is built and what is left —
+do not switch it on in production until pitches and event entries are paid by
+team card, because until then they still spend credit.
+
+**Uniter holds no money.** A leader links the team's bank account through
+Stripe (an Express Connect account, `team_finance_accounts`, one row per
+Stripe mode) and asks the squad for money with **payment requests**.
+Linking happens **inside Uniter** (user, 14 Nov): Stripe's embedded
+onboarding component in a sheet (`components/ConnectOnboardingSheet.tsx`, shared
+with the venue portal's payout account,
+`@stripe/connect-js` + `@stripe/react-connect-js`, pinned), fed a short-lived
+account-session secret by `/api/finance/account` action `session`. Stripe's
+hosted page (action `link`) stays as the fallback if the form won't load.
+The questions are Stripe's and can't be dropped — whoever receives the money
+must be identified. A member
+pays by card; the charge names the team's account as its destination, and the
+fee is added on top (`lib/payment-fee.ts`) so the team receives what it asked
+for. With no linked account a request is bookkeeping: members pay the leader
+directly and the leader ticks them off.
+
+One table, three kinds (`payment_requests.kind`):
+
+- `general` — kit, a dinner; sent to whoever the leader ticks.
+- `joining_fee` — one live row per team, the whole squad on it, **changed in
+  place** when the leader sets the fee again; a trigger on `team_members` adds
+  anyone newly approved. It replaces `teams.joining_fee_pence`, which linked
+  finance never writes (that would fire the credit triggers and DM the squad
+  to top up), so Team Settings and Register Team point to Team Finance.
+  The captain is on it like everyone else unless the leader ticks **Exempt
+  the captain** (`payment_requests.captain_exempt`, user 13 Nov): then the
+  captain is left off and stays off when the fee changes; anything they had
+  already paid stays recorded, never refunded. It names the role, so after a
+  hand-over the next save of the fee exempts the new captain.
+- `match_fee` — one per fixture per team, issued from **Settle match fees**
+  with the same "who played" list Settle Payments uses
+  (`loadSettleRoster` in `lib/settle-payments.ts`).
+
+`payment_request_members` holds what each member is asked (`amount_pence`) and
+has paid (`paid_pence`) — two numbers rather than a flag, so raising the
+joining fee leaves the difference owed. **Only `joining_fee` and `match_fee`
+block voting Available** (`/api/finance/owed`, read by `lib/joining-fee.ts`
+and `lib/availability-gate.ts` when the switch is on).
+
+**The tables are server-only** — RLS on, no policies — so every read and
+write goes through `/api/finance/*` on the service key, and the dashboard
+route is the one place that decides a member sees only their own requests
+while a leader sees the squad's. `lib/team-finance.ts` is the client side
+(shapes, calls, the filter rule; no Supabase, no React);
+`lib/team-finance-server.ts` the server side. A card payment is recorded by
+`applyRequestPayment` from **both** the Stripe webhook and
+`/api/finance/confirm-payment`, whichever hears first —
+`apply_request_payment` is idempotent on the intent id.
+
+**The balance is tracked, not the bank's**: paid requests plus
+`team_finance_entries` (adjustments, logged expenses, team-card spend). Uniter
+cannot see the account, so **Set balance** writes the difference from what
+the leader reads off their bank as an adjustment.
+
+The screen is `/my-team/finance` (`components/finance/*`): Dashboard (balance,
+bank account, requests as posts with an Active / Completed / All filter),
+Settle match fees, and a + for a new request or the joining fee. It is a page,
+not a sheet — sub-tabs, a feed, a filter and a drill-down don't fit one.
+
 ## Data model
 
 Schema updates live as `supabase_*.sql` at the repo root and are applied by hand in
@@ -834,9 +933,12 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_match_tactics.sql`, `supabase_team_profile.sql`, `supabase_team_announcements.sql` | Per-match tactics, team profile fields, announcements |
 | `supabase_tournament_match_tactics.sql` | `match_tactics.tournament_match_id` — a lineup targets a friendly **or** a tournament fixture; run after `supabase_match_tactics.sql` and `supabase_tournament_schedule.sql` |
 | `supabase_tournament_fixture_duration.sql` | `tournament_matches.duration_minutes` — how long one fixture runs, from the organiser's match length; run after `supabase_tournament_schedule.sql` |
-| `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability |
+| `supabase_pitches.sql`, `supabase_venue.sql` | Pitches, weekly availability (`supabase_venue.sql` was never run on the live database — use `supabase_venue_hours.sql`) |
+| `supabase_venue_hours.sql` | `pitch_availability` (a pitch's weekly opening hours) writable only by the pitch's own venue; seeds nothing. Run after `supabase_pitch_bookings_lockdown.sql` |
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
 | `supabase_launch_security.sql` | `team_members` write policies matched to the real flows; team money readable only by the team / admins / the paid venue; `team_card_contributions` server-only; card columns on `profiles` unreadable from clients (column grants) + `my_saved_card()`; `api_rate_limits` + `hit_rate_limit()`. **Run only once the web code using `lib/own-card.ts` is deployed and the phone's OTA update is out**; after `supabase_core_tables_rls.sql`, `supabase_pilot_security.sql`, `supabase_co_captains.sql`, `supabase_payment_integrity.sql`, `supabase_refunds.sql`, `supabase_team_chat.sql`, `supabase_transfer_market.sql` |
+| `supabase_team_finance.sql` | Linked finance: `team_finance_accounts`, `payment_requests`, `payment_request_members`, `payment_request_payments`, `team_finance_entries` — all RLS-on with no policies (server only); `apply_request_payment` / `reverse_request_payment` (service role only); the trigger adding a newly approved member to the team's joining-fee request; the private `payment-requests` storage bucket. Additive — safe to run while the app is on credit. No dependencies |
+| `supabase_team_finance_captain_exempt.sql` | `payment_requests.captain_exempt` — the joining fee can leave the captain off. Additive; without it the exemption is refused and everything else works. Run after `supabase_team_finance.sql` |
 | `supabase_account_deletion.sql` | `hand_over_team()` (captaincy to a co-captain, re-filing the captain-keyed rows) and `delete_auth_identities()`, both service-role only — called by `/api/team/hand-over` and `/api/account/delete`; run after `supabase_co_captains.sql`, `supabase_captain_joining_fee.sql`, `supabase_joining_fee_current.sql`, `supabase_pilot_security.sql` |
 | `supabase_gender_non_binary.sql` | `profiles.gender` accepts `non_binary` again; run after `supabase_gender_categories.sql` |
 | `supabase_card_and_credit_lockdown.sql` | `profiles` card columns (`stripe_customer_id`, `stripe_payment_method_id`, `card_brand`, `card_last4`) writable only by the server — a client may clear them, never set them; `record_cash_credit` and `reimburse_team` become service-role only. **Run only once the card-save routes are deployed**; after `supabase_pilot_security.sql`, `supabase_card_on_file.sql`, `supabase_co_captains.sql`, `supabase_team_tournaments.sql` |
@@ -879,7 +981,8 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
   tappable `9:30 AM` read-out to go back. Off by default, so nothing that wants an hour can
   be handed `:37`. Both the calendar and the dial open **centred over a scrim**, portalled to
   `<body>` at `z-[70]` (above sheets), not as a dropdown under the field; the dial closes with
-  Done or a tap outside.
+  Done or a tap outside. **Done confirms the time the dial is showing** — an empty field opens
+  on 9 AM, and Done picks it; a tap outside picks nothing.
 - **z-index floor.** TopBar and BottomNav are `z-40` chrome; every sheet/modal is `z-[60]`,
   above them. At equal z the nav silently paints over the bottom of a sheet.
 - **Money is pence, integers, everywhere.** Never floats, never pounds in the DB.

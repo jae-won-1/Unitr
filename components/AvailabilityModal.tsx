@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAvailabilityPoll, type DateOption, type PollRequest } from "@/lib/availability-poll";
 import { owedSummary, useAvailabilityGate } from "@/lib/availability-gate";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
 import AvailabilityList, { type UpcomingEvent } from "@/components/AvailabilityList";
 
 // Answering the captain's availability poll without leaving home. Same options,
@@ -107,9 +108,13 @@ export default function AvailabilityModal({
             {blocked && (
               <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2.5 mb-4">
                 <p className="text-xs text-red-600 font-semibold">
-                  You still owe {owedSummary(gate)}. Pay it via the Top Up button on Home
+                  You still owe {owedSummary(gate)}.{" "}
+                  {LINKED_FINANCE
+                    ? <>Pay it in Team finance to vote available for games.</>
+                    : <>Pay it via the Top Up button on Home
                   to vote available for games — it goes into the team&rsquo;s credits for
-                  pitch and tournament fees. You can still tell your captain you&rsquo;re
+                  pitch and tournament fees.</>}{" "}
+                  You can still tell your captain you&rsquo;re
                   unavailable.
                 </p>
               </div>

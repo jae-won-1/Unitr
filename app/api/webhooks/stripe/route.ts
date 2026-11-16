@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { adminSupabase } from "@/lib/supabase-admin";
+import { applyRequestPayment } from "@/lib/team-finance-server";
 
 // Stripe webhook — the ONLY place a card payment turns into team credit.
 //
@@ -63,6 +64,23 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
+
+        // A member paying a payment request (docs/PAYMENT_PIVOT.md). The money
+        // went to the team's own linked account as part of the charge; all
+        // that is left is to tick their row. Idempotent on the intent id, and
+        // /api/finance/confirm-payment may already have done it.
+        if (pi.metadata?.type === "payment_request") {
+          try {
+            const outcome = await applyRequestPayment(pi);
+            console.log(`stripe-webhook: payment request ${pi.id}: ${outcome}`);
+          } catch (err) {
+            // The payer HAS been charged — 5xx so Stripe redelivers.
+            console.error("stripe-webhook:", (err as Error).message);
+            return NextResponse.json({ error: "Could not record payment" }, { status: 500 });
+          }
+          break;
+        }
+
         if (pi.metadata?.type !== "team_credits") break;   // other flows settle elsewhere
 
         const teamId = pi.metadata.teamId;
@@ -107,6 +125,26 @@ export async function POST(req: NextRequest) {
           ? charge.payment_intent
           : charge.payment_intent?.id;
         if (!piId) break;
+
+        // A refunded payment-request payment never became team credit: take it
+        // back off what the member is recorded as having paid instead. The
+        // function takes the charge's cumulative refunded total, so a
+        // redelivery is harmless. On a database without
+        // supabase_team_finance.sql the lookup simply finds nothing.
+        const { data: requestPayment } = await adminSupabase
+          .from("payment_request_payments").select("id")
+          .eq("stripe_payment_intent_id", piId).maybeSingle();
+        if (requestPayment) {
+          const { error } = await adminSupabase.rpc("reverse_request_payment", {
+            p_payment_intent_id: piId,
+            p_refunded_total_pence: charge.amount_refunded,
+          });
+          if (error) {
+            console.error(`stripe-webhook: request refund failed for ${piId}:`, error.message);
+            return NextResponse.json({ error: "Could not apply refund" }, { status: 500 });
+          }
+          break;
+        }
 
         // The event's own refunds list can be truncated, so ask for the set.
         const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });

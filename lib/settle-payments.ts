@@ -46,6 +46,81 @@ export function parseOptionDate(dateStr: string): string | null {
   return `${year}-${mm}-${day.padStart(2, "0")}`;
 }
 
+// ── Who shares a fixture's cost ───────────────────────────────────────────
+// The squad, and which of them "played" — the default ticks when a captain
+// issues a fixture's payment request. Lifted unchanged out of
+// SettlePaymentsModal's panel so Settle match fees on the Team Finance screen
+// (components/finance/SettleMatchFees.tsx) starts from the same list.
+export type RosterPlayer = { player_id: string; name: string };
+
+export async function loadSettleRoster(
+  target: { kind: "match" | "tournament"; id: string },
+  teamId: string,
+  date: string,
+): Promise<{ roster: RosterPlayer[]; participantIds: Set<string> }> {
+  const targetCol = target.kind === "match" ? "match_id" : "open_match_id";
+  const isTournament = target.kind === "tournament";
+
+  // Note: teams.captain_id has no FK relationship registered with profiles
+  // in the Supabase schema cache, so it can't be embedded in a select —
+  // doing so makes the entire query fail (PGRST200). Fetch separately.
+  const [{ data: members }, { data: team }, { data: confs }, { data: polls }] = await Promise.all([
+    supabase.from("team_members").select("player_id, profiles(full_name)").eq("team_id", teamId).eq("status", "approved"),
+    supabase.from("teams").select("captain_id").eq("id", teamId).maybeSingle(),
+    // Both kinds answer availability now — a tournament entry against
+    // open_match_id (supabase_event_availability.sql). A database without
+    // that migration fails this one query and falls back to the poll below.
+    supabase.from("match_confirmations").select("player_id, status").eq(targetCol, target.id).eq("team_id", teamId),
+    supabase.from("availability_requests").select("id, date_options").eq("team_id", teamId),
+  ]);
+  const { data: captainProfile } = team?.captain_id
+    ? await supabase.from("profiles").select("full_name").eq("id", team.captain_id).maybeSingle()
+    : { data: null };
+  const roster: RosterPlayer[] = [
+    ...(members ?? []).map((m) => ({ player_id: m.player_id as string, name: (m.profiles as unknown as { full_name: string } | null)?.full_name ?? "Player" })),
+    ...(team?.captain_id ? [{ player_id: team.captain_id as string, name: captainProfile?.full_name ?? "Captain" }] : []),
+  ].filter((p, i, arr) => arr.findIndex((x) => x.player_id === p.player_id) === i);
+
+  // Who "played" = who said they were available for THIS fixture. The
+  // fixture's own answers come first: they start as the poll's answer for
+  // this date (carried over at entry — lib/event-availability.ts) and then
+  // track every change made after it, right up to kickoff.
+  const participants = new Set<string>();
+  for (const c of (confs ?? []).filter((c) => c.status === "confirmed")) participants.add(c.player_id);
+
+  // Nobody answered the fixture itself — fall back to the poll.
+  // Find the poll whose date_options include an entry matching match_date,
+  // then collect the players who marked that option as available.
+  type Opt = { id: string; date: string };
+  if (participants.size === 0) {
+    const pollList = (polls ?? []) as { id: string; date_options: Opt[] }[];
+    let matchedPoll: { id: string; optionIds: string[] } | null = null;
+    for (const poll of pollList) {
+      const optionIds = (poll.date_options ?? [])
+        .filter((o) => parseOptionDate(o.date) === date)
+        .map((o) => o.id);
+      if (optionIds.length > 0) { matchedPoll = { id: poll.id, optionIds }; break; }
+    }
+    if (matchedPoll) {
+      const { data: resps } = await supabase.from("availability_responses")
+        .select("player_id, available_date_ids").eq("request_id", matchedPoll.id);
+      for (const r of resps ?? []) {
+        if ((r.available_date_ids ?? []).some((id: string) => matchedPoll!.optionIds.includes(id))) {
+          participants.add(r.player_id as string);
+        }
+      }
+    }
+  }
+  // A tournament entry is bought by the team as a whole rather than by a
+  // confirmed line-up, so with nothing else to go on the whole squad
+  // shares it — the captain can still untick anyone who didn't travel.
+  if (participants.size === 0 && isTournament) {
+    for (const p of roster) participants.add(p.player_id);
+  }
+  const participantIds = new Set(roster.filter((p) => participants.has(p.player_id)).map((p) => p.player_id));
+  return { roster, participantIds };
+}
+
 // ── Tournaments this team entered, as settleable history rows ─────────────
 // The amount owed is what the team ACTUALLY paid, read off the credit debit
 // written when they joined (tournaments/join/route.ts) — that already has any

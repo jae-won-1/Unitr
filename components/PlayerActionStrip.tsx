@@ -6,6 +6,41 @@ import DuesTopUpModal, { useMyDues } from "@/components/DuesTopUpModal";
 import AvailabilityModal, { useAvailabilityPoll } from "@/components/AvailabilityModal";
 import { useEventAvailability } from "@/components/AvailabilityList";
 import { fmtFee, useJoiningFee } from "@/lib/joining-fee";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { useOwed } from "@/lib/use-owed";
+
+// The money tile once the app is on linked finance (docs/PAYMENT_PIVOT.md):
+// there is no credit to top up, so it says what the player owes in payment
+// requests and takes them to Team Finance, where each one has its own Pay
+// button. Same footprint as the Top Up tile it stands in for.
+function FinanceTile({ teamId }: { teamId: string | null }) {
+  const { feeOwedPence, duesOwedPence, otherOwedPence, loading } = useOwed(teamId);
+  const owed = feeOwedPence + duesOwedPence + otherOwedPence;
+  // The joining fee and match fees are what stop a vote (lib/availability-gate.ts).
+  const blocking = feeOwedPence + duesOwedPence > 0;
+  const body = (
+    <>
+      {owed > 0 && <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-danger" />}
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-2 ${owed > 0 ? "bg-red-500/20" : "bg-accent/10 border border-accent/30"}`}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={owed > 0 ? "#F87171" : "#0E7A3C"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 11h20M6 16h4"/>
+        </svg>
+      </div>
+      <p className="text-sm font-bold leading-tight">Team finance</p>
+      <p className={`text-[11px] mt-1 leading-tight ${owed > 0 ? "text-red-600 font-semibold" : "text-text-secondary"}`}>
+        {loading ? "Checking…" : owed > 0 ? `You owe ${fmtFee(owed)}` : "Nothing to pay"}
+      </p>
+      {blocking && (
+        <p className="text-[11px] mt-1 leading-tight text-text-secondary">Pay to vote available</p>
+      )}
+    </>
+  );
+  const shape = `relative rounded-2xl p-4 text-left border ${owed > 0 ? "bg-red-500/10 border-red-500/30" : "bg-surface-2 border-border"}`;
+  // Greyed, not hidden, for a player with no team — the house convention.
+  return teamId
+    ? <a href="/my-team/finance" className={`block ${shape}`}>{body}</a>
+    : <div className={`${shape} opacity-60`} aria-disabled="true">{body}</div>;
+}
 
 // The two things a captain actually asks of a squad player: answer the
 // availability poll, and put money in. Both resolve in a popup — a player who
@@ -24,7 +59,8 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
   const [showTopUp, setShowTopUp] = useState(false);
 
   useEffect(() => {
-    if (!teamId) return;
+    // Linked finance has no team credit to show — see FinanceTile below.
+    if (!teamId || LINKED_FINANCE) return;
     supabase.from("team_credits").select("balance_pence").eq("team_id", teamId).maybeSingle()
       .then(({ data }) => setBalancePence(data?.balance_pence ?? 0));
   }, [teamId]);
@@ -65,7 +101,8 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
           </p>
         </button>
 
-        {/* ── Top up ── */}
+        {/* ── Team finance (linked) / Top up (credit) ── */}
+        {LINKED_FINANCE ? <FinanceTile teamId={teamId} /> : (
         <button
           type="button"
           onClick={() => teamId && setShowTopUp(true)}
@@ -102,6 +139,7 @@ export default function PlayerActionStrip({ teamId, userId }: { teamId: string |
             {balancePence === null ? "Loading…" : `Team balance £${(balancePence / 100).toFixed(2)}`}
           </p>
         </button>
+        )}
       </div>
 
       {showAvailability && hasSomething && (

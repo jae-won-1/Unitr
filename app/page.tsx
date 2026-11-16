@@ -10,6 +10,9 @@ import TeamsPanel from "@/components/TeamsPanel";
 import PlayerActionStrip from "@/components/PlayerActionStrip";
 import GameFeed, { GameTypeSelect } from "@/components/GameFeed";
 import TeamCreditsBar from "@/components/TeamCreditsBar";
+import TeamFinanceButton from "@/components/finance/TeamFinanceButton";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { JOIN_REQUESTS_HREF } from "@/lib/join-requests";
 import PollStatusTile from "@/components/PollStatusTile";
 import MyPostCard, { useMyPosts } from "@/components/MyPostCard";
 import SuggestionsStrip from "@/components/SuggestionsStrip";
@@ -99,7 +102,7 @@ function useJoinRequestCount(teamId: string | null) {
 
 function JoinRequestsStrip({ count }: { count: number }) {
   return (
-    <a href="/my-team/transfer"
+    <a href={JOIN_REQUESTS_HREF}
       className="flex items-center gap-3 bg-accent/10 border border-accent/30 rounded-2xl p-4">
       <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
@@ -111,7 +114,7 @@ function JoinRequestsStrip({ count }: { count: number }) {
         <p className="text-sm font-semibold text-accent-ink">
           {count} player{count === 1 ? "" : "s"} want{count === 1 ? "s" : ""} to join
         </p>
-        <p className="text-xs text-text-secondary mt-0.5 truncate">Review and approve them in Transfer Window</p>
+        <p className="text-xs text-text-secondary mt-0.5 truncate">Review and approve them in My Team → Members</p>
       </div>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5A6478" strokeWidth="2" strokeLinecap="round">
         <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -453,7 +456,11 @@ function CaptainHome({ userId }: { userId: string | undefined }) {
       {userId && (
         <section>
           <h3 className="text-lg font-bold tracking-[-0.01em] uppercase mb-2">Team Money</h3>
-          <TeamCreditsBar userId={userId} role="captain" />
+          {/* Linked finance replaces the four credit pills with one way into
+              Team Finance (docs/PAYMENT_PIVOT.md). */}
+          {LINKED_FINANCE
+            ? <TeamFinanceButton teamId={teamId} />
+            : <TeamCreditsBar userId={userId} role="captain" />}
         </section>
       )}
 

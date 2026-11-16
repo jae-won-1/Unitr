@@ -1,8 +1,10 @@
 "use client";
 
 // ── Members ───────────────────────────────────────────────────────────
-// Squad · Scout · Watchlist — the three states a player can be in relative to
-// this team: in it, out there somewhere, or being thought about.
+// Squad · Requests · Scout · Watchlist — the states a player can be in relative
+// to this team: in it, asking to be, out there somewhere, or being thought
+// about. Requests is where the notification bell and Home's strip lead
+// (JOIN_REQUESTS_HREF); the bell can answer them too.
 //
 // The Watchlist is the genuinely new one. Scouting in the Transfer Market is a
 // browsing session and signing is a decision made days later, usually after
@@ -14,8 +16,11 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { sendOffer } from "@/lib/transfer-market";
 import { loadSquadStats, emptyPlayerStats, type PlayerStats } from "@/lib/stats";
+import { answerJoinRequest, type JoinRequest } from "@/lib/join-requests";
 
-type SubTab = "squad" | "scout" | "watchlist";
+const SUB_TABS = ["squad", "requests", "scout", "watchlist"] as const;
+type SubTab = (typeof SUB_TABS)[number];
+const SUB_LABEL: Record<SubTab, string> = { squad: "Squad", requests: "Requests", scout: "Scout", watchlist: "Watchlist" };
 
 type Member = { id: string; name: string; position: string | null; experience: string | null; isCaptain: boolean; isCoCaptain: boolean; stats: PlayerStats };
 type WatchRow = { id: string; playerId: string; name: string; position: string | null; note: string | null };
@@ -245,35 +250,120 @@ function Watchlist({ teamId, userId, isCaptain }: { teamId: string; userId: stri
   );
 }
 
+// ── Requests ──────────────────────────────────────────────────────────
+function Requests({ isCaptain, requests, onChange, onApproved }: {
+  isCaptain: boolean;
+  requests: JoinRequest[];
+  onChange: (next: JoinRequest[]) => void;
+  onApproved: () => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function answer(id: string, status: "approved" | "rejected") {
+    setBusyId(id);
+    setError(null);
+    const res = await answerJoinRequest(id, status);
+    setBusyId(null);
+    // Gone either way — answered here, or already answered somewhere else.
+    onChange(requests.filter((r) => r.id !== id));
+    if (res.error) setError(res.error);
+    else if (status === "approved") onApproved();
+  }
+
+  if (!isCaptain) {
+    return (
+      <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
+        <p className="text-sm font-semibold mb-1">Captain only</p>
+        <p className="text-xs text-text-secondary">Your captain and co-captains decide who joins the squad.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {error && (
+        <p className="text-xs text-red-600 bg-red-500/10 border border-red-500/30 rounded-btn px-3 py-2.5">{error}</p>
+      )}
+      {requests.length === 0 ? (
+        <div className="bg-surface border border-border shadow-card rounded-card p-6 text-center">
+          <p className="text-sm font-semibold mb-1">No join requests</p>
+          <p className="text-xs text-text-secondary">
+            Players who ask to join show up here. Anyone you send your invite link to joins straight away.
+          </p>
+        </div>
+      ) : requests.map((r) => (
+        <div key={r.id} className="bg-surface border border-border shadow-card rounded-[14px] px-3.5 py-3 flex items-center gap-3">
+          <Avatar name={r.name} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold truncate">{r.name}</p>
+            <p className="text-[11px] font-medium text-text-secondary mt-0.5">{r.position ?? "—"}</p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button type="button" disabled={busyId === r.id} onClick={() => answer(r.id, "rejected")}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">
+              Decline
+            </button>
+            <button type="button" disabled={busyId === r.id} onClick={() => answer(r.id, "approved")}
+              className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-40">
+              Approve
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MembersTab({
-  teamId, userId, isCaptain,
+  teamId, userId, isCaptain, joinRequests, onJoinRequestsChange,
 }: {
   teamId: string;
   userId: string;
   isCaptain: boolean;
+  joinRequests: JoinRequest[];
+  onJoinRequestsChange: (next: JoinRequest[]) => void;
 }) {
   const [sub, setSub] = useState<SubTab>("squad");
+  // Bumped when a request is approved, so the squad list is read again.
+  const [squadVersion, setSquadVersion] = useState(0);
+
+  // ?sub=requests — read after mount, like ?tab= on the page itself.
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get("sub");
+    if (s && (SUB_TABS as readonly string[]).includes(s)) setSub(s as SubTab);
+  }, []);
 
   return (
     <div className="space-y-4">
       <div className="flex bg-surface border border-border rounded-btn p-[3px] gap-[3px]">
-        {([["squad", "Squad"], ["scout", "Scout"], ["watchlist", "Watchlist"]] as const).map(([k, label]) => (
+        {SUB_TABS.map((k) => (
           <button key={k} type="button" onClick={() => setSub(k)}
-            className={`flex-1 px-3 py-2 rounded-[9px] text-xs transition-colors ${
+            className={`flex-1 px-1.5 py-2 rounded-[9px] text-xs transition-colors flex items-center justify-center gap-1 ${
               sub === k ? "bg-accent text-white font-bold" : "text-text-secondary font-semibold"}`}>
-            {label}
+            {SUB_LABEL[k]}
+            {k === "requests" && joinRequests.length > 0 && (
+              <span className="min-w-[16px] h-4 px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+                {joinRequests.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {sub === "squad" && <SquadList teamId={teamId} />}
+      {sub === "squad" && <SquadList key={squadVersion} teamId={teamId} />}
+
+      {sub === "requests" && (
+        <Requests isCaptain={isCaptain} requests={joinRequests} onChange={onJoinRequestsChange}
+          onApproved={() => setSquadVersion((v) => v + 1)} />
+      )}
 
       {sub === "scout" && (
         isCaptain ? (
           <div className="space-y-3">
             <a href="/my-team/transfer" className="block bg-surface border border-border shadow-card rounded-card p-4">
               <p className="text-sm font-bold mb-0.5">Transfer Market</p>
-              <p className="text-xs text-text-secondary">Search free agents and other teams, send offers, review join requests.</p>
+              <p className="text-xs text-text-secondary">Search free agents and other teams, and send offers.</p>
             </a>
             <a href="/search" className="block bg-surface border border-border shadow-card rounded-card p-4">
               <p className="text-sm font-bold mb-0.5">Search</p>

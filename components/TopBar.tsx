@@ -6,6 +6,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { loadLeadership } from "@/lib/team-leadership";
 import { loadChatSummary } from "@/lib/team-chat";
+import { loadJoinRequests, answerJoinRequest, JOIN_REQUESTS_HREF, type JoinRequest } from "@/lib/join-requests";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
+import { notificationHref } from "@/lib/notification-links";
 import { useRole } from "@/contexts/RoleContext";
 import TutorialSheet, { hasSeenTutorial } from "@/components/TutorialSheet";
 import type { TutorialRole } from "@/lib/tutorial-content";
@@ -32,7 +35,12 @@ export default function TopBar() {
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Pinned notification counts — real Supabase queries
-  const [joinRequests, setJoinRequests] = useState(0);
+  // Join requests are listed, not just counted: a leader answers each one
+  // here, the way a follow request is answered from its notification.
+  const [requests, setRequests] = useState<JoinRequest[]>([]);
+  const [answeringId, setAnsweringId] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const joinRequests = requests.length;
   const [openPosts, setOpenPosts] = useState(0);
   const [matchDues, setMatchDues] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -53,18 +61,15 @@ export default function TopBar() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) { setJoinRequests(0); setOpenPosts(0); return; }
+    if (!user) { setRequests([]); setOpenPosts(0); return; }
 
     // Both badges belong to whoever runs the team — captain or co-captain.
     // Posts are filed under the captain's id whoever posted them.
     (async () => {
       const led = await loadLeadership(user.id);
-      if (!led?.canManage) { setJoinRequests(0); setOpenPosts(0); return; }
+      if (!led?.canManage) { setRequests([]); setOpenPosts(0); return; }
 
-      const { count: pending } = await supabase.from("team_members")
-        .select("id", { count: "exact", head: true })
-        .eq("team_id", led.teamId).eq("status", "pending");
-      setJoinRequests(pending ?? 0);
+      setRequests(await loadJoinRequests(led.teamId));
 
       const { count: open } = await supabase.from("match_posts")
         .select("id", { count: "exact", head: true })
@@ -152,7 +157,18 @@ export default function TopBar() {
       setNotifs((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x));
       await supabase.from("notifications").update({ read: true }).eq("id", n.id);
     }
-    if (n.link) window.location.href = n.link;
+    const href = notificationHref(n);
+    if (href) window.location.href = href;
+  };
+
+  const answerRequest = async (id: string, answer: "approved" | "rejected") => {
+    setAnsweringId(id);
+    setRequestError(null);
+    const { error } = await answerJoinRequest(id, answer);
+    setAnsweringId(null);
+    // Gone either way — answered here, or already answered somewhere else.
+    setRequests((prev) => prev.filter((r) => r.id !== id));
+    if (error) setRequestError(error);
   };
 
   useEffect(() => {
@@ -264,7 +280,7 @@ export default function TopBar() {
 
             {/* Pay your share: outstanding dues for matches already played */}
             {matchDues > 0 && (
-              <a href="/my-team" onClick={() => setNotifOpen(false)}
+              <a href={LINKED_FINANCE ? "/my-team/finance" : "/"} onClick={() => setNotifOpen(false)}
                 className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
                 <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
@@ -277,15 +293,15 @@ export default function TopBar() {
                     <span className="text-[10px] font-bold bg-danger text-white px-1.5 py-0.5 rounded-full">{matchDues}</span>
                   </div>
                   <p className="text-[11px] text-text-secondary mt-0.5">
-                    {matchDues} played {matchDues > 1 ? "matches" : "match"} awaiting your share · settle in Team Credits → Dues
+                    {matchDues} played {matchDues > 1 ? "matches" : "match"} awaiting your share · {LINKED_FINANCE ? "pay in Team finance" : "pay with Top Up on Home"}
                   </p>
                 </div>
               </a>
             )}
 
             {/* Pinned: Join Requests (captain only — 0 if no pending requests) */}
-            <a href="/my-team/transfer" onClick={() => setNotifOpen(false)}
-              className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors border-b border-border">
+            <a href={JOIN_REQUESTS_HREF} onClick={() => setNotifOpen(false)}
+              className={`flex items-start gap-3 px-4 py-3 hover:bg-surface-2 transition-colors ${joinRequests > 0 ? "" : "border-b border-border"}`}>
               <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E7A3C" strokeWidth="2" strokeLinecap="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -304,6 +320,38 @@ export default function TopBar() {
                 </p>
               </div>
             </a>
+
+            {/* Each request answered in place. The row above opens the full
+                list in My Team → Members → Requests. */}
+            {joinRequests > 0 && (
+              <div className="border-b border-border pb-1">
+                {requests.slice(0, 5).map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 pl-[60px] pr-4 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate">{r.name}</p>
+                      <p className="text-[11px] text-text-secondary truncate">{r.position ?? "Wants to join"}</p>
+                    </div>
+                    <button type="button" disabled={answeringId === r.id} onClick={() => answerRequest(r.id, "rejected")}
+                      className="px-2.5 py-1.5 rounded-lg border border-border text-[11px] font-semibold text-text-secondary disabled:opacity-40">
+                      Decline
+                    </button>
+                    <button type="button" disabled={answeringId === r.id} onClick={() => answerRequest(r.id, "approved")}
+                      className="px-2.5 py-1.5 rounded-lg bg-accent text-white text-[11px] font-bold disabled:opacity-40">
+                      Approve
+                    </button>
+                  </div>
+                ))}
+                {requests.length > 5 && (
+                  <a href={JOIN_REQUESTS_HREF} onClick={() => setNotifOpen(false)}
+                    className="block pl-[60px] pr-4 py-1.5 text-[11px] font-semibold text-accent-ink">
+                    See all {requests.length}
+                  </a>
+                )}
+              </div>
+            )}
+            {requestError && (
+              <p className="px-4 py-2 text-[11px] text-red-600 border-b border-border">{requestError}</p>
+            )}
 
             {/* Pinned: Open Match Posts */}
             <a href="/calendar?filter=my_post" onClick={() => setNotifOpen(false)}

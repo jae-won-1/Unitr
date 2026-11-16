@@ -29,6 +29,7 @@ import StatsTab from "@/components/my-team/StatsTab";
 import MembersTab from "@/components/my-team/MembersTab";
 import LeaveTeamPanel from "@/components/my-team/LeaveTeamPanel";
 import CaptainActionMenu from "@/components/my-team/CaptainActionMenu";
+import { loadJoinRequests, type JoinRequest } from "@/lib/join-requests";
 
 // Highlights "@Full Name" mentions in announcement text for display.
 // Validity (matching a real squad member) is enforced at creation time via
@@ -59,13 +60,6 @@ type Team = {
   captain_id: string;
   member_count?: number;
   joining_fee_pence?: number | null;
-};
-
-type JoinRequest = {
-  id: string;
-  player_id: string;
-  status: string;
-  profiles: { full_name: string; position: string } | null;
 };
 
 // Not exported: a Next.js page module may only export the default component
@@ -202,67 +196,21 @@ function NewUserMyTeam() {
   );
 }
 
-// ── Join requests ─────────────────────────────────────────────
-// Above the tabs, not inside one: an unanswered join request is an inbox item
-// with someone waiting on the other end, and burying it behind a tab is how a
-// player sits in limbo for a fortnight.
-function JoinRequests({ teamId }: { teamId: string }) {
-  const [requests, setRequests] = useState<JoinRequest[]>([]);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase
-      .from("team_members")
-      .select("id, player_id, status, profiles(full_name, position)")
-      .eq("team_id", teamId)
-      .eq("status", "pending")
-      .then(({ data }) => setRequests((data ?? []) as unknown as JoinRequest[]));
-  }, [teamId]);
-
-  const handleRequest = async (requestId: string, status: "approved" | "rejected") => {
-    setUpdatingId(requestId);
-    await supabase.from("team_members").update({ status }).eq("id", requestId);
-    setRequests((prev) => prev.filter((r) => r.id !== requestId));
-    setUpdatingId(null);
-  };
-
-  if (requests.length === 0) return null;
-
-  return (
-    <section className="mb-5">
-      <div className="flex items-center gap-2 mb-3">
-        <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Join Requests</h3>
-        <span className="text-xs font-bold bg-accent text-white px-2 py-0.5 rounded-full">{requests.length}</span>
-      </div>
-      <div className="space-y-2">
-        {requests.map((req) => (
-          <div key={req.id} className="bg-surface border border-border shadow-card rounded-card px-4 py-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-accent-ink">
-                {req.profiles?.full_name?.split(" ").map((w) => w[0]).join("").slice(0,2) ?? "?"}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold truncate">{req.profiles?.full_name ?? "Unknown player"}</p>
-              <p className="text-xs text-text-secondary">{req.profiles?.position ?? "—"}</p>
-            </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "rejected")}
-                className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-secondary disabled:opacity-40">Decline</button>
-              <button disabled={updatingId === req.id} onClick={() => handleRequest(req.id, "approved")}
-                className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-bold disabled:opacity-40">Approve</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // ── Team-scoped tab surface ───────────────────────────────────
 function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptain: boolean; isCoCaptain: boolean }) {
   const [team, setTeam] = useState<Team | null | undefined>(undefined);
   const [tab, setTab] = useState<TeamTab>("match");
+  // Join requests live in Members → Requests. The list is held here so the
+  // Members icon can carry the count: a request is someone waiting on an
+  // answer, and behind an unmarked tab is how they wait a fortnight.
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const teamId = team?.id;
+  useEffect(() => {
+    if (!teamId || !isCaptain) { setJoinRequests([]); return; }
+    let cancelled = false;
+    loadJoinRequests(teamId).then((rows) => { if (!cancelled) setJoinRequests(rows); });
+    return () => { cancelled = true; };
+  }, [teamId, isCaptain]);
 
   // Read ?tab= after mount rather than during render. useSearchParams would
   // force a Suspense boundary around the whole page, and reading
@@ -316,7 +264,15 @@ function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptai
 
   return (
     <>
-      {isCaptain && <JoinRequests teamId={team.id} />}
+      {/* The team's name leads the page; the icon row follows it. */}
+      <header className="mb-4">
+        <h1 className="text-2xl font-extrabold leading-tight break-words">{team.name.trim()}</h1>
+        <p className="text-sm text-text-secondary mt-0.5">
+          {[team.location, team.level, teamFormatLabel(team)].filter(Boolean).join(" · ")}
+        </p>
+      </header>
+
+      <TeamAnnouncementBanner userId={userId} role={isCaptain ? "captain" : "player"} />
 
       {/* Six slots don't fit a phone, so the row scrolls sideways — bled to the
           screen edges so it reads as scrollable rather than clipped. */}
@@ -326,11 +282,16 @@ function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptai
           <button key={t} type="button" onClick={() => selectTab(t)}
             aria-current={tab === t ? "page" : undefined}
             className="flex flex-col items-center gap-2 flex-1 min-w-[72px] snap-start">
-            <span className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+            <span className={`relative w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
               tab === t ? "bg-accent text-white" : "bg-surface border border-border text-text-secondary"}`}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 {TAB_ICONS[t]}
               </svg>
+              {t === "members" && joinRequests.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+                  {joinRequests.length}
+                </span>
+              )}
             </span>
             <p className={`text-[11px] text-center leading-tight ${tab === t ? "font-bold text-text-primary" : "font-semibold text-text-secondary"}`}>
               {TAB_LABEL[t]}
@@ -355,7 +316,10 @@ function TeamTabs({ userId, isCaptain, isCoCaptain }: { userId: string; isCaptai
       {tab === "match" && <ManageMatchTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
       {tab === "tactics" && <TacticsTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
       {tab === "stats" && <StatsTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
-      {tab === "members" && <MembersTab teamId={team.id} userId={userId} isCaptain={isCaptain} />}
+      {tab === "members" && (
+        <MembersTab teamId={team.id} userId={userId} isCaptain={isCaptain}
+          joinRequests={joinRequests} onJoinRequestsChange={setJoinRequests} />
+      )}
 
       {/* Bottom of the page, under every tab: leaving is about the squad, not
           about whichever tab you happen to be on. A co-captain reaches the
@@ -434,16 +398,14 @@ export default function MyTeamPage() {
 
   return (
     <div className="flex flex-col min-h-screen px-4 pt-16 pb-24">
-      {/* Only the teamless get a page title: inside a team the icon row is the
-          top of the page. */}
+      {/* The teamless get a page title here; inside a team the team's own name
+          is the title (TeamTabs). */}
       {role === "new_user" && (
         <header className="mb-4">
           <h1 className="text-2xl font-extrabold mb-0.5">Browse Teams</h1>
           <p className="text-text-secondary text-sm">Find teams to become your next family</p>
         </header>
       )}
-
-      {inTeam && <TeamAnnouncementBanner userId={user.id} role={role as "captain" | "player"} />}
 
       {role === "new_user" && !user && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">

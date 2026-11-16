@@ -7,6 +7,7 @@ import InviteLinkPanel from "@/components/my-team/InviteLinkPanel";
 import CoCaptainsPanel from "@/components/my-team/CoCaptainsPanel";
 import TeamDetailsPanel from "@/components/my-team/TeamDetailsPanel";
 import { loadLeadership } from "@/lib/team-leadership";
+import { LINKED_FINANCE } from "@/lib/finance-mode";
 
 // Team Settings covers what the team told us at registration — name, location,
 // level, players per side, description (TeamDetailsPanel) — plus the invite
@@ -121,6 +122,18 @@ export default function TeamSettingsPage() {
         </div>
       )}
 
+      {LINKED_FINANCE ? (
+        // Linked finance: the joining fee is a payment request, set and
+        // tracked on the Team Finance screen. Writing teams.joining_fee_pence
+        // here would fire the team-credit triggers and tell the squad to top up.
+        <a href="/my-team/finance" className="block bg-surface border border-border shadow-card rounded-card p-4">
+          <p className="text-sm font-bold mb-1">Joining fee</p>
+          <p className="text-xs text-text-secondary">
+            Set or change it in <span className="font-semibold text-accent-ink">Team finance</span> — tap + there
+            and choose Joining fee.
+          </p>
+        </a>
+      ) : (
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-text-secondary">Joining fee</label>
@@ -162,6 +175,7 @@ export default function TeamSettingsPage() {
           ) : saved ? "Saved ✓" : "Save Joining Fee"}
         </button>
       </div>
+      )}
     </div>
   );
 }

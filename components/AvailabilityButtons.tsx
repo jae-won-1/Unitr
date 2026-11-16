@@ -21,7 +21,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  loadAvailabilityGate, owedSummary, type AvailabilityGate,
+  loadAvailabilityGate, owedSummary, PAY_WHERE, type AvailabilityGate,
 } from "@/lib/availability-gate";
 import { readMyStatus, writeMyStatus, type ConfirmStatus } from "@/lib/event-availability";
 
@@ -145,7 +145,7 @@ export function AvailabilityButtons({
       </div>
       {blocked && (
         <p className="text-[11px] text-red-600 font-semibold mt-1.5">
-          Pay {owedSummary(gate!)} (Top Up on Home) to vote available.
+          Pay {owedSummary(gate!)} {PAY_WHERE} to vote available.
           You can still say you&apos;re unavailable.
         </p>
       )}

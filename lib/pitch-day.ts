@@ -5,9 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // the server can't disagree about whether an hour is free.
 //
 // Reads the venue portal's own tables: weekly opening hours
-// (pitch_availability), bookings, and ad-hoc blocks (pitch_blocks). A table
-// that doesn't exist on this database reads as empty, which is what a pitch
-// with no rules means anyway: open 07:00–22:00, free unless booked.
+// (pitch_availability), bookings, and closures — pitches.blocked_dates, which
+// is what the portal's Settings → Holidays tab writes, plus the older
+// pitch_blocks table. A table or column that doesn't exist on this database
+// reads as empty, which is what a pitch with no rules means anyway: open
+// 07:00–22:00, free unless booked.
 
 export type DaySlotStatus = "available" | "booked" | "closed";
 export type DaySlot = { time: string; status: DaySlotStatus };
@@ -39,7 +41,7 @@ export async function loadPitchDay(
   if (pitchIds.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return {};
   const dayOfWeek = new Date(date + "T12:00:00").getDay();
 
-  const [{ data: avails }, { data: bookings }, { data: blocks }] = await Promise.all([
+  const [{ data: avails }, { data: bookings }, { data: tableBlocks }, { data: closures }] = await Promise.all([
     client.from("pitch_availability")
       .select("pitch_id, open_time, close_time, is_active")
       .in("pitch_id", pitchIds).eq("day_of_week", dayOfWeek),
@@ -47,7 +49,18 @@ export async function loadPitchDay(
       .select("pitch_id, start_time, end_time").in("pitch_id", pitchIds).eq("match_date", date).neq("status", "cancelled"),
     client.from("pitch_blocks")
       .select("pitch_id, start_time, end_time").in("pitch_id", pitchIds).eq("block_date", date),
+    client.from("pitches").select("id, blocked_dates").in("id", pitchIds),
   ]);
+
+  type BlockRow = { pitch_id: string; start_time: string | null; end_time: string | null };
+  const blocks: BlockRow[] = [...((tableBlocks ?? []) as BlockRow[])];
+  for (const p of (closures ?? []) as { id: string; blocked_dates?: unknown }[]) {
+    if (!Array.isArray(p.blocked_dates)) continue;
+    for (const b of p.blocked_dates as { block_date?: string; start_time?: string | null; end_time?: string | null }[]) {
+      if (b?.block_date !== date) continue;
+      blocks.push({ pitch_id: p.id, start_time: b.start_time || null, end_time: b.end_time || null });
+    }
+  }
 
   const map: Record<string, DaySlot[]> = {};
   for (const pitchId of pitchIds) {
@@ -64,7 +77,7 @@ export async function loadPitchDay(
     // it — so a part-hour booking like 18:30–19:30 blocks both 18:00 and 19:00.
     const taken = new Set<string>();
     const pitchBookings = (bookings ?? []).filter((b) => b.pitch_id === pitchId);
-    const pitchBlocks = (blocks ?? []).filter((b) => b.pitch_id === pitchId);
+    const pitchBlocks = blocks.filter((b) => b.pitch_id === pitchId);
     const wholeDayBlocked = pitchBlocks.some((b) => !b.start_time);
     for (const b of [...pitchBookings, ...pitchBlocks]) {
       if (!b.start_time) continue;

@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     const callerId = await getCallerId(req);
     if (!callerId) return unauthorized();
 
-    const { pitchId } = await req.json();
+    // embedded: true → onboarding inside Venue Settings (Stripe's embedded
+    // component) instead of a link to Stripe's hosted page.
+    const { pitchId, embedded } = await req.json();
     if (!pitchId) {
       return NextResponse.json({ error: "Missing pitchId" }, { status: 400 });
     }
@@ -82,7 +84,23 @@ export async function POST(req: NextRequest) {
     const pitchIds = venuePitches.map((p) => p.id);
     await adminSupabase.from("pitches").update({ stripe_account_id: accountId }).in("id", pitchIds);
 
-    // Onboarding link the venue opens to finish KYC and enable payouts.
+    // In-app onboarding: a short-lived secret that unlocks onboarding for this
+    // one account only, for components/ConnectOnboardingSheet.
+    if (embedded === true) {
+      const session = await stripe.accountSessions.create({
+        account: accountId,
+        components: {
+          account_onboarding: {
+            enabled: true,
+            features: { external_account_collection: true },
+          },
+        },
+      });
+      return NextResponse.json({ accountId, clientSecret: session.client_secret });
+    }
+
+    // Onboarding link the venue opens to finish KYC and enable payouts — the
+    // fallback if the in-app form won't load.
     const origin = req.headers.get("origin") ?? new URL(req.url).origin;
     const link = await stripe.accountLinks.create({
       account: accountId,

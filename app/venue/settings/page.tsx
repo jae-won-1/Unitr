@@ -5,6 +5,10 @@ import { authedPost } from "@/lib/authed-fetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { TimePicker } from "@/components/DateTimePickers";
+import dynamic from "next/dynamic";
+
+// Stripe's embedded onboarding needs a browser, so it never renders on the server.
+const ConnectOnboardingSheet = dynamic(() => import("@/components/ConnectOnboardingSheet"), { ssr: false });
 
 // ── Types ─────────────────────────────────────────────────────
 type DaySchedule = { day_of_week: number; open_time: string; close_time: string; is_active: boolean };
@@ -183,6 +187,7 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", price: "", capacity: "", formats: [] as string[], surfaces: [] as string[] });
   const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const handleAdd = async () => {
     if (!addForm.name.trim()) { setAddError("Pitch name is required."); return; }
@@ -211,8 +216,8 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
-    setEditSaving(true);
-    await supabase.from("pitches").update({
+    setEditSaving(true); setEditError(null);
+    const { error: dbErr } = await supabase.from("pitches").update({
       name: editForm.name.trim(),
       price_per_hour: parseFloat(editForm.price) || 0,
       capacity: editForm.capacity ? parseInt(editForm.capacity) : null,
@@ -220,6 +225,8 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
       surfaces: editForm.surfaces,
     }).eq("id", editingId);
     setEditSaving(false);
+    // Keep the form open with what was typed — closing it would look saved.
+    if (dbErr) { setEditError("Couldn't save this pitch. Please try again."); return; }
     onPitchesChange(pitches.map((p) => p.id === editingId ? {
       ...p,
       name: editForm.name.trim(),
@@ -233,7 +240,10 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
 
   const handleRemove = async (id: string) => {
     if (pitches.length <= 1) return;
-    await supabase.from("pitches").delete().eq("id", id);
+    setEditError(null);
+    const { error: dbErr } = await supabase.from("pitches").delete().eq("id", id);
+    // A pitch with bookings can't be deleted — they reference it.
+    if (dbErr) { setEditError("Couldn't remove this pitch. A pitch that has bookings can't be removed."); return; }
     onPitchesChange(pitches.filter((p) => p.id !== id));
   };
 
@@ -248,6 +258,12 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
         </button>
       </div>
 
+      {editError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-600">{editError}</p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {pitches.map((p, i) => (
           <div key={p.id} className="bg-surface-2 border border-border rounded-2xl p-4">
@@ -255,7 +271,7 @@ function PitchesTab({ pitches, venueOwnerId, primaryPitchAddress, primaryPitchCo
               <PitchEditForm
                 form={editForm} setForm={setEditForm}
                 label="Save Changes" saving={editSaving}
-                onSave={handleSaveEdit} onCancel={() => setEditingId(null)}
+                onSave={handleSaveEdit} onCancel={() => { setEditingId(null); setEditError(null); }}
               />
             ) : (
               <div className="flex items-start justify-between gap-2">
@@ -311,9 +327,11 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     supabase.from("pitch_availability").select("*").eq("pitch_id", pitchId).order("day_of_week")
       .then(({ data }) => {
         if (data && data.length > 0) {
@@ -332,12 +350,24 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    await supabase.from("pitch_availability").upsert(
-      schedule.map((d) => ({ pitch_id: pitchId, ...d })),
+    setSaving(true); setError(null);
+    // Named columns only: a loaded row also carries id and created_at, and a
+    // default week has neither — mixing the two shapes in one upsert fails.
+    const { error: dbErr } = await supabase.from("pitch_availability").upsert(
+      schedule.map((d) => ({
+        pitch_id: pitchId, day_of_week: d.day_of_week,
+        open_time: d.open_time, close_time: d.close_time, is_active: d.is_active,
+      })),
       { onConflict: "pitch_id,day_of_week" }
     );
     setSaving(false);
+    if (dbErr) {
+      // 42P01 / PGRST205: the table isn't on this database yet.
+      setError(dbErr.code === "42P01" || dbErr.code === "PGRST205"
+        ? "Opening hours can't be saved yet — run supabase_venue_hours.sql in Supabase first. Until then every pitch is open 07:00–22:00."
+        : "Couldn't save the schedule. Please try again.");
+      return;
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -367,6 +397,12 @@ function ScheduleTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
           )}
         </div>
       ))}
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-600">{error}</p>
+        </div>
+      )}
 
       <button onClick={handleSave} disabled={saving}
         className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50 mt-2">
@@ -407,6 +443,7 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [newRule, setNewRule] = useState<Omit<PricingRule, "id">>({
     name: "", days: [], start_time: "18:00", end_time: "22:00", price: 0,
   });
@@ -428,13 +465,14 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
   }, [pitchId, pitches]);
 
   const handleSave = async () => {
-    setSaving(true);
-    await supabase.from("pitches").update({
+    setSaving(true); setError(null);
+    const { error: dbErr } = await supabase.from("pitches").update({
       price_per_hour: parseFloat(localBasePrice) || 0,
       pricing_rules: rules,
     }).eq("id", pitchId);
-    onBasePriceChange(localBasePrice);
     setSaving(false);
+    if (dbErr) { setError("Couldn't save your pricing. Please try again."); return; }
+    onBasePriceChange(localBasePrice);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -494,6 +532,12 @@ function PricingTab({ pitches, pitchId, basePrice, onBasePriceChange, onPitchCha
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-red-600">{error}</p>
+        </div>
+      )}
 
       <button onClick={handleSave} disabled={saving}
         className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50">
@@ -603,7 +647,9 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
 
   const handleRemove = async (id: string) => {
     const updated = blocks.filter((b) => b.id !== id);
-    await persist(updated);
+    const dbErr = await persist(updated);
+    if (dbErr) { setError("Couldn't remove that date. Please try again."); return; }
+    setError(null);
     setBlocks(updated);
   };
 
@@ -621,6 +667,8 @@ function HolidaysTab({ pitches, pitchId, onPitchChange }: { pitches: PitchItem[]
           Add
         </button>
       </div>
+
+      {error && !showAdd && <p className="text-xs text-red-600">{error}</p>}
 
       {blocks.length === 0 ? (
         <div className="bg-surface-2 border border-border rounded-2xl px-4 py-8 text-center">
@@ -714,6 +762,11 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
   const [accountId, setAccountId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Linking happens in a sheet on this page (Stripe's embedded onboarding);
+  // Stripe's hosted page is only the fallback if that form won't load.
+  const [onboarding, setOnboarding] = useState(false);
+  // Bumped after the sheet closes, so the status below is asked again.
+  const [statusCheck, setStatusCheck] = useState(0);
 
   useEffect(() => {
     if (!primaryId) return;
@@ -740,10 +793,25 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [primaryId]);
+  }, [primaryId, statusCheck]);
 
-  const handleConnect = async () => {
+  const fetchClientSecret = async () => {
+    const res = await authedPost("/api/connect/create-venue-account", { pitchId: primaryId, embedded: true });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.clientSecret) throw new Error(d.error ?? "Could not start onboarding.");
+    if (d.accountId) { setAccountId(d.accountId); setConnected(true); }
+    return d.clientSecret as string;
+  };
+
+  const finishOnboarding = () => {
+    setOnboarding(false);
+    setStatusCheck((n) => n + 1);
+  };
+
+  // The fallback: Stripe's own page, taking the whole tab.
+  const handleHostedConnect = async () => {
     if (!primaryId) return;
+    setOnboarding(false);
     setConnecting(true);
     setError(null);
     try {
@@ -795,13 +863,23 @@ function PayoutsTab({ pitches }: { pitches: PitchItem[] }) {
             Ready to receive payouts. See payout history in Reports.
           </div>
         ) : (
-          <button onClick={handleConnect} disabled={connecting}
+          <button onClick={() => { setError(null); setOnboarding(true); }} disabled={connecting || !primaryId}
             className="w-full py-3 rounded-xl bg-accent text-white font-bold text-sm disabled:opacity-50">
             {connecting ? "Starting…" : connected ? "Resume Onboarding" : "Connect Payout Account"}
           </button>
         )}
         {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
       </div>
+
+      {onboarding && (
+        <ConnectOnboardingSheet
+          title="Connect your payout account"
+          fetchClientSecret={fetchClientSecret}
+          onClose={finishOnboarding}
+          onFinished={finishOnboarding}
+          onUseHostedPage={() => { void handleHostedConnect(); }}
+        />
+      )}
 
       {pitches.length > 1 && (
         <div className="bg-surface-2 border border-border rounded-2xl p-4">
