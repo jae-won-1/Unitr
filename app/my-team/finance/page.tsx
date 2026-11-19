@@ -16,6 +16,7 @@ import RequestDetailSheet from "@/components/finance/RequestDetailSheet";
 import CreateRequestSheet from "@/components/finance/CreateRequestSheet";
 import PayRequestSheet from "@/components/finance/PayRequestSheet";
 import SettleMatchFees from "@/components/finance/SettleMatchFees";
+import TeamCardPanel from "@/components/finance/TeamCardPanel";
 import dynamic from "next/dynamic";
 
 // Stripe's embedded onboarding needs a browser, so it never renders on the server.
@@ -406,6 +407,8 @@ export default function TeamFinancePage() {
                 <p className="text-[11px] text-text-secondary mt-1.5 leading-snug">{trackedBalanceNote}</p>
               </div>
               <AccountPanel teamId={teamId} account={account} onChanged={reload} />
+              <TeamCardPanel teamId={teamId} card={dashboard.teamCard ?? null}
+                unavailable={dashboard.teamCardUnavailable} onChanged={reload} />
             </>
           ) : (
             <div className={`rounded-card border px-4 py-3.5 ${myOwed > 0 ? "bg-[#FDECEC] border-danger/30" : "bg-success-bg border-success-border"}`}>

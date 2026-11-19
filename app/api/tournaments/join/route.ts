@@ -7,33 +7,44 @@ import { teamCategoryRefusal } from "@/lib/gender-entry";
 import { LINKED_FINANCE } from "@/lib/finance-mode";
 import { stripe } from "@/lib/stripe";
 import { paymentRateLimit } from "@/lib/rate-limit";
-import { ensureStripeCustomer } from "@/lib/stripe-customer";
 import { afterEventEntry, finalizeEventEntry, isRefusal, priceEventEntry } from "@/lib/event-entry-server";
+import { loadTeamCard, TeamCardTableMissing } from "@/lib/team-card-server";
 
-// ── Linked finance: the buy-in is paid by card ──────────────────────────
-// docs/PAYMENT_PIVOT.md step 2. There is no team credit to debit, so entering
-// is a purchase made on the spot by the leader entering the team, in two calls
-// to this route (the shape /api/book/pitch uses):
+// ── Linked finance: the buy-in is paid with the team card ───────────────
+// docs/PAYMENT_PIVOT.md step 2. There is no team credit to debit. A leader
+// saves a card for the team in Team finance (/api/finance/team-card) —
+// ideally the debit card of the team's linked bank account, which is where
+// the squad's payment requests are paid out — and entries are charged to it.
+// Three calls to this route, all from the same entry sheet:
 //
-//   1. no paymentIntentId — check the entry and open a PaymentIntent for the
-//      buy-in plus the fee. A venue's or a team's event names that host's
-//      Stripe account as the charge's destination; Uniter's own event is an
-//      ordinary sale. A free entry is simply recorded.
-//   2. paymentIntentId — the payer's app confirmed the card. Verify the intent
-//      with Stripe and record the entry (lib/event-entry-server.ts), which
-//      refunds the card if the event filled or was cancelled meanwhile. The
-//      webhook runs the same function, so an app that dies after paying still
-//      ends up entered.
+//   1. quote: true — check the entry and price it (invitation discount, the
+//      fee on top). Nothing is charged; the leader sees the total and the card.
+//   2. no paymentIntentId — charge the team card, the leader present. A venue's
+//      or a team's event names that host's Stripe account as the charge's
+//      destination; Uniter's own event is an ordinary sale. Usually that is the
+//      end: the entry is recorded at once. If the bank wants the leader to
+//      approve it, the answer carries the client secret for the app to finish.
+//   3. paymentIntentId — after the app finished that approval: verify the
+//      intent with Stripe and record the entry.
+//
+// Recording is lib/event-entry-server.ts's finalizeEventEntry, idempotent, and
+// also run by the Stripe webhook — so an app that dies after paying still ends
+// up entered — and it refunds the card if the event filled or was cancelled
+// while the payment was going through. A free entry is simply recorded.
 async function enterByCard(
-  req: NextRequest, userId: string,
-  body: { openMatchId: string; teamId: string; teamName?: string; paymentIntentId?: string },
+  userId: string,
+  body: { openMatchId: string; teamId: string; teamName?: string; paymentIntentId?: string; quote?: boolean },
 ) {
-  const { openMatchId, teamId, teamName, paymentIntentId } = body;
+  const { openMatchId, teamId, teamName, paymentIntentId, quote } = body;
 
+  const entered = (buyInPence: number, totalPence: number) =>
+    NextResponse.json({ ok: true, buyInPence, totalPence, paidBy: "team_card" });
+
+  // ── 3. Finish after the bank's approval ──
   if (paymentIntentId) {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (pi.metadata?.type !== "event_entry" || pi.metadata.openMatchId !== openMatchId
-        || pi.metadata.teamId !== teamId || pi.metadata.userId !== userId) {
+        || pi.metadata.teamId !== teamId) {
       return forbidden("That payment isn't for this entry.");
     }
     if (pi.status !== "succeeded") {
@@ -46,7 +57,7 @@ async function enterByCard(
     if (outcome.status === "not_an_entry") {
       return NextResponse.json({ error: "That payment isn't for an entry." }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, buyInPence: outcome.buyInPence, totalPence: outcome.totalPence, paidBy: "card" });
+    return entered(outcome.buyInPence, outcome.totalPence);
   }
 
   const price = await priceEventEntry(openMatchId, teamId);
@@ -54,6 +65,7 @@ async function enterByCard(
 
   // Nothing to pay (a full-discount invitation, a free event): just enter.
   if (price.totalPence <= 0) {
+    if (quote) return NextResponse.json({ quote: true, buyInPence: 0, feePence: 0, totalPence: 0, card: null });
     const { error: joinErr } = await adminSupabase.from("open_match_teams").insert({
       open_match_id: openMatchId, team_id: teamId, team_name: teamName ?? "",
       joined_by: userId, payment_status: "paid",
@@ -64,72 +76,101 @@ async function enterByCard(
     await afterEventEntry({
       event: price.event, teamId, userId, joinedBefore: price.joinedCount, invite: price.invite,
     });
-    return NextResponse.json({ ok: true, buyInPence: 0, totalPence: 0, paidBy: "card" });
+    return entered(0, 0);
   }
 
+  let card;
+  try {
+    card = await loadTeamCard(teamId);
+  } catch (err) {
+    if (err instanceof TeamCardTableMissing) {
+      return NextResponse.json(
+        { error: "The team card isn't set up on this database yet — run supabase_team_card.sql." },
+        { status: 503 },
+      );
+    }
+    throw err;
+  }
+  const totals = { buyInPence: price.buyInPence, feePence: price.feePence, totalPence: price.totalPence };
+  if (!card?.stripe_payment_method_id) {
+    return NextResponse.json({
+      error: "Your team hasn't saved a team card yet. Add one in Team finance — it pays for entries.",
+      code: "NO_TEAM_CARD",
+      ...totals,
+    }, { status: 409 });
+  }
+
+  // ── 1. The price, and the card it will go on ──
+  if (quote) {
+    return NextResponse.json({ quote: true, ...totals, card: { brand: card.brand, last4: card.last4 } });
+  }
+
+  // ── 2. Charge the team card ──
   const limited = await paymentRateLimit(userId);
   if (limited) return limited;
 
-  const { data: authUser } = await adminSupabase.auth.admin.getUserById(userId);
-  const customer = await ensureStripeCustomer(userId, authUser?.user?.email ?? null);
+  let pi;
+  try {
+    pi = await stripe.paymentIntents.create({
+      amount: price.totalPence,
+      currency: "gbp",
+      customer: card.stripe_customer_id,
+      payment_method: card.stripe_payment_method_id,
+      // Confirmed now, with the leader present (not off-session): if the bank
+      // wants an approval, the app shows it to the leader who pressed Pay.
+      confirm: true,
+      // Cards and wallets only — see the convention in CLAUDE.md.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+      ...(price.destination
+        ? {
+            transfer_data: { destination: price.destination },
+            ...(price.feePence > 0 ? { application_fee_amount: price.feePence } : {}),
+          }
+        : {}),
+      // finalizeEventEntry records the entry off this metadata — the only link
+      // between the charge and what it bought.
+      metadata: {
+        type: "event_entry",
+        paidWith: "team_card",
+        openMatchId,
+        teamId,
+        userId,
+        teamName: (teamName ?? "").slice(0, 120),
+        buyInPence: String(price.buyInPence),
+        feePence: String(price.feePence),
+        host: price.host,
+        ...(price.invite && price.invite.status === "pending" ? { inviteId: price.invite.id } : {}),
+      },
+      description: `Uniter — entry to ${price.event.title || "a tournament"}`,
+    });
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    return NextResponse.json(
+      { error: e.code === "card_declined" || e.message
+          ? `The team card was declined${e.message ? `: ${e.message}` : "."} Check it, or replace it in Team finance.`
+          : "The team card couldn't be charged." },
+      { status: 402 },
+    );
+  }
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: price.totalPence,
-    currency: "gbp",
-    customer,
-    // Lets the payer tick "save this card"; it stays on their own customer.
-    setup_future_usage: "off_session",
-    // Cards and wallets only — see the convention in CLAUDE.md.
-    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-    ...(price.destination
-      ? {
-          transfer_data: { destination: price.destination },
-          ...(price.feePence > 0 ? { application_fee_amount: price.feePence } : {}),
-        }
-      : {}),
-    // finalizeEventEntry records the entry off this metadata — the only link
-    // between the charge and what it bought.
-    metadata: {
-      type: "event_entry",
-      openMatchId,
-      teamId,
-      userId,
-      teamName: (teamName ?? "").slice(0, 120),
-      buyInPence: String(price.buyInPence),
-      feePence: String(price.feePence),
-      host: price.host,
-      ...(price.invite && price.invite.status === "pending" ? { inviteId: price.invite.id } : {}),
-    },
-    description: `Uniter — entry to ${price.event.title || "a tournament"}`,
-  });
+  if (pi.status === "requires_action") {
+    return NextResponse.json({ requiresAction: true, clientSecret: pi.client_secret, paymentIntentId: pi.id, ...totals });
+  }
+  if (pi.status === "processing") {
+    // Rare for a card; the webhook records the entry when it lands.
+    return NextResponse.json({ ok: true, processing: true, ...totals, paidBy: "team_card" });
+  }
+  if (pi.status !== "succeeded") {
+    return NextResponse.json({ error: "The team card couldn't be charged. Check it in Team finance." }, { status: 402 });
+  }
 
-  return NextResponse.json({
-    needsPayment: true,
-    clientSecret: paymentIntent.client_secret,
-    buyInPence: price.buyInPence,
-    feePence: price.feePence,
-    totalPence: price.totalPence,
-  });
+  const outcome = await finalizeEventEntry(pi);
+  if (outcome.status === "refunded") {
+    return NextResponse.json({ error: outcome.reason, refunded: true }, { status: 409 });
+  }
+  return entered(price.buyInPence, price.totalPence);
 }
 
-// A team buys into a tournament (open_matches, match_type='tournament').
-// The full per-team buy-in is debited from the joining team's credit here. Where the
-// money goes then depends on who hosts the tournament:
-//   - Venue-hosted (organiser_team_id null): this route calls /api/connect/venue-transfer
-//     itself, server-side, to move the buy-in to the venue's Stripe account (hostType
-//     'venue'). Kept server-side (rather than a client fire-and-forget) so the transfer
-//     can't be skipped by a user navigating away, and its outcome is returned to the caller.
-//   - Team-hosted (organiser_team_id set, and it isn't the joining team itself): the
-//     buy-in reimburses the ORGANISER team's credit here (hostType 'team'). If the
-//     organiser is joining its OWN tournament, no payout and no reimbursement happen —
-//     they already paid the venue in full when they created it.
-//   - Admin-hosted (organiser_admin_id set): Uniter staff booked the pitch outside the
-//     app, so the debited buy-in stays with the platform (hostType 'admin') — nothing
-//     moves after the debit.
-//
-// After the debit we pre-create pending 'replenish' player_payments for the joining
-// team's squad so each player later refills their team's credit off their saved card —
-// the same settle model used for matches (PAYMENT_PLAN §10).
 export async function POST(req: NextRequest) {
   try {
     // Entering a tournament spends the team pot, so the entrant is the signed-in
@@ -148,7 +189,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Linked finance: no credit to debit — the buy-in is paid by card.
-    if (LINKED_FINANCE) return await enterByCard(req, userId, body);
+    if (LINKED_FINANCE) return await enterByCard(userId, body);
 
     // 1) Load the tournament listing.
     const { data: om } = await adminSupabase

@@ -6,6 +6,7 @@ import {
 } from "@/lib/team-finance-server";
 import type { FinanceDashboard, FinanceRequest, RequestMember } from "@/lib/team-finance";
 import { withOptionalColumn } from "@/lib/optional-column";
+import { describeTeamCard, loadTeamCard, TeamCardTableMissing } from "@/lib/team-card-server";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,8 @@ export async function GET(req: NextRequest) {
   let balancePence: number | null = null;
   let entries: FinanceDashboard["entries"] = [];
   let squad: FinanceDashboard["squad"] = [];
+  let teamCard: FinanceDashboard["teamCard"] = null;
+  let teamCardUnavailable: string | undefined;
   const entrySpend: Record<string, number> = {};
   if (isLeader) {
     const { data: spendRows } = await adminSupabase.from("team_finance_entries")
@@ -156,6 +159,15 @@ export async function GET(req: NextRequest) {
       createdAt: e.created_at as string,
     }));
     squad = squadRows;
+    try {
+      teamCard = await describeTeamCard(await loadTeamCard(teamId), callerId);
+    } catch (err) {
+      if (err instanceof TeamCardTableMissing) {
+        teamCardUnavailable = "The team card isn't set up on this database yet — run supabase_team_card.sql.";
+      } else {
+        console.error("finance/dashboard: team card:", (err as Error).message);
+      }
+    }
   }
 
   const body: FinanceDashboard = {
@@ -170,7 +182,7 @@ export async function GET(req: NextRequest) {
     requests,
     entries,
     squad,
-    ...(isLeader ? { entrySpend } : {}),
+    ...(isLeader ? { entrySpend, teamCard, ...(teamCardUnavailable ? { teamCardUnavailable } : {}) } : {}),
   };
   return NextResponse.json(body);
 }

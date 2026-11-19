@@ -66,6 +66,29 @@ export type FinanceAccount = {
 
 export type SquadMember = { playerId: string; name: string; isCaptain: boolean };
 
+/**
+ * The card the team pays for its entries with (supabase_team_card.sql). It is
+ * the team's, on the team's own Stripe customer: any leader can use, replace
+ * or remove it. Ideally the debit card of the linked bank account, so what the
+ * squad pays in is what it spends.
+ */
+export type TeamCard = {
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  /** "debit" / "credit" / "prepaid", as Stripe reports it. */
+  funding: string | null;
+  savedByName: string | null;
+  savedByMe: boolean;
+};
+
+export function cardLabel(c: { brand: string | null; last4: string | null } | null | undefined): string {
+  if (!c) return "the team card";
+  const brand = c.brand ? c.brand.charAt(0).toUpperCase() + c.brand.slice(1) : "Card";
+  return `${brand} ••${c.last4 ?? "••"}`;
+}
+
 export type FinanceDashboard = {
   /** Set when the database hasn't had supabase_team_finance.sql run. */
   setupNeeded?: string;
@@ -85,6 +108,10 @@ export type FinanceDashboard = {
    * of an invitation discount or the fee.
    */
   entrySpend?: Record<string, number>;
+  /** Leaders only: the saved team card, or null when there isn't one. */
+  teamCard?: TeamCard | null;
+  /** Set when supabase_team_card.sql hasn't been run. */
+  teamCardUnavailable?: string;
 };
 
 export type Owed = {
@@ -279,6 +306,16 @@ export async function accountAction(
 ): Promise<{ url?: string; clientSecret?: string; account?: FinanceAccount } | Failed> {
   return read<{ url?: string; clientSecret?: string; account?: FinanceAccount }>(
     await authedPost("/api/finance/account", { teamId, action, ...(returnTo ? { returnTo } : {}) }));
+}
+
+export type TeamCardAction = "setup" | "save" | "remove";
+
+/** setup → a SetupIntent's client secret; save / remove → the card as it now stands. */
+export async function teamCardAction(
+  teamId: string, action: TeamCardAction, setupIntentId?: string,
+): Promise<{ clientSecret?: string; card?: TeamCard | null } | Failed> {
+  return read<{ clientSecret?: string; card?: TeamCard | null }>(
+    await authedPost("/api/finance/team-card", { teamId, action, ...(setupIntentId ? { setupIntentId } : {}) }));
 }
 
 export async function setTrackedBalance(teamId: string, balancePence: number): Promise<{ balancePence: number } | Failed> {
