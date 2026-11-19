@@ -19,7 +19,27 @@ shape, add a line here. Claude Code ports it on `mobile` and removes the line.
   The phone keeps one Members list with join requests on top; Scout and
   Watchlist have no phone screen (the Transfer Market is its own screen).
 
-## Latest — 2026-11-16 (later), Claude Code: phone port, event entry by card
+## Latest — 2026-11-19, Claude Code: the team card
+
+`main` (pushed) and `mobile` (committed, not pushed, no OTA). Behind the
+finance switch, still off.
+
+- User decided (19 Nov): a leader saves a **team card**, entries are paid with
+  it, refunds go back to it; the fee applies to entries. Built on both apps —
+  CLAUDE.md → Linked finance; `docs/PAYMENT_PIVOT.md`.
+- **User must run `supabase_team_card.sql`** (additive, server-only table)
+  before trying it; without it Team finance says so and entries refuse.
+- Checked: web `tsc`, lint on the touched files, pages compile on the dev
+  server, the new route refuses an unsigned call; phone `tsc`, `expo lint`,
+  an Android `expo export` with the switch on. **Not run: saving a card,
+  paying an entry, a bank approval, a refund — nothing signed in, nothing on
+  a device.**
+- Known edge: a team card saved through a 3D Secure challenge that loses the
+  tab leaves a pending "card" entry the resume banner tries to save to the
+  leader's own profile; the server refuses it (wrong customer), so the banner
+  shows an error. Re-adding the card fixes it.
+
+## Earlier — 2026-11-16 (later), Claude Code: phone port, event entry by card
 
 `main` and `mobile`, committed. Everything below is behind the finance switch,
 which is still **off** everywhere.
@@ -32,11 +52,8 @@ which is still **off** everywhere.
 - **Pivot step 2, event entry** (`main` → `mobile`): entering an event is paid
   by card on linked finance, and take-down / kick-team refund to that card.
   `lib/event-entry-server.ts`; CLAUDE.md → Linked finance. No new SQL.
-- **Decisions taken without the user — confirm or change:**
-  1. No stored team card. The leader entering pays on the spot (their own
-     saved card if they have one). A saved team card can be added later.
-  2. The fee (1.5% + 20p, `lib/payment-fee.ts`) is added to an event entry
-     too, Uniter's own events included, as the launch plan says.
+- Decisions (both answered 19 Nov — see Latest): a saved team card pays;
+  the fee applies to entries.
 - **Switch-on order** (nothing done yet): OTA the phone update with
   `EXPO_PUBLIC_FINANCE_MODE` still unset → set `NEXT_PUBLIC_FINANCE_MODE=linked`
   in Vercel and `EXPO_PUBLIC_FINANCE_MODE=linked` in `mobile/eas.json`, then a

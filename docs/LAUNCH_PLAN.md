@@ -86,10 +86,11 @@ Work items, roughly in order. None are done unless marked.
    **Built on both apps 16 Nov, behind switches that are off:** Team Finance
    (requests, joining fee, match fees, linked bank account) and entering an
    event by card with refunds to the card — everything v1's scope pays for.
-   **Left before the switch goes on:** try each flow in Stripe test mode
-   (nothing has been run signed in); confirm the two decisions in the handoff
-   (no stored team card; the fee on event entries); rewrite the terms and
-   privacy policy (item 3); then follow "Switching on" in the pivot doc.
+   Entries are charged to a **team card** a leader saves (19 Nov).
+   **Left before the switch goes on:** run `supabase_team_card.sql`; try
+   each flow in Stripe test mode (nothing has been run signed in); rewrite
+   the terms and privacy policy (item 3) — the privacy policy must say a team
+   card is stored with Stripe; then follow "Switching on" in the pivot doc.
    Removing credit (step 4) and rebuilding pitch booking and friendlies on
    cards can follow the release — the phone's v1 scope has neither.
 1. **Scope switch** — **Done 26 Oct, phone only.** `lib/launch-scope.ts` +

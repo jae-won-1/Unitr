@@ -830,22 +830,34 @@ phone build reads the join route's "now pay" answer as "entered". Booking a
 pitch and friendlies still spend credit, so the switch can only go on while
 those are off (the phone's v1 scope) or once they are rebuilt.
 
-**Entering an event is paid by card** (`lib/event-entry-server.ts`). With no
-credit to debit, `/api/tournaments/join` is called twice, the shape
-`/api/book/pitch` uses: first it prices the entry — invitation discount
-applied, the fee added on top — and opens a PaymentIntent; then, once the
-leader's card has paid, it records the entry. Where the money goes is part of
-the charge: Uniter's own event is an ordinary sale, a venue's event names the
-venue's Stripe account as the destination, a team's event the host team's
-linked account. `finalizeEventEntry` is idempotent and is also run by the
-Stripe webhook, so an app that dies after paying still ends up entered; it
-refunds the card if the event filled or was cancelled meanwhile. There is no
-stored "team card" yet — the leader entering pays, with their own saved card
-if they have one. What the card was charged is a `spend` row in
+**The team card pays for event entries** (user, 19 Nov). A leader saves a card
+for the team in Team finance (`/api/finance/team-card`,
+`supabase_team_card.sql`, `lib/team-card-server.ts`). It sits on a Stripe
+customer that belongs to the **team**, not the leader, so any captain or
+co-captain can pay with it, replace it or remove it, and it survives a
+hand-over. The advice on screen is the design: use the **debit card of the
+linked bank account**, so the squad's payment requests (paid out to that
+account) are what the card spends; a credit card gets a warning (Stripe's
+`funding`). Uniter cannot check the card belongs to that account.
+
+Entering (`lib/event-entry-server.ts`, client calls in `lib/event-entry.ts`
+shared by both apps) is three calls to `/api/tournaments/join`: **quote**
+(price with the invitation discount and the fee on top, and the card —
+nothing charged), **charge** (the team card, confirmed server-side with the
+leader present, not off-session), and **finish** (after a bank approval the
+app drives — `resumeIntent` on the web, `handleNextAction` on the phone).
+Where the money goes is part of the charge: Uniter's own event is an ordinary
+sale, a venue's event names the venue's Stripe account as the destination, a
+team's event the host team's linked account. `finalizeEventEntry` is
+idempotent and is also run by the Stripe webhook, so an app that dies after
+paying still ends up entered; it refunds the card if the event filled or was
+cancelled meanwhile. No team card → the route answers `NO_TEAM_CARD` and the
+sheet points to Team finance. What was charged is a `spend` row in
 `team_finance_entries`, which the tracked balance, Settle match fees
 (`dashboard.entrySpend`) and refunds read. **Take-down and kick-team refund
-that payment to the card** (`refundEventEntryToCard`) instead of returning
-credit.
+that payment** (`refundEventEntryToCard`), so it goes back to the team card.
+The fee (`lib/payment-fee.ts`) applies to entries, Uniter's own included
+(user, 19 Nov).
 
 **On the phone** the same screens exist behind its switch: `finance.tsx` and
 `finance-sheets.tsx` (paying through Stripe's PaymentSheet; the bank account
@@ -966,6 +978,7 @@ Core chain: `match_posts → challenges → matches → match_confirmations`.
 | `supabase_pilot_security.sql` | Closes the holes a browser could reach past the API routes: `refund_event_buyin` and `apply_replenishment` become service-role only, `profiles.account_type` and `teams.captain_id` become immutable from a client session, joining-fee columns move only by payment, `open_matches` / `tournament_invitations` writes belong to the organiser, and `messages` becomes readable only by its two correspondents. Run after `supabase_core_tables_rls.sql`, `supabase_payment_integrity.sql`, `supabase_joining_fees.sql`, `supabase_event_takedown.sql`, `supabase_admin_hosting.sql` and `supabase_team_tournaments.sql` |
 | `supabase_launch_security.sql` | `team_members` write policies matched to the real flows; team money readable only by the team / admins / the paid venue; `team_card_contributions` server-only; card columns on `profiles` unreadable from clients (column grants) + `my_saved_card()`; `api_rate_limits` + `hit_rate_limit()`. **Run only once the web code using `lib/own-card.ts` is deployed and the phone's OTA update is out**; after `supabase_core_tables_rls.sql`, `supabase_pilot_security.sql`, `supabase_co_captains.sql`, `supabase_payment_integrity.sql`, `supabase_refunds.sql`, `supabase_team_chat.sql`, `supabase_transfer_market.sql` |
 | `supabase_team_finance.sql` | Linked finance: `team_finance_accounts`, `payment_requests`, `payment_request_members`, `payment_request_payments`, `team_finance_entries` — all RLS-on with no policies (server only); `apply_request_payment` / `reverse_request_payment` (service role only); the trigger adding a newly approved member to the team's joining-fee request; the private `payment-requests` storage bucket. Additive — safe to run while the app is on credit. No dependencies |
+| `supabase_team_card.sql` | `team_cards` — the team card (a Stripe customer per team per mode, the saved card's id, brand, last 4, expiry, funding, who saved it). RLS on, no policies (server only). Additive. Run after `supabase_team_finance.sql` |
 | `supabase_team_finance_captain_exempt.sql` | `payment_requests.captain_exempt` — the joining fee can leave the captain off. Additive; without it the exemption is refused and everything else works. Run after `supabase_team_finance.sql` |
 | `supabase_account_deletion.sql` | `hand_over_team()` (captaincy to a co-captain, re-filing the captain-keyed rows) and `delete_auth_identities()`, both service-role only — called by `/api/team/hand-over` and `/api/account/delete`; run after `supabase_co_captains.sql`, `supabase_captain_joining_fee.sql`, `supabase_joining_fee_current.sql`, `supabase_pilot_security.sql` |
 | `supabase_gender_non_binary.sql` | `profiles.gender` accepts `non_binary` again; run after `supabase_gender_categories.sql` |

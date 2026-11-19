@@ -158,10 +158,18 @@ the app is exactly as it was and every `/api/finance/*` route answers 503.
   host team's linked account, as the charge's destination. The webhook
   finishes an entry whose app never came back, and the card is refunded if the
   event filled or was cancelled while the leader was paying.
-- **No stored team card.** The leader entering pays on the spot, with their
-  own saved card if they have one. This differs from "a leader saves a card
-  for the team" above — it needs no new table or card-management screen, and
-  works with 3D Secure. **User to confirm**, or ask for a saved team card.
+- **The team card** (user, 19 Nov: "a leader saves a card for the team; they
+  pay with that card and money from payment requests goes back into that
+  card"). Saved in Team finance on the team's own Stripe customer
+  (`supabase_team_card.sql` — **not yet run**), usable by any leader. Entries
+  are priced first, then charged to it with the leader present; refunds go
+  back to it. "Back into that card" works by using the **debit card of the
+  linked bank account**: requests are paid out to that account, and the card
+  spends from it. The screen says so and warns on a credit card; Uniter can't
+  verify the card and account match. (Paying requests out straight onto a
+  debit card is a Stripe Instant Payouts feature — not built, and its UK
+  availability for these accounts is unconfirmed.)
+- **The fee applies to entries**, Uniter's own events included (user, 19 Nov).
 - **Refunds:** taking an event down, or removing a team, refunds the entry to
   the card that paid (Uniter's own events, the only ones those routes act on).
 - **Settle match fees** shares what the card was charged for an entry.
@@ -171,6 +179,7 @@ the app is exactly as it was and every `/api/finance/*` route answers 503.
 
 1. Publish the phone update (OTA) with `EXPO_PUBLIC_FINANCE_MODE` **unset** —
    it carries the new entry sheet but stays on credit.
+   Before that, run `supabase_team_card.sql`.
 2. Set `NEXT_PUBLIC_FINANCE_MODE=linked` in Vercel and
    `EXPO_PUBLIC_FINANCE_MODE=linked` in `mobile/eas.json`; redeploy and
    publish a second OTA.
